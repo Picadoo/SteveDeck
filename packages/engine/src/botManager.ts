@@ -6,7 +6,7 @@ import {
   BotSummary,
   ServerEvents,
 } from "@mcbot/protocol";
-import { loadBots, saveBots } from "./storage";
+import { loadBots, saveBots, loadScripts as loadScriptsFile, saveScripts as saveScriptsFile } from "./storage";
 
 // 复用的核心逻辑（CommonJS JS 模块）
 const BotInstance = require("./BotInstance");
@@ -140,6 +140,24 @@ class BotManager {
   /** 供 API 层在修改 settings 后落盘。 */
   save(): void {
     this.persist();
+  }
+
+  // ============ 脚本库 ============
+  loadScripts(): Record<string, any> {
+    return loadScriptsFile() as Record<string, any>;
+  }
+  saveScripts(scripts: Record<string, any>): void {
+    saveScriptsFile(scripts);
+  }
+  /** 遍历所有在线实例（用于同步脚本库等）。 */
+  eachInstance(fn: (inst: any) => void): void {
+    for (const inst of this.bots.values()) {
+      try {
+        fn(inst);
+      } catch {
+        /* 单个实例失败不影响其他 */
+      }
+    }
   }
 
   addBot(input: BotConfigInput): BotConfig {

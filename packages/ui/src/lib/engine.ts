@@ -8,6 +8,8 @@ import {
   type BotSummary,
   type BotStatus,
   type LogLine,
+  type ScriptSummary,
+  type BotScript,
 } from "@mcbot/protocol";
 import { useStore } from "@/store/useStore";
 
@@ -145,4 +147,12 @@ export const cmd = {
     emitAck(ClientCommands.MODULE_CONFIG, { id, module, config }),
   moduleAction: <T = unknown>(id: string, module: string, action: string, args?: Record<string, unknown>) =>
     emitAck<T>(ClientCommands.MODULE_ACTION, { id, module, action, args }),
+  script: {
+    list: (id?: string) => emitAck<ScriptSummary[]>(ClientCommands.SCRIPT_LIST, { id }),
+    detail: (name: string) => emitAck<BotScript | null>(ClientCommands.SCRIPT_DETAIL, { name }),
+    save: (script: BotScript) => emitAck(ClientCommands.SCRIPT_SAVE, { script }),
+    remove: (name: string) => emitAck(ClientCommands.SCRIPT_DELETE, { name }),
+    start: (id: string, name: string) => emitAck(ClientCommands.SCRIPT_START, { id, name }),
+    stop: (id: string) => emitAck(ClientCommands.SCRIPT_STOP, { id }),
+  },
 };

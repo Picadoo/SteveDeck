@@ -19,9 +19,10 @@ import Console from "./Console";
 import ModulesTab from "./ModulesTab";
 import LocationsTab from "./LocationsTab";
 import SchedulerTab from "./SchedulerTab";
+import ScriptsTab from "./ScriptsTab";
 import { cn } from "@/lib/cn";
 
-type Tab = "overview" | "modules" | "locations" | "scheduler" | "console";
+type Tab = "overview" | "modules" | "locations" | "scheduler" | "scripts" | "console";
 
 export default function BotPanel() {
   const bot = useStore((s) => s.bots.find((b) => b.id === s.selectedId));
@@ -116,6 +117,7 @@ export default function BotPanel() {
         <TabButton active={tab === "modules"} onClick={() => setTab("modules")}>模块</TabButton>
         <TabButton active={tab === "locations"} onClick={() => setTab("locations")}>地点</TabButton>
         <TabButton active={tab === "scheduler"} onClick={() => setTab("scheduler")}>定时</TabButton>
+        <TabButton active={tab === "scripts"} onClick={() => setTab("scripts")}>脚本</TabButton>
         <TabButton active={tab === "console"} onClick={() => setTab("console")}>日志</TabButton>
       </div>
 
@@ -140,6 +142,7 @@ export default function BotPanel() {
         {tab === "modules" && <ModulesTab bot={bot} />}
         {tab === "locations" && <LocationsTab bot={bot} />}
         {tab === "scheduler" && <SchedulerTab bot={bot} />}
+        {tab === "scripts" && <ScriptsTab bot={bot} />}
         {tab === "console" && <Console botId={bot.id} />}
       </div>
 

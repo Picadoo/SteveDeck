@@ -3,6 +3,7 @@ import { ClientCommands, ServerEvents, BotConfigInput } from "@mcbot/protocol";
 import { botManager } from "../botManager";
 import { Ack, ok, fail } from "./ack";
 import { registerModuleHandlers } from "./moduleHandlers";
+import { registerScriptHandlers } from "./scriptHandlers";
 
 const { isChatBlocked } = require("../utils/chatSafety");
 
@@ -73,4 +74,5 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
   );
 
   registerModuleHandlers(io, socket);
+  registerScriptHandlers(socket);
 }

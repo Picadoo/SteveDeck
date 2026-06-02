@@ -25,3 +25,26 @@ export function saveBots(bots: BotConfig[]): void {
   fs.writeFileSync(tmp, JSON.stringify(bots, null, 2));
   fs.renameSync(tmp, file);
 }
+
+// ==================== 脚本库（全局，单主人） ====================
+function scriptsFile(): string {
+  return dataPath("scripts.json");
+}
+
+export function loadScripts(): Record<string, unknown> {
+  try {
+    const file = scriptsFile();
+    if (!fs.existsSync(file)) return {};
+    const text = fs.readFileSync(file, "utf8");
+    return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveScripts(scripts: Record<string, unknown>): void {
+  const file = scriptsFile();
+  const tmp = file + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(scripts, null, 2));
+  fs.renameSync(tmp, file);
+}
