@@ -9,23 +9,26 @@ import {
   Trash2,
   Send,
   Bot as BotIcon,
-  Swords,
-  Fish,
+  BarChart3,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { Button, Card, Input, Switch, Badge, StatusDot } from "@/components/ui/primitives";
+import { Button, Card, Input, Badge, StatusDot } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
 import Console from "./Console";
+import ModulesTab from "./ModulesTab";
+import LocationsTab from "./LocationsTab";
+import SchedulerTab from "./SchedulerTab";
 import { cn } from "@/lib/cn";
 
-type Tab = "overview" | "console";
+type Tab = "overview" | "modules" | "locations" | "scheduler" | "console";
 
 export default function BotPanel() {
   const bot = useStore((s) => s.bots.find((b) => b.id === s.selectedId));
   const [tab, setTab] = useState<Tab>("overview");
   const [chat, setChat] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
+  const [sb, setSb] = useState<{ open: boolean; data: any }>({ open: false, data: null });
 
   if (!bot) {
     return (
@@ -42,6 +45,12 @@ export default function BotPanel() {
     if (!msg || !bot) return;
     setChat("");
     await cmd.chat(bot.id, msg);
+  }
+
+  async function openScoreboard() {
+    if (!bot) return;
+    const r = await cmd.moduleAction(bot.id, "scoreboard", "get");
+    setSb({ open: true, data: r.ok ? r.data : null });
   }
 
   return (
@@ -78,7 +87,6 @@ export default function BotPanel() {
           </div>
         </div>
 
-        {/* 指标 */}
         {bot.online && (
           <div className="mt-3 flex flex-wrap gap-2">
             <Metric icon={<Heart className="h-3.5 w-3.5 text-danger" />} label="生命" value={bot.health ?? "-"} />
@@ -101,46 +109,35 @@ export default function BotPanel() {
 
       {/* 标签栏 */}
       <div className="flex shrink-0 gap-1 border-b border-border px-4">
-        <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>
-          概览
-        </TabButton>
-        <TabButton active={tab === "console"} onClick={() => setTab("console")}>
-          日志
-        </TabButton>
+        <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>概览</TabButton>
+        <TabButton active={tab === "modules"} onClick={() => setTab("modules")}>模块</TabButton>
+        <TabButton active={tab === "locations"} onClick={() => setTab("locations")}>地点</TabButton>
+        <TabButton active={tab === "scheduler"} onClick={() => setTab("scheduler")}>定时</TabButton>
+        <TabButton active={tab === "console"} onClick={() => setTab("console")}>日志</TabButton>
       </div>
 
       {/* 内容 */}
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {tab === "overview" ? (
+        {tab === "overview" && (
           <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="p-4">
-              <h3 className="mb-3 text-sm font-semibold">快捷模块</h3>
-              <ModuleRow
-                icon={<Swords className="h-4 w-4 text-accent" />}
-                name="自动战斗"
-                checked={!!bot.modules.combat}
-                onChange={(v) => cmd.toggleModule(bot.id, "combat", v)}
-                disabled={!bot.online}
-              />
-              <ModuleRow
-                icon={<Fish className="h-4 w-4 text-accent" />}
-                name="自动钓鱼"
-                checked={!!bot.modules.fishing}
-                onChange={(v) => cmd.toggleModule(bot.id, "fishing", v)}
-                disabled={!bot.online}
-              />
-              <p className="mt-2 text-[11px] text-muted">更多模块将在后续版本接入</p>
-            </Card>
             <Card className="p-4">
               <h3 className="mb-3 text-sm font-semibold">信息</h3>
               <InfoRow label="服务器" value={bot.host} />
               <InfoRow label="状态" value={bot.online ? "在线" : bot.reconnecting ? "重连中" : "离线"} />
               {bot.modules.script && <InfoRow label="运行脚本" value={bot.modules.script} />}
             </Card>
+            <Card className="p-4">
+              <h3 className="mb-3 text-sm font-semibold">服务器信息</h3>
+              <Button size="sm" variant="secondary" disabled={!bot.online} onClick={openScoreboard}>
+                <BarChart3 className="h-3.5 w-3.5" /> 查看计分板
+              </Button>
+            </Card>
           </div>
-        ) : (
-          <Console botId={bot.id} />
         )}
+        {tab === "modules" && <ModulesTab bot={bot} />}
+        {tab === "locations" && <LocationsTab bot={bot} />}
+        {tab === "scheduler" && <SchedulerTab bot={bot} />}
+        {tab === "console" && <Console botId={bot.id} />}
       </div>
 
       {/* 聊天栏 */}
@@ -156,15 +153,14 @@ export default function BotPanel() {
         </Button>
       </form>
 
+      {/* 删除确认 */}
       <Modal
         open={confirmDel}
         onClose={() => setConfirmDel(false)}
         title="删除机器人"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setConfirmDel(false)}>
-              取消
-            </Button>
+            <Button variant="ghost" onClick={() => setConfirmDel(false)}>取消</Button>
             <Button
               variant="danger"
               onClick={async () => {
@@ -181,7 +177,35 @@ export default function BotPanel() {
           确定删除机器人 <span className="font-medium text-fg">{bot.username}</span> 吗？此操作不可撤销。
         </p>
       </Modal>
+
+      {/* 计分板 */}
+      <Modal open={sb.open} onClose={() => setSb({ open: false, data: null })} title="计分板">
+        <Scoreboard data={sb.data} />
+      </Modal>
     </div>
+  );
+}
+
+function Scoreboard({ data }: { data: any }) {
+  if (!data) return <p className="text-sm text-muted">暂无计分板数据（服务器可能不支持）</p>;
+  const items: { name: string; value: number | string }[] = data.items || data.sidebar || [];
+  if (Array.isArray(items) && items.length) {
+    return (
+      <div className="space-y-1">
+        {data.title && <div className="mb-2 text-sm font-semibold">{data.title}</div>}
+        {items.map((it, i) => (
+          <div key={i} className="flex justify-between border-b border-border/50 py-1 text-sm last:border-0">
+            <span>{it.name}</span>
+            <span className="font-medium">{it.value}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <pre className="max-h-72 overflow-auto rounded-lg bg-surface-2/50 p-3 font-mono text-xs">
+      {JSON.stringify(data, null, 2)}
+    </pre>
   );
 }
 
@@ -195,15 +219,7 @@ function Metric({ icon, label, value }: { icon: ReactNode; label: string; value:
   );
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       onClick={onClick}
@@ -215,30 +231,6 @@ function TabButton({
       {children}
       {active && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-accent" />}
     </button>
-  );
-}
-
-function ModuleRow({
-  icon,
-  name,
-  checked,
-  onChange,
-  disabled,
-}: {
-  icon: ReactNode;
-  name: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between py-2">
-      <div className="flex items-center gap-2.5">
-        {icon}
-        <span className="text-sm">{name}</span>
-      </div>
-      <Switch checked={checked} onChange={onChange} disabled={disabled} />
-    </div>
   );
 }
 

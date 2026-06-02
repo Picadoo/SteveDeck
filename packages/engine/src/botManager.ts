@@ -114,6 +114,7 @@ class BotManager {
         : {},
       reconnecting: inst ? inst.reconnectAttempts > 0 && !online : false,
       fatalReason: (inst && inst._fatalReason) || null,
+      savedLocations: (inst && inst.savedLocations) || cfg.settings?.savedLocations || [],
     };
   }
 

@@ -1,0 +1,137 @@
+import type { LucideIcon } from "lucide-react";
+import { Swords, Fish, Pickaxe, Wheat, Crosshair } from "lucide-react";
+import type { ModuleFlags } from "@mcbot/protocol";
+
+export type FieldType = "switch" | "number" | "tags" | "select" | "multiselect";
+
+export interface FieldDef {
+  key: string;
+  label: string;
+  type: FieldType;
+  default: unknown;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: { value: string; label: string }[];
+  placeholder?: string;
+  hint?: string;
+}
+
+export interface ModuleDef {
+  key: string;
+  name: string;
+  icon: LucideIcon;
+  desc: string;
+  activeFlag: keyof ModuleFlags;
+  /** toggle: 配置随开关下发；config: 通过 module:config 实时应用（战斗） */
+  applyVia: "toggle" | "config";
+  fields: FieldDef[];
+}
+
+const CROPS = [
+  { value: "wheat", label: "🌾 小麦" },
+  { value: "carrots", label: "🥕 胡萝卜" },
+  { value: "potatoes", label: "🥔 土豆" },
+  { value: "beetroots", label: "🌱 甜菜根" },
+  { value: "pumpkin", label: "🎃 南瓜" },
+  { value: "melon", label: "🍉 西瓜" },
+];
+
+export const MODULES: ModuleDef[] = [
+  {
+    key: "combat",
+    name: "自动战斗",
+    icon: Swords,
+    desc: "自动攻击范围内的目标",
+    activeFlag: "combat",
+    applyVia: "config",
+    fields: [
+      { key: "range", label: "攻击距离", type: "number", default: 4.5, min: 1, max: 6, step: 0.5 },
+      { key: "maxTargets", label: "最大目标数", type: "number", default: 2, min: 1, max: 10 },
+      { key: "attackMobs", label: "攻击怪物", type: "switch", default: true },
+      { key: "attackPlayers", label: "攻击玩家 (PVP)", type: "switch", default: false },
+      { key: "antiKb", label: "静止防击退", type: "switch", default: true },
+    ],
+  },
+  {
+    key: "fishing",
+    name: "自动钓鱼",
+    icon: Fish,
+    desc: "持杆自动抛竿收竿",
+    activeFlag: "fishing",
+    applyVia: "toggle",
+    fields: [],
+  },
+  {
+    key: "automine",
+    name: "自动挖矿",
+    icon: Pickaxe,
+    desc: "搜索并挖取目标矿物",
+    activeFlag: "automine",
+    applyVia: "toggle",
+    fields: [
+      {
+        key: "targets",
+        label: "目标方块（逗号分隔）",
+        type: "tags",
+        default: ["diamond_ore", "deepslate_diamond_ore"],
+        placeholder: "diamond_ore, iron_ore",
+      },
+      { key: "radius", label: "搜索半径", type: "number", default: 16, min: 4, max: 64 },
+    ],
+  },
+  {
+    key: "auto_farm",
+    name: "自动农场",
+    icon: Wheat,
+    desc: "收割·补种·骨粉催熟",
+    activeFlag: "autofarm",
+    applyVia: "toggle",
+    fields: [
+      { key: "crops", label: "作物类型", type: "multiselect", default: ["wheat"], options: CROPS },
+      { key: "scanRadius", label: "扫描半径", type: "number", default: 32, min: 16, max: 64 },
+      { key: "useBoneMeal", label: "使用骨粉催熟", type: "switch", default: true },
+      { key: "autoReplant", label: "自动补种", type: "switch", default: true },
+      { key: "sortInventory", label: "自动整理背包", type: "switch", default: true },
+    ],
+  },
+  {
+    key: "mob_hunter",
+    name: "追怪系统",
+    icon: Crosshair,
+    desc: "区域内自动猎杀怪物",
+    activeFlag: "mobhunter",
+    applyVia: "toggle",
+    fields: [
+      {
+        key: "mode",
+        label: "模式",
+        type: "select",
+        default: "keyword",
+        options: [
+          { value: "keyword", label: "关键词匹配" },
+          { value: "all_mobs", label: "全部怪物(黑名单)" },
+        ],
+      },
+      { key: "keywords", label: "关键词（逗号分隔）", type: "tags", default: [], placeholder: "zombie, skeleton" },
+      {
+        key: "blacklist",
+        label: "黑名单",
+        type: "tags",
+        default: ["armor_stand", "item", "item_frame"],
+      },
+      { key: "attackRange", label: "攻击距离", type: "number", default: 4.5, min: 1, max: 6, step: 0.5 },
+      { key: "playerDetectRadius", label: "玩家检测半径", type: "number", default: 16, min: 0, max: 64 },
+      { key: "safetyEnabled", label: "检测到玩家暂停", type: "switch", default: true },
+      { key: "canDig", label: "允许破坏方块", type: "switch", default: false },
+      { key: "canPlace", label: "允许放置方块", type: "switch", default: false },
+    ],
+  },
+];
+
+/** 用字段默认值生成初始配置 */
+export function defaultConfig(def: ModuleDef): Record<string, unknown> {
+  const cfg: Record<string, unknown> = {};
+  for (const f of def.fields) cfg[f.key] = f.default;
+  return cfg;
+}

@@ -19,8 +19,11 @@ interface AppState {
   bots: BotSummary[];
   logs: Record<string, LogLine[]>;
   selectedId: string | null;
+  /** 模块配置缓存，键为 `${botId}:${module}`，跨开关保留用户填写的参数 */
+  moduleConfigs: Record<string, Record<string, unknown>>;
 
   setTheme: (t: "light" | "dark") => void;
+  setModuleConfig: (botId: string, module: string, config: Record<string, unknown>) => void;
   toggleTheme: () => void;
   setConn: (partial: Partial<ConnState>) => void;
   setBots: (bots: BotSummary[]) => void;
@@ -57,7 +60,12 @@ export const useStore = create<AppState>((set, get) => ({
   bots: [],
   logs: {},
   selectedId: null,
+  moduleConfigs: {},
 
+  setModuleConfig: (botId, module, config) =>
+    set((s) => ({
+      moduleConfigs: { ...s.moduleConfigs, [`${botId}:${module}`]: config },
+    })),
   setTheme: (t) => {
     applyTheme(t);
     set({ theme: t });

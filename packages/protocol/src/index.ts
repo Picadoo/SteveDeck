@@ -116,6 +116,7 @@ export interface BotSummary {
   modules: ModuleFlags;
   reconnecting: boolean;
   fatalReason: string | null;
+  savedLocations?: SavedLocation[];
 }
 
 /** 详情用的完整状态 */
