@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Swords, Fish, Pickaxe, Wheat, Crosshair } from "lucide-react";
+import { Swords, Fish, Pickaxe, Wheat, Crosshair, Trash2 } from "lucide-react";
 import type { ModuleFlags } from "@mcbot/protocol";
 
 export type FieldType = "switch" | "number" | "tags" | "select" | "multiselect";
@@ -125,6 +125,23 @@ export const MODULES: ModuleDef[] = [
       { key: "safetyEnabled", label: "检测到玩家暂停", type: "switch", default: true },
       { key: "canDig", label: "允许破坏方块", type: "switch", default: false },
       { key: "canPlace", label: "允许放置方块", type: "switch", default: false },
+    ],
+  },
+  {
+    key: "trash_cleaner",
+    name: "垃圾清理",
+    icon: Trash2,
+    desc: "自动丢弃指定垃圾物品",
+    activeFlag: "trashcleaner",
+    applyVia: "toggle",
+    fields: [
+      {
+        key: "items",
+        label: "垃圾物品（逗号分隔）",
+        type: "tags",
+        default: ["rotten_flesh", "poisonous_potato"],
+        placeholder: "rotten_flesh, cobblestone",
+      },
     ],
   },
 ];

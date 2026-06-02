@@ -10,6 +10,7 @@ import {
   type LogLine,
   type ScriptSummary,
   type BotScript,
+  type InventoryItem,
 } from "@mcbot/protocol";
 import { useStore } from "@/store/useStore";
 
@@ -108,6 +109,9 @@ export function connect(url: string, token: string): void {
   });
   socket.on(ServerEvents.BOT_ERROR, (p: { id: string; error: string }) => {
     if (p.id) useStore.getState().appendLog(p.id, { time: now(), text: "⚠️ " + p.error, level: "error" });
+  });
+  socket.on(ServerEvents.INVENTORY, (p: { user: string; items: InventoryItem[] }) => {
+    if (p.user) useStore.getState().setInventory(p.user, p.items || []);
   });
 }
 

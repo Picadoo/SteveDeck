@@ -10,6 +10,8 @@ import {
   Send,
   Bot as BotIcon,
   BarChart3,
+  Search,
+  Package,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Button, Card, Input, Badge, StatusDot } from "@/components/ui/primitives";
@@ -20,9 +22,10 @@ import ModulesTab from "./ModulesTab";
 import LocationsTab from "./LocationsTab";
 import SchedulerTab from "./SchedulerTab";
 import ScriptsTab from "./ScriptsTab";
+import InventoryTab from "./InventoryTab";
 import { cn } from "@/lib/cn";
 
-type Tab = "overview" | "modules" | "locations" | "scheduler" | "scripts" | "console";
+type Tab = "overview" | "modules" | "locations" | "scheduler" | "scripts" | "inventory" | "console";
 
 export default function BotPanel() {
   const bot = useStore((s) => s.bots.find((b) => b.id === s.selectedId));
@@ -31,6 +34,7 @@ export default function BotPanel() {
   const [chat, setChat] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const [sb, setSb] = useState<{ open: boolean; data: any }>({ open: false, data: null });
+  const [npcName, setNpcName] = useState("");
 
   if (!bot) {
     return (
@@ -118,6 +122,7 @@ export default function BotPanel() {
         <TabButton active={tab === "locations"} onClick={() => setTab("locations")}>地点</TabButton>
         <TabButton active={tab === "scheduler"} onClick={() => setTab("scheduler")}>定时</TabButton>
         <TabButton active={tab === "scripts"} onClick={() => setTab("scripts")}>脚本</TabButton>
+        <TabButton active={tab === "inventory"} onClick={() => setTab("inventory")}>背包</TabButton>
         <TabButton active={tab === "console"} onClick={() => setTab("console")}>日志</TabButton>
       </div>
 
@@ -137,12 +142,43 @@ export default function BotPanel() {
                 <BarChart3 className="h-3.5 w-3.5" /> 查看计分板
               </Button>
             </Card>
+            <Card className="p-4">
+              <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
+                <Package className="h-4 w-4 text-accent" /> NPC 交互
+              </h3>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!bot.online}
+                onClick={() => cmd.moduleAction(bot.id, "npc", "scan")}
+              >
+                <Search className="h-3.5 w-3.5" /> 扫描附近 NPC
+              </Button>
+              <div className="mt-2 flex gap-2">
+                <Input
+                  value={npcName}
+                  onChange={(e) => setNpcName(e.target.value)}
+                  placeholder="NPC 名称"
+                  disabled={!bot.online}
+                />
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={!bot.online || !npcName.trim()}
+                  onClick={() => cmd.moduleAction(bot.id, "npc", "interact", { name: npcName.trim() })}
+                >
+                  交互
+                </Button>
+              </div>
+              <p className="mt-2 text-[11px] text-muted">扫描结果见「日志」标签</p>
+            </Card>
           </div>
         )}
         {tab === "modules" && <ModulesTab bot={bot} />}
         {tab === "locations" && <LocationsTab bot={bot} />}
         {tab === "scheduler" && <SchedulerTab bot={bot} />}
         {tab === "scripts" && <ScriptsTab bot={bot} />}
+        {tab === "inventory" && <InventoryTab bot={bot} />}
         {tab === "console" && <Console botId={bot.id} />}
       </div>
 

@@ -1,9 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
+import type { LogLine } from "@mcbot/protocol";
+
+// 模块级稳定空数组：避免 zustand v5 选择器返回新引用导致无限重渲染
+const EMPTY_LOGS: LogLine[] = [];
 
 export default function Console({ botId }: { botId: string }) {
-  const logs = useStore((s) => s.logs[botId] ?? []);
+  const logs = useStore((s) => s.logs[botId]) ?? EMPTY_LOGS;
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

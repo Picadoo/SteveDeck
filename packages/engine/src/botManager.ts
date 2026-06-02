@@ -109,6 +109,7 @@ class BotManager {
             automine: !!(inst.autoMineTask && inst.autoMineTask.active),
             autofarm: !!(inst.farmTask && inst.farmTask.active),
             mobhunter: !!(inst.mobHunterTask && inst.mobHunterTask.active),
+            trashcleaner: !!(inst.trashCleanerTask && inst.trashCleanerTask.active),
             script: (inst._runningScript && inst._runningScript.name) || null,
           }
         : {},

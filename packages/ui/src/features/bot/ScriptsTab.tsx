@@ -1,29 +1,17 @@
 import { useEffect, useState } from "react";
 import { Play, Square, Plus, Pencil, Trash2, ScrollText, Repeat } from "lucide-react";
-import { Card, Button } from "@/components/ui/primitives";
-import Modal from "@/components/ui/Modal";
-import { Badge } from "@/components/ui/primitives";
+import { Card, Button, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
-import type { BotSummary, ScriptSummary } from "@mcbot/protocol";
-
-const TEMPLATE = `{
-  "name": "新脚本",
-  "loop": false,
-  "trigger": { "type": "manual" },
-  "steps": [
-    { "do": "chat", "msg": "你好" },
-    { "do": "wait", "s": 2 }
-  ]
-}`;
+import ScriptEditor from "./ScriptEditor";
+import type { BotSummary, ScriptSummary, BotScript } from "@mcbot/protocol";
 
 export default function ScriptsTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [list, setList] = useState<ScriptSummary[]>([]);
-  const [editor, setEditor] = useState<{ open: boolean; json: string; err: string | null }>({
+  const [editing, setEditing] = useState<{ open: boolean; initial: BotScript | null }>({
     open: false,
-    json: "",
-    err: null,
+    initial: null,
   });
 
   async function refresh() {
@@ -36,27 +24,20 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
   }, [bot.id, bot.modules.script]);
 
   function openNew() {
-    setEditor({ open: true, json: TEMPLATE, err: null });
+    setEditing({ open: true, initial: null });
   }
   async function openEdit(name: string) {
     const r = await cmd.script.detail(name);
-    setEditor({ open: true, json: JSON.stringify(r.ok ? r.data : {}, null, 2), err: null });
+    setEditing({ open: true, initial: (r.ok ? (r.data as BotScript) : null) ?? null });
   }
-  async function saveScript() {
-    let parsed: any;
-    try {
-      parsed = JSON.parse(editor.json);
-    } catch (e: any) {
-      setEditor((s) => ({ ...s, err: "JSON 解析失败：" + e.message }));
-      return;
-    }
-    const r = await cmd.script.save(parsed);
+  async function handleSave(script: BotScript) {
+    const r = await cmd.script.save(script);
     if (r.ok) {
-      setEditor({ open: false, json: "", err: null });
+      setEditing({ open: false, initial: null });
       pushToast("脚本已保存", "success");
       refresh();
     } else {
-      setEditor((s) => ({ ...s, err: r.error || "保存失败" }));
+      pushToast(r.error || "保存失败", "error");
     }
   }
   async function run(name: string) {
@@ -127,32 +108,12 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
         </div>
       )}
 
-      <Modal
-        open={editor.open}
-        onClose={() => setEditor({ open: false, json: "", err: null })}
-        title="脚本编辑器（JSON）"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setEditor({ open: false, json: "", err: null })}>
-              取消
-            </Button>
-            <Button variant="primary" onClick={saveScript}>
-              保存
-            </Button>
-          </>
-        }
-      >
-        <textarea
-          value={editor.json}
-          onChange={(e) => setEditor((s) => ({ ...s, json: e.target.value, err: null }))}
-          spellCheck={false}
-          className="h-72 w-full rounded-lg border border-border bg-surface-2/50 p-3 font-mono text-xs outline-none focus:ring-2 focus:ring-accent/50"
-        />
-        {editor.err && <div className="mt-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{editor.err}</div>}
-        <p className="mt-2 text-[11px] text-muted">
-          步骤示例：chat / wait / cmd / goto / if / repeat 等；触发器：manual / chat_match / health_below / interval…
-        </p>
-      </Modal>
+      <ScriptEditor
+        open={editing.open}
+        initial={editing.initial}
+        onClose={() => setEditing({ open: false, initial: null })}
+        onSave={handleSave}
+      />
     </div>
   );
 }

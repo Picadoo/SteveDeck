@@ -100,7 +100,16 @@ export interface ModuleFlags {
   automine?: boolean;
   autofarm?: boolean;
   mobhunter?: boolean;
+  trashcleaner?: boolean;
   script?: string | null;
+}
+
+export interface InventoryItem {
+  slot: number;
+  name: string | null;
+  lore?: string;
+  count?: number;
+  texture?: string;
 }
 
 /** 列表/看板用的精简状态 */
@@ -161,6 +170,8 @@ export const ServerEvents = {
   MODULE_STATE: "module:state",
   /** 模块数据推送（背包/计分板/统计等） */
   MODULE_DATA: "module:data",
+  /** 背包数据（复用引擎事件名） */
+  INVENTORY: "player_inv_data",
   /** 机器人错误（致命断开等） */
   BOT_ERROR: "bot:error",
   /** 脚本列表 */
@@ -177,6 +188,7 @@ export interface ServerToClientPayloads {
   [ServerEvents.BOT_LOG]: { id: BotId; line: LogLine };
   [ServerEvents.MODULE_STATE]: { id: BotId; module: string; state: unknown };
   [ServerEvents.MODULE_DATA]: { id: BotId; module: string; kind: string; data: unknown };
+  [ServerEvents.INVENTORY]: { user: string; items: InventoryItem[] };
   [ServerEvents.BOT_ERROR]: { id: BotId; error: string };
   [ServerEvents.SCRIPT_LIST]: { scripts: ScriptSummary[] };
   [ServerEvents.SCRIPT_DETAIL]: { name: string; script: BotScript | null };

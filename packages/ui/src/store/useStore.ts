@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { BotStatus, BotSummary, LogLine } from "@mcbot/protocol";
+import type { BotStatus, BotSummary, LogLine, InventoryItem } from "@mcbot/protocol";
 
 export type ConnStatus = "disconnected" | "connecting" | "online" | "error";
 
@@ -29,10 +29,13 @@ interface AppState {
   selectedId: string | null;
   /** 模块配置缓存，键为 `${botId}:${module}`，跨开关保留用户填写的参数 */
   moduleConfigs: Record<string, Record<string, unknown>>;
+  /** 背包数据，按机器人用户名键 */
+  inventory: Record<string, InventoryItem[]>;
   toasts: Toast[];
 
   setTheme: (t: "light" | "dark") => void;
   setModuleConfig: (botId: string, module: string, config: Record<string, unknown>) => void;
+  setInventory: (user: string, items: InventoryItem[]) => void;
   pushToast: (message: string, tone?: ToastTone) => void;
   dismissToast: (id: number) => void;
   toggleTheme: () => void;
@@ -72,6 +75,7 @@ export const useStore = create<AppState>((set, get) => ({
   logs: {},
   selectedId: null,
   moduleConfigs: {},
+  inventory: {},
   toasts: [],
 
   pushToast: (message, tone = "info") => {
@@ -85,6 +89,8 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => ({
       moduleConfigs: { ...s.moduleConfigs, [`${botId}:${module}`]: config },
     })),
+  setInventory: (user, items) =>
+    set((s) => ({ inventory: { ...s.inventory, [user]: items } })),
   setTheme: (t) => {
     applyTheme(t);
     set({ theme: t });
