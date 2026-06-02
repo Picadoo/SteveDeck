@@ -1,6 +1,17 @@
 {
   "name": "@mcbot/desktop",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Tauri 2 桌面客户端（Windows，Phase 3 搭建）"
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icon": "node generate-icon.cjs src-tauri/app-icon.png && tauri icon src-tauri/app-icon.png"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
 }

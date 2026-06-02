@@ -158,6 +158,8 @@ export const ServerEvents = {
   BOT_LOG: "bot:log",
   /** 模块状态变更 */
   MODULE_STATE: "module:state",
+  /** 模块数据推送（背包/计分板/统计等） */
+  MODULE_DATA: "module:data",
   /** 机器人错误（致命断开等） */
   BOT_ERROR: "bot:error",
   /** 脚本列表 */
@@ -172,7 +174,8 @@ export interface ServerToClientPayloads {
   [ServerEvents.BOT_STATUS]: { bot: BotStatus };
   [ServerEvents.BOT_DELETED]: { id: BotId };
   [ServerEvents.BOT_LOG]: { id: BotId; line: LogLine };
-  [ServerEvents.MODULE_STATE]: { id: BotId; module: ModuleName; state: unknown };
+  [ServerEvents.MODULE_STATE]: { id: BotId; module: string; state: unknown };
+  [ServerEvents.MODULE_DATA]: { id: BotId; module: string; kind: string; data: unknown };
   [ServerEvents.BOT_ERROR]: { id: BotId; error: string };
   [ServerEvents.SCRIPT_LIST]: { scripts: ScriptSummary[] };
   [ServerEvents.SCRIPT_DETAIL]: { name: string; script: BotScript | null };
@@ -189,6 +192,7 @@ export const ClientCommands = {
   BOT_GOTO: "bot:goto",
   MODULE_TOGGLE: "module:toggle",
   MODULE_CONFIG: "module:config",
+  MODULE_ACTION: "module:action",
   SCRIPT_SAVE: "script:save",
   SCRIPT_DELETE: "script:delete",
   SCRIPT_LIST: "script:list",
@@ -209,6 +213,7 @@ export interface ClientToServerPayloads {
   [ClientCommands.BOT_GOTO]: { id: BotId; x: number; y: number; z: number };
   [ClientCommands.MODULE_TOGGLE]: { id: BotId; module: ModuleName; active: boolean };
   [ClientCommands.MODULE_CONFIG]: { id: BotId; module: ModuleName; config: Record<string, unknown> };
+  [ClientCommands.MODULE_ACTION]: { id: BotId; module: string; action: string; args?: Record<string, unknown> };
   [ClientCommands.SCRIPT_SAVE]: { script: BotScript };
   [ClientCommands.SCRIPT_DELETE]: { name: string };
   [ClientCommands.SCRIPT_LIST]: Record<string, never>;

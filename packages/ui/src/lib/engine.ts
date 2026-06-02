@@ -139,8 +139,10 @@ export const cmd = {
   reconnect: (id: string) => emitAck(ClientCommands.BOT_RECONNECT, { id }),
   stop: (id: string) => emitAck(ClientCommands.BOT_STOP, { id }),
   chat: (id: string, message: string) => emitAck(ClientCommands.BOT_CHAT, { id, message }),
-  toggleModule: (id: string, module: string, active: boolean) =>
-    emitAck(ClientCommands.MODULE_TOGGLE, { id, module, active }),
+  toggleModule: (id: string, module: string, active: boolean, config?: Record<string, unknown>) =>
+    emitAck(ClientCommands.MODULE_TOGGLE, { id, module, active, config }),
   configModule: (id: string, module: string, config: Record<string, unknown>) =>
     emitAck(ClientCommands.MODULE_CONFIG, { id, module, config }),
+  moduleAction: <T = unknown>(id: string, module: string, action: string, args?: Record<string, unknown>) =>
+    emitAck<T>(ClientCommands.MODULE_ACTION, { id, module, action, args }),
 };

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "mc-bot-player",
+  "version": "0.1.0",
+  "identifier": "com.mcbotplayer.app",
+  "build": {
+    "frontendDist": "../../../packages/ui/dist",
+    "devUrl": "http://localhost:5273",
+    "beforeDevCommand": "pnpm --filter @mcbot/ui dev",
+    "beforeBuildCommand": "pnpm --filter @mcbot/ui build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "mc-bot-player",
+        "width": 1080,
+        "height": 720,
+        "minWidth": 880,
+        "minHeight": 560,
+        "resizable": true,
+        "decorations": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
