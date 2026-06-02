@@ -25,7 +25,8 @@ export type ModuleName =
 
 /** 创建机器人时的输入 */
 export interface BotConfigInput {
-  name: string;
+  /** 机器人登录 MC 用的用户名（同时作为展示标识） */
+  username: string;
   host: string;
   port?: number;
   version?: string;
@@ -36,7 +37,7 @@ export interface BotConfigInput {
 }
 
 /** 持久化的机器人配置（含运行设置） */
-export interface BotConfig extends Required<Pick<BotConfigInput, "name" | "host">> {
+export interface BotConfig extends Required<Pick<BotConfigInput, "username" | "host">> {
   id: BotId;
   port: number;
   version: string;
@@ -105,7 +106,7 @@ export interface ModuleFlags {
 /** 列表/看板用的精简状态 */
 export interface BotSummary {
   id: BotId;
-  name: string;
+  username: string;
   host: string;
   online: boolean;
   health: number | null;

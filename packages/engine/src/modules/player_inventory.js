@@ -1,0 +1,67 @@
+module.exports = (botInstance) => {
+    const bot = botInstance.bot;
+
+    // 封装同步函数
+    const syncInventory = () => {
+        if (!bot || !bot.inventory) return;
+
+        const items = bot.inventory.slots.map((item, index) => {
+            if (!item) return { slot: index, name: null };
+
+            // 深度解析 NBT 获取 Lore 和名字
+            let customName = item.displayName;
+            let loreLines = [];
+            if (item.nbt && item.nbt.value && item.nbt.value.display) {
+                const display = item.nbt.value.display.value;
+                if (display.Name) customName = display.Name.value;
+                if (display.Lore) loreLines = display.Lore.value.value;
+            }
+
+            return {
+                slot: index,
+                name: customName.replace(/§[0-9a-fk-orx]/gi, ''),
+                lore: loreLines.map(l => l.replace(/§[0-9a-fk-orx]/gi, '')).join('\n'),
+                count: item.count,
+                texture: item.name // 用于未来可能的图标显示
+            };
+        });
+
+        botInstance.io.to(botInstance._room).to('admin').emit('player_inv_data', {
+            user: bot.username,
+            ownerId: botInstance.config.ownerId,
+            items: items
+        });
+    };
+
+    // 挂载到实例上供外部调用
+    botInstance.syncInventory = syncInventory;
+
+    // 事件驱动同步加防抖：挖矿/战斗时槽位会连续变动，合并 150ms 内的多次事件为一次全量解析+推送
+    let syncDebounceTimer = null;
+    const scheduleSync = () => {
+        if (syncDebounceTimer) return; // 已排程，本轮事件合并
+        syncDebounceTimer = setTimeout(() => {
+            syncDebounceTimer = null;
+            syncInventory();
+        }, 150);
+    };
+
+    bot.on('playerCollect', scheduleSync);
+    bot.inventory.on('updateSlot', scheduleSync);
+
+    // 每 10 秒强制全量同步一次，防止漏包
+    botInstance.timers = botInstance.timers || [];
+    const inventoryTimer = setInterval(syncInventory, 10000);
+    botInstance.timers.push(inventoryTimer);
+
+    // 添加清理钩子（包含事件监听器清理）
+    botInstance.cleanupHooks = botInstance.cleanupHooks || [];
+    botInstance.cleanupHooks.push(() => {
+        clearInterval(inventoryTimer);
+        if (syncDebounceTimer) { clearTimeout(syncDebounceTimer); syncDebounceTimer = null; }
+        bot.removeListener('playerCollect', scheduleSync);
+        if (bot.inventory) {
+            bot.inventory.removeListener('updateSlot', scheduleSync);
+        }
+    });
+};

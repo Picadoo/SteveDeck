@@ -1,0 +1,29 @@
+services:
+  engine:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: mc-bot-player-engine:latest
+    container_name: mcbot-engine
+    restart: unless-stopped
+    ports:
+      - "8723:8723"
+    volumes:
+      - mcbot-data:/data
+    environment:
+      - PORT=8723
+      # 留空则首次启动自动生成令牌（见容器日志）；也可固定：
+      # - ENGINE_TOKEN=your-strong-token
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8723/health').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mcbot-data:

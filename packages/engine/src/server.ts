@@ -11,6 +11,8 @@ import {
 } from "@mcbot/protocol";
 import { getOrCreateToken } from "./config/token";
 import { buildConnectionInfo } from "./net/connectionInfo";
+import { botManager } from "./botManager";
+import { registerHandlers } from "./api/handlers";
 
 export const ENGINE_VERSION = "0.1.0";
 
@@ -27,11 +29,6 @@ export interface EngineHandle {
   token: string;
 }
 
-/**
- * 启动引擎 HTTP + WebSocket 服务。
- * Phase 0：仅令牌鉴权 + /health + /api/connection-info + Socket.IO 握手。
- * Phase 1 起：在 io.on('connection') 内注册机器人命令处理器。
- */
 export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandle> {
   const envPort = process.env.PORT ? Number(process.env.PORT) : undefined;
   const port = opts.port ?? envPort ?? DEFAULT_ENGINE_PORT;
@@ -71,9 +68,14 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     },
   );
 
+  app.get("/api/bots", requireToken, (_req: Request, res: Response): void => {
+    res.json({ bots: botManager.buildSnapshot() });
+  });
+
   const server = http.createServer(app);
   const io = new IOServer(server, { cors: { origin: "*" } });
 
+  // 令牌握手鉴权
   io.use((socket, next) => {
     const auth = socket.handshake.auth as HandshakeAuth;
     if (!auth || auth.token !== token) {
@@ -83,17 +85,21 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     next();
   });
 
+  botManager.init(io);
+
   io.on("connection", (socket) => {
     socket.emit(ServerEvents.ENGINE_INFO, {
       version: ENGINE_VERSION,
       protocolVersion: PROTOCOL_VERSION,
     });
-    // Phase 1 起：registerCommandHandlers(io, socket, botManager)
+    registerHandlers(io, socket);
   });
 
   await new Promise<void>((resolve) => {
     server.listen(port, "0.0.0.0", () => resolve());
   });
+
+  botManager.startAll();
 
   return { app, server, io, port, token };
 }

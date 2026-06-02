@@ -5,6 +5,8 @@
     "rootDir": "src",
     "allowJs": true,
     "checkJs": false,
+    "declaration": false,
+    "declarationMap": false,
     "types": ["node"]
   },
   "include": ["src"]

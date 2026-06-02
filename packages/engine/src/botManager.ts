@@ -1,0 +1,219 @@
+import { randomUUID } from "crypto";
+import { Server as IOServer } from "socket.io";
+import {
+  BotConfig,
+  BotConfigInput,
+  BotSummary,
+  ServerEvents,
+} from "@mcbot/protocol";
+import { loadBots, saveBots } from "./storage";
+
+// 复用的核心逻辑（CommonJS JS 模块）
+const BotInstance = require("./BotInstance");
+const logger = require("./utils/logger");
+
+/** 广播链：兼容被复用模块的 io.to(room).to(room).emit() 调用形态。
+ *  单主人模型下「所有已认证客户端」即目标，故忽略 room 一律广播。 */
+interface EmitChain {
+  to(room?: string): EmitChain;
+  emit(event: string, payload: unknown): void;
+}
+
+class BotManager {
+  private io!: IOServer;
+  private broadcaster!: EmitChain;
+  private bots = new Map<string, any>(); // id -> BotInstance
+  private configs: BotConfig[] = [];
+
+  init(io: IOServer): void {
+    this.io = io;
+    this.broadcaster = this.makeBroadcaster();
+    this.configs = loadBots();
+    logger.info(`[BotManager] 已加载 ${this.configs.length} 个机器人配置`);
+  }
+
+  // ============ 广播 + 事件翻译 ============
+  private makeBroadcaster(): EmitChain {
+    const self = this;
+    const chain: EmitChain = {
+      to: () => chain,
+      emit(event: string, payload: any) {
+        const t = self.translate(event, payload);
+        if (t) self.io.emit(t.event, t.payload);
+        else self.io.emit(event, payload); // 模块专属事件原样透传（Phase 4 UI 消费）
+      },
+    };
+    return chain;
+  }
+
+  /** 把复用代码的旧事件名翻译成新协议事件（带 botId）。 */
+  private translate(event: string, payload: any): { event: string; payload: unknown } | null {
+    if (event === "status") {
+      const cfg = this.findByUsername(payload?.user);
+      if (!cfg) return null;
+      return { event: ServerEvents.BOT_STATUS, payload: { bot: this.buildSummary(cfg) } };
+    }
+    if (event === "log") {
+      const cfg = this.findByUsername(payload?.user);
+      return {
+        event: ServerEvents.BOT_LOG,
+        payload: { id: cfg?.id ?? null, line: { time: payload?.time, text: payload?.msg } },
+      };
+    }
+    if (event === "bot_error") {
+      const cfg = this.findByUsername(payload?.user);
+      return { event: ServerEvents.BOT_ERROR, payload: { id: cfg?.id ?? null, error: payload?.error } };
+    }
+    return null;
+  }
+
+  // ============ 查询 ============
+  getConfigs(): BotConfig[] {
+    return this.configs;
+  }
+  getInstance(id: string): any | undefined {
+    return this.bots.get(id);
+  }
+  private findByUsername(username?: string): BotConfig | undefined {
+    if (!username) return undefined;
+    return this.configs.find((c) => c.username === username);
+  }
+
+  buildSnapshot(): BotSummary[] {
+    return this.configs.map((c) => this.buildSummary(c));
+  }
+
+  buildSummary(cfg: BotConfig): BotSummary {
+    const inst = this.bots.get(cfg.id);
+    const bot = inst?.bot;
+    const online = !!(bot && bot.entity);
+    return {
+      id: cfg.id,
+      username: cfg.username,
+      host: cfg.host,
+      online,
+      health: online ? Math.round(bot.health) : null,
+      food: online ? Math.round(bot.food) : null,
+      level: online ? (bot.experience ? bot.experience.level : 0) : null,
+      pos: online
+        ? {
+            x: Math.floor(bot.entity.position.x),
+            y: Math.floor(bot.entity.position.y),
+            z: Math.floor(bot.entity.position.z),
+          }
+        : null,
+      modules: inst
+        ? {
+            combat: !!(inst.combatConfig && inst.combatConfig.enabled),
+            fishing: !!inst.fishingActive,
+            automine: !!(inst.autoMineTask && inst.autoMineTask.active),
+            autofarm: !!(inst.farmTask && inst.farmTask.active),
+            mobhunter: !!(inst.mobHunterTask && inst.mobHunterTask.active),
+            script: (inst._runningScript && inst._runningScript.name) || null,
+          }
+        : {},
+      reconnecting: inst ? inst.reconnectAttempts > 0 && !online : false,
+      fatalReason: (inst && inst._fatalReason) || null,
+    };
+  }
+
+  // ============ 生命周期 ============
+  /** BotInstance 期望的 config 形态（username/host/version/password/settings）。 */
+  private toInstanceConfig(cfg: BotConfig): any {
+    return {
+      id: cfg.id,
+      username: cfg.username,
+      host: cfg.host,
+      port: cfg.port,
+      version: cfg.version,
+      password: cfg.loginPassword,
+      settings: cfg.settings,
+      ownerId: undefined,
+    };
+  }
+
+  private persist(): void {
+    saveBots(this.configs);
+  }
+
+  /** 供 API 层在修改 settings 后落盘。 */
+  save(): void {
+    this.persist();
+  }
+
+  addBot(input: BotConfigInput): BotConfig {
+    if (!input?.username || !input?.host) throw new Error("用户名和服务器地址必填");
+    const dup = this.configs.find((c) => c.username === input.username && c.host === input.host);
+    if (dup) throw new Error(`机器人 ${input.username}@${input.host} 已存在`);
+
+    const cfg: BotConfig = {
+      id: randomUUID(),
+      username: input.username,
+      host: input.host,
+      port: input.port ?? 25565,
+      version: input.version ?? "1.20.1",
+      auth: input.auth ?? "offline",
+      loginPassword: input.loginPassword,
+      settings: input.settings ?? { combat: false, fishing: false, reconnectDelay: 5, schedules: [] },
+    };
+    this.configs.push(cfg);
+    this.persist();
+    this.spawn(cfg);
+    return cfg;
+  }
+
+  deleteBot(id: string): boolean {
+    const inst = this.bots.get(id);
+    if (inst) {
+      try {
+        inst.stop();
+      } catch (e: any) {
+        logger.error(`[BotManager] 停止失败:`, e?.message);
+      }
+      this.bots.delete(id);
+    }
+    const before = this.configs.length;
+    this.configs = this.configs.filter((c) => c.id !== id);
+    if (this.configs.length === before) return false;
+    this.persist();
+    this.io.emit(ServerEvents.BOT_DELETED, { id });
+    return true;
+  }
+
+  reconnect(id: string): void {
+    const inst = this.bots.get(id);
+    if (inst?.reconnect) inst.reconnect();
+  }
+
+  stop(id: string): void {
+    const inst = this.bots.get(id);
+    if (inst?.stop) inst.stop();
+  }
+
+  private spawn(cfg: BotConfig): void {
+    if (this.bots.has(cfg.id)) return;
+    try {
+      const inst = new BotInstance(this.toInstanceConfig(cfg), this.broadcaster, () => this.persist());
+      this.bots.set(cfg.id, inst);
+      logger.info(`[BotManager] ${cfg.username}@${cfg.host} 已创建`);
+    } catch (e: any) {
+      logger.error(`[BotManager] 创建失败:`, e?.message);
+    }
+  }
+
+  /** 启动时按 host 轻度错峰登录，避免同服瞬间大量登录。 */
+  startAll(): void {
+    const perHostCount: Record<string, number> = {};
+    for (const cfg of this.configs) {
+      const n = perHostCount[cfg.host] ?? 0;
+      perHostCount[cfg.host] = n + 1;
+      const delay = n * 1500;
+      setTimeout(() => {
+        if (!this.bots.has(cfg.id)) this.spawn(cfg);
+      }, delay);
+    }
+  }
+}
+
+export const botManager = new BotManager();
+export type { BotManager };

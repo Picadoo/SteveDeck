@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.vite
+**/*.tsbuildinfo
+apps/*/src-tauri/target
+apps/*/src-tauri/gen
+data
+*.log
+.git
+.superpowers
