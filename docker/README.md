@@ -29,4 +29,6 @@ docker logs mcbot-engine
 - 令牌务必足够随机（自动生成的即可）。
 - 可配合防火墙限制来源 IP。
 
-> 注意：当前开发机未安装 Docker，镜像构建尚未在本地实测；请在具备 Docker 的环境执行上面的命令完成验证。
+> 注意：Docker Desktop 已在本开发机安装且 CLI 可用，但其 **Linux 引擎需要 WSL2**
+> （启用 Windows「虚拟机平台」功能 + 在 BIOS 启用虚拟化 + 重启），否则会报
+> `request returned 500 ... DockerDesktopLinuxEngine`。启用 WSL2（`wsl --install` / `wsl --set-default-version 2` 后重启）即可构建镜像。

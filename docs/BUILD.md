@@ -65,7 +65,24 @@ pnpm tauri android build     # 产出 APK / AAB
 
 UI 已做响应式适配（移动端汉堡抽屉 + 触摸友好），手机端连接用扫码即可。
 
-> 注：本仓库的开发机未安装 Android SDK/NDK，安卓构建尚未本地实测；上述为标准 Tauri 2 Android 流程，装好 SDK 后即可执行。
+### Windows 上的符号链接限制（已实测并给出变通法）
+
+本仓库已在 Windows 上**实测构建出 arm64 debug APK**（`app-arm64-debug.apk`，~11.3MB，内含 Rust 原生库）。
+但 `tauri android build` 在打包阶段会把编译好的 `.so` **符号链接**进 `jniLibs`，而 Windows 默认禁止创建符号链接，报：
+`Creation symbolic link is not allowed for this system ... use developer mode`。
+
+两种解决：
+1. **开启 Windows 开发者模式**（设置 → 隐私和安全性 → 开发者选项），然后正常 `tauri android build`。
+2. **不需管理员的变通法**（本仓库采用）：Rust 已编译出 `.so` 后，手动复制再让 Gradle 跳过 rust 任务：
+   ```bash
+   cp src-tauri/target/aarch64-linux-android/release/libmc_bot_player_lib.so \
+      src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a/
+   cd src-tauri/gen/android
+   ./gradlew :app:assembleArm64Debug -x :app:rustBuildArm64Debug
+   # 产物：app/build/outputs/apk/arm64/debug/app-arm64-debug.apk
+   ```
+
+> release APK 需配置签名密钥；多架构构建去掉 `--target aarch64` 即可。
 
 ## CI
 
