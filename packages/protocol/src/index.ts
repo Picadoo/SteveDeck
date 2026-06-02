@@ -212,6 +212,7 @@ export const ClientCommands = {
   SCRIPT_DETAIL: "script:detail",
   SCRIPT_START: "script:start",
   SCRIPT_STOP: "script:stop",
+  AI_OBSERVE: "ai:observe",
   LOCATION_SAVE: "location:save",
   LOCATION_DELETE: "location:delete",
   LOCATION_GOTO: "location:goto",
@@ -233,6 +234,7 @@ export interface ClientToServerPayloads {
   [ClientCommands.SCRIPT_DETAIL]: { name: string };
   [ClientCommands.SCRIPT_START]: { id: BotId; name: string };
   [ClientCommands.SCRIPT_STOP]: { id: BotId };
+  [ClientCommands.AI_OBSERVE]: { id: BotId };
   [ClientCommands.LOCATION_SAVE]: { id: BotId; name: string };
   [ClientCommands.LOCATION_DELETE]: { id: BotId; locationId: string };
   [ClientCommands.LOCATION_GOTO]: { id: BotId; locationId: string };
@@ -279,6 +281,30 @@ export interface ScriptSummary {
   loop: boolean;
   stepCount: number;
   running: boolean;
+}
+
+// ==================== AI 感知 ====================
+
+export interface Observation {
+  bot: { id: BotId; username: string; host: string; online: boolean };
+  self: {
+    pos: Vec3Like;
+    health: number;
+    food: number;
+    xpLevel: number;
+    heldItem: string | null;
+    yaw: number;
+    pitch: number;
+    dimension: string | null;
+    gameMode: string | null;
+  } | null;
+  inventory: { name: string; count: number; displayName?: string }[];
+  nearbyPlayers: { name: string; distance: number; pos: Vec3Like }[];
+  nearbyEntities: { type: string; name: string; distance: number; pos: Vec3Like }[];
+  recentChat: string[];
+  modules: Record<string, unknown>;
+  savedLocations: SavedLocation[];
+  scoreboard?: unknown;
 }
 
 // ==================== Socket.IO 握手鉴权 ====================

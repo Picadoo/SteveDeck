@@ -36,3 +36,4 @@
 ## 关键成果
 - 一套引擎 + 一套界面，跨 Windows/Android 复用；Windows 安装包仅 **3.2MB**（Tauri 而非 Electron）。
 - 无账号、令牌即连；7×24 Docker 引擎 + 瘦客户端遥控的目标架构跑通。
+- **AI 接口**：`GET /api/observe/:id`（感知世界状态）+ `POST /api/ai/script/:id`（提交脚本）+ WS `ai:observe` + 客户端「AI」标签（一键复制提示词给 Claude）。让 AI 感知服务器并自动写脚本，无需 API Key 也能用。详见 `docs/AI_INTEGRATION.md`。

@@ -4,6 +4,7 @@ import { botManager } from "../botManager";
 import { Ack, ok, fail } from "./ack";
 import { registerModuleHandlers } from "./moduleHandlers";
 import { registerScriptHandlers } from "./scriptHandlers";
+import { buildObservation } from "../ai/observe";
 
 const { isChatBlocked } = require("../utils/chatSafety");
 
@@ -72,6 +73,11 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
       }
     },
   );
+
+  socket.on(ClientCommands.AI_OBSERVE, ({ id }: { id: string }, ack?: Ack) => {
+    const obs = buildObservation(id);
+    ack?.(obs ? ok(obs) : fail("机器人不存在"));
+  });
 
   registerModuleHandlers(io, socket);
   registerScriptHandlers(socket);

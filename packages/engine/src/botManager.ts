@@ -24,6 +24,21 @@ class BotManager {
   private broadcaster!: EmitChain;
   private bots = new Map<string, any>(); // id -> BotInstance
   private configs: BotConfig[] = [];
+  private recentLogs = new Map<string, string[]>(); // id -> 最近聊天/日志（供 AI 感知）
+
+  private pushLog(id: string, text?: string): void {
+    if (!id || !text) return;
+    const arr = this.recentLogs.get(id) ?? [];
+    arr.push(text);
+    while (arr.length > 40) arr.shift();
+    this.recentLogs.set(id, arr);
+  }
+  getRecentLogs(id: string): string[] {
+    return this.recentLogs.get(id) ?? [];
+  }
+  getConfig(id: string): BotConfig | undefined {
+    return this.configs.find((c) => c.id === id);
+  }
 
   init(io: IOServer): void {
     this.io = io;
@@ -55,6 +70,7 @@ class BotManager {
     }
     if (event === "log") {
       const cfg = this.findByUsername(payload?.user);
+      if (cfg) this.pushLog(cfg.id, payload?.msg);
       return {
         event: ServerEvents.BOT_LOG,
         payload: { id: cfg?.id ?? null, line: { time: payload?.time, text: payload?.msg } },

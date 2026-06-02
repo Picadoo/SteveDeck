@@ -13,6 +13,7 @@ import { getOrCreateToken } from "./config/token";
 import { buildConnectionInfo } from "./net/connectionInfo";
 import { botManager } from "./botManager";
 import { registerHandlers } from "./api/handlers";
+import { buildObservation } from "./ai/observe";
 
 export const ENGINE_VERSION = "0.1.0";
 
@@ -70,6 +71,44 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
 
   app.get("/api/bots", requireToken, (_req: Request, res: Response): void => {
     res.json({ bots: botManager.buildSnapshot() });
+  });
+
+  // ===== AI 接口：感知世界状态 + 提交脚本 =====
+  app.get("/api/observe/:id", requireToken, (req: Request, res: Response): void => {
+    const obs = buildObservation(String(req.params.id));
+    if (!obs) {
+      res.status(404).json({ error: "bot not found" });
+      return;
+    }
+    res.json(obs);
+  });
+
+  app.post("/api/ai/script/:id", requireToken, (req: Request, res: Response): void => {
+    const id = String(req.params.id);
+    const body = req.body || {};
+    const script = body.script ?? body;
+    if (!script || !script.name || !Array.isArray(script.steps)) {
+      res.status(400).json({ error: "invalid script: need { name, steps[] }" });
+      return;
+    }
+    const lib = botManager.loadScripts();
+    lib[script.name] = script;
+    botManager.saveScripts(lib);
+    botManager.eachInstance((inst: any) => inst.preloadScripts && inst.preloadScripts(lib));
+    let started = false;
+    if (body.run !== false) {
+      const inst = botManager.getInstance(id);
+      if (inst?.startScript) {
+        try {
+          inst.preloadScripts?.(lib);
+          inst.startScript(script.name);
+          started = true;
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    res.json({ ok: true, saved: script.name, started });
   });
 
   const server = http.createServer(app);

@@ -11,6 +11,7 @@ import {
   type ScriptSummary,
   type BotScript,
   type InventoryItem,
+  type Observation,
 } from "@mcbot/protocol";
 import { useStore } from "@/store/useStore";
 
@@ -159,4 +160,5 @@ export const cmd = {
     start: (id: string, name: string) => emitAck(ClientCommands.SCRIPT_START, { id, name }),
     stop: (id: string) => emitAck(ClientCommands.SCRIPT_STOP, { id }),
   },
+  observe: (id: string) => emitAck<Observation>(ClientCommands.AI_OBSERVE, { id }),
 };
