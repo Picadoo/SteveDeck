@@ -25,6 +25,7 @@ type Tab = "overview" | "modules" | "locations" | "scheduler" | "console";
 
 export default function BotPanel() {
   const bot = useStore((s) => s.bots.find((b) => b.id === s.selectedId));
+  const pushToast = useStore((s) => s.pushToast);
   const [tab, setTab] = useState<Tab>("overview");
   const [chat, setChat] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
@@ -44,12 +45,14 @@ export default function BotPanel() {
     const msg = chat.trim();
     if (!msg || !bot) return;
     setChat("");
-    await cmd.chat(bot.id, msg);
+    const r = await cmd.chat(bot.id, msg);
+    if (!r.ok) pushToast(r.error || "发送失败", "error");
   }
 
   async function openScoreboard() {
     if (!bot) return;
     const r = await cmd.moduleAction(bot.id, "scoreboard", "get");
+    if (!r.ok) pushToast(r.error || "获取计分板失败", "error");
     setSb({ open: true, data: r.ok ? r.data : null });
   }
 

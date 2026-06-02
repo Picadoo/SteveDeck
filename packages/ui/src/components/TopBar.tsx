@@ -1,8 +1,8 @@
-import { Wifi, WifiOff, Loader2, Moon, Sun } from "lucide-react";
+import { Wifi, WifiOff, Loader2, Moon, Sun, Menu } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { IconButton, Badge, StatusDot } from "@/components/ui/primitives";
 
-export default function TopBar() {
+export default function TopBar({ onMenu }: { onMenu: () => void }) {
   const conn = useStore((s) => s.conn);
   const theme = useStore((s) => s.theme);
   const toggleTheme = useStore((s) => s.toggleTheme);
@@ -11,6 +11,9 @@ export default function TopBar() {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-surface px-4 drag-region">
       <div className="flex min-w-0 items-center gap-2">
+        <IconButton onClick={onMenu} className="md:hidden" title="菜单">
+          <Menu className="h-4 w-4" />
+        </IconButton>
         {selected ? (
           <>
             <StatusDot online={selected.online} />

@@ -10,6 +10,7 @@ import type { BotSummary } from "@mcbot/protocol";
 export default function ModulesTab({ bot }: { bot: BotSummary }) {
   const moduleConfigs = useStore((s) => s.moduleConfigs);
   const setModuleConfig = useStore((s) => s.setModuleConfig);
+  const pushToast = useStore((s) => s.pushToast);
   const [editing, setEditing] = useState<ModuleDef | null>(null);
 
   const isActive = (def: ModuleDef) => !!bot.modules[def.activeFlag];
@@ -18,7 +19,9 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
 
   function onToggle(def: ModuleDef, active: boolean) {
     const cfg = def.fields.length ? getCfg(def) : undefined;
-    cmd.toggleModule(bot.id, def.key, active, cfg);
+    cmd.toggleModule(bot.id, def.key, active, cfg).then((r) => {
+      if (!r.ok) pushToast(r.error || "操作失败", "error");
+    });
   }
 
   function onSaveConfig(def: ModuleDef, cfg: Record<string, unknown>) {

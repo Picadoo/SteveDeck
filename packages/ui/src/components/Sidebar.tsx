@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { disconnect } from "@/lib/engine";
 import AddBotDialog from "@/features/bot/AddBotDialog";
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const bots = useStore((s) => s.bots);
   const selectedId = useStore((s) => s.selectedId);
   const setSelected = useStore((s) => s.setSelected);
@@ -44,7 +44,10 @@ export default function Sidebar() {
               return (
                 <li key={b.id}>
                   <button
-                    onClick={() => setSelected(b.id)}
+                    onClick={() => {
+                      setSelected(b.id);
+                      onNavigate?.();
+                    }}
                     className={cn(
                       "group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
                       active ? "bg-surface-2" : "hover:bg-surface-2/60",

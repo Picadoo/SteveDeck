@@ -11,6 +11,14 @@ export interface ConnState {
   engine?: { version: string; protocolVersion: number };
 }
 
+export type ToastTone = "error" | "success" | "info";
+export interface Toast {
+  id: number;
+  message: string;
+  tone: ToastTone;
+}
+let toastSeq = 0;
+
 const MAX_LOG_LINES = 500;
 
 interface AppState {
@@ -21,9 +29,12 @@ interface AppState {
   selectedId: string | null;
   /** 模块配置缓存，键为 `${botId}:${module}`，跨开关保留用户填写的参数 */
   moduleConfigs: Record<string, Record<string, unknown>>;
+  toasts: Toast[];
 
   setTheme: (t: "light" | "dark") => void;
   setModuleConfig: (botId: string, module: string, config: Record<string, unknown>) => void;
+  pushToast: (message: string, tone?: ToastTone) => void;
+  dismissToast: (id: number) => void;
   toggleTheme: () => void;
   setConn: (partial: Partial<ConnState>) => void;
   setBots: (bots: BotSummary[]) => void;
@@ -61,6 +72,14 @@ export const useStore = create<AppState>((set, get) => ({
   logs: {},
   selectedId: null,
   moduleConfigs: {},
+  toasts: [],
+
+  pushToast: (message, tone = "info") => {
+    const id = ++toastSeq;
+    set((s) => ({ toasts: [...s.toasts, { id, message, tone }] }));
+    setTimeout(() => get().dismissToast(id), 4000);
+  },
+  dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   setModuleConfig: (botId, module, config) =>
     set((s) => ({
