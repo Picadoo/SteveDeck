@@ -1,0 +1,22 @@
+{
+  "name": "mc-bot-player",
+  "private": true,
+  "version": "0.0.0",
+  "description": "面向玩家的 Minecraft 挂机机器人：Docker 引擎 + Tauri 桌面/安卓客户端",
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "start:engine": "pnpm --filter @mcbot/engine start",
+    "dev:engine": "pnpm --filter @mcbot/engine dev",
+    "dev:ui": "pnpm --filter @mcbot/ui dev",
+    "build:ui": "pnpm --filter @mcbot/ui build"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

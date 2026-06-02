@@ -1,0 +1,29 @@
+# mc-bot-player
+
+面向**玩家**的 Minecraft 挂机机器人。引擎 7×24 跑在 Docker 上，桌面（Windows）与手机（Android）作为瘦客户端遥控。
+
+- 设计与实施计划书：[`docs/2026-06-02-mc-bot-player-design.md`](docs/2026-06-02-mc-bot-player-design.md)
+
+## 结构（monorepo）
+
+| 包 | 说明 |
+|---|---|
+| `packages/protocol` | 客户端↔引擎共享的 TS 类型与事件常量（单一事实源） |
+| `packages/engine` | 引擎核心（Node + TS + mineflayer），headless，令牌鉴权的 WS/HTTP API |
+| `packages/ui` | 共享网页界面（React + Vite + Tailwind），桌面/手机共用 |
+| `apps/desktop` | Tauri 2 → Windows 客户端 |
+| `apps/mobile` | Tauri 2 → Android 客户端 |
+| `docker/` | 引擎镜像与 compose |
+
+## 快速开始（开发）
+
+```bash
+pnpm install
+pnpm build              # 构建所有包
+pnpm start:engine       # 启动引擎，打印连接信息（地址 + 令牌 + 连接串）
+```
+
+## 连接模型
+
+- 无账号、无注册。引擎首次启动生成**访问令牌**并打印**连接串**与二维码。
+- 客户端填「引擎地址 + 令牌」（或扫码）即可遥控。

@@ -1,0 +1,6 @@
+{
+  "name": "@mcbot/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tauri 2 桌面客户端（Windows，Phase 3 搭建）"
+}

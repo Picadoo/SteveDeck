@@ -1,0 +1,36 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+*.tsbuildinfo
+
+# Tauri / Rust 构建产物
+apps/desktop/src-tauri/target/
+apps/mobile/src-tauri/target/
+apps/mobile/src-tauri/gen/
+
+# Vite
+.vite/
+*.local
+
+# 运行时数据（令牌、机器人配置、脚本）
+data/
+*.log
+
+# 环境变量
+.env
+.env.*
+!.env.example
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# 测试
+coverage/
