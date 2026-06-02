@@ -20,5 +20,15 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        // 把不常变动的第三方库拆分为独立 chunk，提升浏览器缓存命中率
+        manualChunks: {
+          "vendor-react": ["react", "react-dom"],
+          "vendor-net": ["socket.io-client"],
+          "vendor-icons": ["lucide-react"],
+        },
+      },
+    },
   },
 });
