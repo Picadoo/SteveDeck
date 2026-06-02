@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* 浅色（暖纸白，Claude Desktop 风格） */
+  --bg: 250 249 245;
+  --surface: 255 255 255;
+  --surface-2: 244 242 237;
+  --border: 228 224 216;
+  --fg: 38 36 33;
+  --muted: 124 120 112;
+  --accent: 200 100 66;
+  --accent-fg: 255 255 255;
+  --success: 34 158 110;
+  --warning: 197 138 30;
+  --danger: 200 65 60;
+}
+
+.dark {
+  /* 深色（暖炭灰） */
+  --bg: 30 29 27;
+  --surface: 38 38 36;
+  --surface-2: 48 48 46;
+  --border: 62 60 56;
+  --fg: 232 230 224;
+  --muted: 152 146 136;
+  --accent: 217 119 87;
+  --accent-fg: 28 27 25;
+  --success: 80 188 138;
+  --warning: 214 158 60;
+  --danger: 226 112 102;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg text-fg font-sans antialiased;
+    margin: 0;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full;
+    background: rgb(var(--muted) / 0.35);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--muted) / 0.55);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  .drag-region {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+}
