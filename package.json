@@ -11,7 +11,7 @@
     "build": "pnpm -r --filter \"./packages/*\" build",
     "build:all": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm build && pnpm --filter @mcbot/engine test",
     "start:engine": "pnpm --filter @mcbot/engine start",
     "dev:engine": "pnpm --filter @mcbot/engine dev",
     "dev:ui": "pnpm --filter @mcbot/ui dev",

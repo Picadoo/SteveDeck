@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/bin/serve.js",
     "dev": "tsx watch src/bin/serve.ts",
-    "test": "node --test"
+    "test": "node test/control-plane.cjs"
   },
   "dependencies": {
     "@mcbot/protocol": "workspace:*",

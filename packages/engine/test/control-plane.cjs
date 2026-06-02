@@ -64,9 +64,11 @@ function emitAck(client, ev, payload) {
   const tog = await emitAck(client, "module:toggle", { id, module: "combat", active: true });
   check("开启战斗模块 ok", !!tog && tog.ok === true);
 
-  // 6. 未接入模块应返回提示
-  const notYet = await emitAck(client, "module:toggle", { id, module: "automine", active: true });
-  check("未接入模块返回提示", !!notYet && notYet.ok === false);
+  // 6. 已接入模块(自动挖矿)可切换；未知模块应返回错误
+  const mineToggle = await emitAck(client, "module:toggle", { id, module: "automine", active: false });
+  check("自动挖矿模块已接入", !!mineToggle && mineToggle.ok === true);
+  const unknown = await emitAck(client, "module:toggle", { id, module: "bogus_module", active: true });
+  check("未知模块返回错误", !!unknown && unknown.ok === false);
 
   // 7. 删除机器人
   const del = await emitAck(client, "bot:delete", { id });

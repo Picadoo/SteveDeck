@@ -27,3 +27,22 @@ pnpm start:engine       # 启动引擎，打印连接信息（地址 + 令牌 + 
 
 - 无账号、无注册。引擎首次启动生成**访问令牌**并打印**连接串**与二维码。
 - 客户端填「引擎地址 + 令牌」（或扫码）即可遥控。
+
+## 文档
+
+- [使用指南](docs/USER_GUIDE.md) — 部署引擎、连接客户端、使用各功能
+- [构建指南](docs/BUILD.md) — 引擎/Docker、Windows 桌面、Android
+- [性能说明](docs/PERFORMANCE.md) — 引擎与客户端的性能措施
+- [项目状态](docs/STATUS.md) — 各阶段完成情况与收尾项
+- [设计与计划书](docs/2026-06-02-mc-bot-player-design.md)
+
+## 一键命令
+
+```bash
+pnpm install
+pnpm build          # 构建 protocol + engine + ui
+pnpm test           # 构建并运行引擎控制面测试（10 项）
+pnpm start:engine   # 本地启动引擎
+docker compose -f docker/docker-compose.yml up -d --build   # 引擎 24/7（需 Docker）
+pnpm -C apps/desktop tauri build                            # Windows 安装包（需 Rust）
+```
