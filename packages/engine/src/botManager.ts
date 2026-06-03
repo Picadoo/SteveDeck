@@ -63,28 +63,32 @@ class BotManager {
   }
 
   // ============ 广播 + 事件翻译 ============
-  private makeBroadcaster(): EmitChain {
+  // botId 给定时，把它注入每个事件 payload（_bid），翻译层据此按「ID」路由，
+  // 从而支持同一用户名挂在不同服务器（addBot 允许同名不同 host）。
+  private makeBroadcaster(botId?: string): EmitChain {
     const self = this;
     const chain: EmitChain = {
       to: () => chain,
       emit(event: string, payload: any) {
-        const t = self.translate(event, payload);
+        const p =
+          botId && payload && typeof payload === "object" ? { ...payload, _bid: botId } : payload;
+        const t = self.translate(event, p);
         if (t) self.io.emit(t.event, t.payload);
-        else self.io.emit(event, payload); // 模块专属事件原样透传（Phase 4 UI 消费）
+        else self.io.emit(event, p); // 模块专属事件原样透传（Phase 4 UI 消费）
       },
     };
     return chain;
   }
 
-  /** 把复用代码的旧事件名翻译成新协议事件（带 botId）。 */
+  /** 把复用代码的旧事件名翻译成新协议事件（带 botId）。优先按实例 ID(_bid) 路由，回退用户名。 */
   private translate(event: string, payload: any): { event: string; payload: unknown } | null {
     if (event === "status") {
-      const cfg = this.findByUsername(payload?.user);
+      const cfg = this.findById(payload?._bid) ?? this.findByUsername(payload?.user);
       if (!cfg) return null;
       return { event: ServerEvents.BOT_STATUS, payload: { bot: this.buildSummary(cfg) } };
     }
     if (event === "log") {
-      const cfg = this.findByUsername(payload?.user);
+      const cfg = this.findById(payload?._bid) ?? this.findByUsername(payload?.user);
       const isChat = !!payload?.chat;
       if (cfg) this.pushLine(isChat ? this.recentChat : this.recentOps, cfg.id, payload?.msg);
       return {
@@ -96,7 +100,7 @@ class BotManager {
       };
     }
     if (event === "bot_error") {
-      const cfg = this.findByUsername(payload?.user);
+      const cfg = this.findById(payload?._bid) ?? this.findByUsername(payload?.user);
       return { event: ServerEvents.BOT_ERROR, payload: { id: cfg?.id ?? null, error: payload?.error } };
     }
     return null;
@@ -112,6 +116,10 @@ class BotManager {
   private findByUsername(username?: string): BotConfig | undefined {
     if (!username) return undefined;
     return this.configs.find((c) => c.username === username);
+  }
+  private findById(id?: string): BotConfig | undefined {
+    if (!id) return undefined;
+    return this.configs.find((c) => c.id === id);
   }
 
   buildSnapshot(): BotSummary[] {
@@ -312,7 +320,7 @@ class BotManager {
   private spawn(cfg: BotConfig): void {
     if (this.bots.has(cfg.id)) return;
     try {
-      const inst = new BotInstance(this.toInstanceConfig(cfg), this.broadcaster, () => this.persist());
+      const inst = new BotInstance(this.toInstanceConfig(cfg), this.makeBroadcaster(cfg.id), () => this.persist());
       this.bots.set(cfg.id, inst);
       logger.info(`[BotManager] ${cfg.username}@${cfg.host} 已创建`);
     } catch (e: any) {
