@@ -72,13 +72,12 @@ export default function Console({ botId }: { botId: string }) {
           <Trash2 className="h-3.5 w-3.5" />
         </ToolBtn>
       </div>
-      {/* 固定深色「终端」底：MC 颜色码本就是为深色背景设计，浅色主题下白/灰字才不会看不清 */}
       <div
         ref={ref}
-        className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-zinc-700 bg-[#0a0a0c] p-3 font-mono text-xs leading-relaxed text-zinc-200"
+        className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-surface-2/40 p-3 font-mono text-xs leading-relaxed"
       >
         {shown.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-zinc-500">
+          <div className="flex h-full items-center justify-center text-muted">
             {filter ? "无匹配日志" : "暂无日志"}
           </div>
         ) : (
@@ -87,12 +86,12 @@ export default function Console({ botId }: { botId: string }) {
               key={i}
               className={cn(
                 "whitespace-pre-wrap break-words",
-                l.level === "error" && "text-red-400",
-                l.level === "warn" && "text-amber-400",
+                l.level === "error" && "text-danger",
+                l.level === "warn" && "text-warning",
               )}
             >
-              <span className="mr-2 select-none text-zinc-500">{l.time}</span>
-              <McText text={l.text} onDark />
+              <span className="mr-2 select-none text-muted">{l.time}</span>
+              <McText text={l.text} />
             </div>
           ))
         )}

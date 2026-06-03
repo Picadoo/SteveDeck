@@ -303,7 +303,7 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
             {/* 侧边栏内容都在文本行里（分值多为排序号，故不展示）；像游戏内一样不加分隔线 */}
             {sbItems.map((it, i) => (
               <div key={i} className="truncate py-px text-sm leading-snug">
-                <McText text={it.raw || it.name} onDark />
+                <McText text={it.raw || it.name} />
               </div>
             ))}
           </div>
