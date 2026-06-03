@@ -258,6 +258,13 @@ export const cmd = {
       }),
     stop: (id: string) =>
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "viewer", action: "stop" }),
+    clickWalk: (id: string, enabled: boolean) =>
+      emitAck(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "viewer",
+        action: "clickWalk",
+        args: { enabled },
+      }),
   },
   control: {
     set: (id: string, states: Partial<Record<"forward" | "back" | "left" | "right" | "jump" | "sprint" | "sneak", boolean>>) =>

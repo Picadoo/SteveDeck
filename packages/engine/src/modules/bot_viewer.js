@@ -7,6 +7,14 @@ const usedPorts = new Set();
 module.exports = (botInstance) => {
   const bot = botInstance.bot;
 
+  // 点击地面寻路开关（持久于实例，跨视角重启保留）。操控模式下前端会关掉它，
+  // 这样在第三人称里拖动画面转视角时不会误触发走路。
+  if (botInstance._viewerClickWalk === undefined) botInstance._viewerClickWalk = true;
+  botInstance.setViewerClickWalk = (enabled) => {
+    botInstance._viewerClickWalk = !!enabled;
+    return botInstance._viewerClickWalk;
+  };
+
   botInstance.startViewer = (firstPerson = false) => {
     firstPerson = !!firstPerson;
     if (botInstance._viewerPort) {
@@ -30,6 +38,7 @@ module.exports = (botInstance) => {
       try {
         const { goals } = require('mineflayer-pathfinder');
         bot.viewer.on('blockClicked', (block) => {
+          if (botInstance._viewerClickWalk === false) return; // 操控模式：禁用点击走路
           if (block && block.position) {
             try {
               bot.pathfinder.setGoal(new goals.GoalNear(block.position.x, block.position.y, block.position.z, 1));

@@ -185,6 +185,8 @@ function dispatchAction(
       return ok(inst.startViewer(!!args.firstPerson));
     case "viewer:stop":
       return ok({ stopped: inst.stopViewer?.() ?? false });
+    case "viewer:clickWalk":
+      return ok({ clickWalk: inst.setViewerClickWalk?.(!!args.enabled) ?? false });
     case "auto_farm:scan":
       inst.scanFarmland?.();
       return ok();

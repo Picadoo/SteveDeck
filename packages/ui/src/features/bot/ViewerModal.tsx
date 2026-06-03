@@ -24,8 +24,8 @@ export default function ViewerModal({
   const pushToast = useStore((s) => s.pushToast);
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  // 默认第一人称：镜头锁定机器人、以它为中心、跟随最稳；切第三人称才能自由观察
-  const [firstPerson, setFirstPerson] = useState(true);
+  // 默认第三人称（仿原版 F5）：拖动画面转视角、看得到机器人本体；切第一人称则镜头=机器人视线
+  const [firstPerson, setFirstPerson] = useState(false);
   const [controls, setControls] = useState(false);
   const [cmdText, setCmdText] = useState("");
   const lastStates = useRef("");
@@ -59,6 +59,12 @@ export default function ViewerModal({
       cmd.control.stop(bot.id);
     };
   }, [open, bot.id]);
+
+  // 操控模式开启时禁用「点击地面走路」，这样第三人称里能放心拖动画面转视角
+  useEffect(() => {
+    if (!open) return;
+    cmd.viewer.clickWalk(bot.id, !controls);
+  }, [open, controls, bot.id]);
 
   const pos = bot.pos;
   const pct = healthPct(bot);
@@ -229,7 +235,9 @@ export default function ViewerModal({
         </Button>
       </form>
       <p className="mt-1 text-[11px] leading-relaxed text-muted">
-        默认<span className="text-fg">第一人称</span>：镜头锁定机器人、以它为中心、跟随最稳；切<span className="text-fg">第三人称</span>可自由看周围、点地面寻路过去。操控：摇杆走动（推到底=疾跑）、跳、左右转。关闭即停。
+        <span className="text-fg">第三人称</span>：<span className="text-fg">拖动画面</span>转视角（像原版 F5）、滚轮缩放；
+        <span className="text-fg">第一人称</span>则镜头=机器人视线。
+        开「操控」后<span className="text-fg">点击不再走路</span>（方便拖视角），用摇杆走、方向键转身体；关操控时可点地面寻路过去。关闭即停。
       </p>
     </Modal>
   );
