@@ -5,10 +5,16 @@ export interface StepFieldDef {
   label: string;
   type: "text" | "number";
 }
+export interface StepContainerDef {
+  key: string; // 嵌套 steps 数组所在的字段名（如 steps / then / else）
+  label: string;
+}
 export interface StepTypeDef {
   do: string;
   label: string;
   fields: StepFieldDef[];
+  /** 含子步骤的控制块（if/repeat/while） */
+  containers?: StepContainerDef[];
 }
 
 export const STEP_TYPES: StepTypeDef[] = [
@@ -57,6 +63,30 @@ export const STEP_TYPES: StepTypeDef[] = [
       { k: "z", label: "Z", type: "number" },
     ],
   },
+  // ===== 控制块（含子步骤） =====
+  {
+    do: "if",
+    label: "如果…则…",
+    fields: [{ k: "cond", label: "条件", type: "text" }],
+    containers: [
+      { key: "then", label: "则（满足时执行）" },
+      { key: "else", label: "否则" },
+    ],
+  },
+  {
+    do: "repeat",
+    label: "重复 N 次",
+    fields: [{ k: "times", label: "次数", type: "number" }],
+    containers: [{ key: "steps", label: "循环体" }],
+  },
+  {
+    do: "while",
+    label: "当…循环",
+    fields: [{ k: "cond", label: "条件", type: "text" }],
+    containers: [{ key: "steps", label: "循环体" }],
+  },
+  { do: "break_if", label: "满足则跳出", fields: [{ k: "cond", label: "条件", type: "text" }] },
+  { do: "run_script", label: "调用子脚本", fields: [{ k: "name", label: "脚本名", type: "text" }] },
 ];
 
 export const STEP_MAP: Record<string, StepTypeDef> = Object.fromEntries(

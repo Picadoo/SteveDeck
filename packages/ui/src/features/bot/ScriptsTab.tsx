@@ -111,6 +111,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
       <ScriptEditor
         open={editing.open}
         initial={editing.initial}
+        botId={bot.id}
         onClose={() => setEditing({ open: false, initial: null })}
         onSave={handleSave}
       />
