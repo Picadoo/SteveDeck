@@ -50,6 +50,26 @@ export function forgetConn(): void {
   }
 }
 
+/** 拉取引擎连接信息（地址/连接串/二维码），用于「扫码连接其他设备」。 */
+export async function fetchConnectionInfo(): Promise<{
+  addresses: string[];
+  port: number;
+  connectionString: string;
+  qrcodeDataUrl?: string;
+} | null> {
+  const { url, token } = useStore.getState().conn;
+  if (!url || !token) return null;
+  try {
+    const r = await fetch(url + "/api/connection-info", {
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
 /** 解析连接串 mcbot://host:port?token=xxx → { url, token } */
 export function parseConnectionString(input: string): { url: string; token: string } | null {
   const s = input.trim();
