@@ -17,7 +17,11 @@ apps/mobile/src-tauri/gen/
 
 # 运行时数据（令牌、机器人配置、脚本）
 data/
+.test-data/
 *.log
+
+# 本地预览/调试配置
+.claude/
 
 # 环境变量
 .env

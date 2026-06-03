@@ -1,3 +1,5 @@
+const { enchantNames } = require('../utils/items');
+
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
 
@@ -22,7 +24,8 @@ module.exports = (botInstance) => {
                 name: customName.replace(/§[0-9a-fk-orx]/gi, ''),
                 lore: loreLines.map(l => l.replace(/§[0-9a-fk-orx]/gi, '')).join('\n'),
                 count: item.count,
-                texture: item.name // 用于未来可能的图标显示
+                texture: item.name, // 原始物品 id
+                enchants: enchantNames(item)
             };
         });
 

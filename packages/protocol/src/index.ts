@@ -110,6 +110,8 @@ export interface InventoryItem {
   lore?: string;
   count?: number;
   texture?: string;
+  /** 附魔摘要（如 ["锋利 V", "耐久 III"]），RPG 服常见 */
+  enchants?: string[];
 }
 
 /** 列表/看板用的精简状态 */
@@ -119,6 +121,8 @@ export interface BotSummary {
   host: string;
   online: boolean;
   health: number | null;
+  /** 最大生命（RPG 服可能 >20）。用于把生命显示为百分比 */
+  maxHealth?: number | null;
   food: number | null;
   level: number | null;
   pos: Vec3Like | null;
@@ -289,14 +293,38 @@ export interface ScriptSummary {
 
 // ==================== AI 感知 ====================
 
+/** 单件装备/手持物的精简描述 */
+export interface EquipItem {
+  /** 展示名（优先自定义名，已去除颜色码） */
+  name: string;
+  /** 物品 id，如 diamond_sword */
+  id: string;
+  count: number;
+  /** 附魔摘要，如 ["锋利 V"] */
+  enchants?: string[];
+}
+
+/** 装备槽位（含双手） */
+export interface Equipment {
+  mainHand: EquipItem | null;
+  offHand: EquipItem | null;
+  head: EquipItem | null;
+  chest: EquipItem | null;
+  legs: EquipItem | null;
+  feet: EquipItem | null;
+}
+
 export interface Observation {
   bot: { id: BotId; username: string; host: string; online: boolean };
   self: {
     pos: Vec3Like;
     health: number;
+    /** 最大生命（RPG 服可能 >20） */
+    maxHealth?: number;
     food: number;
     xpLevel: number;
     heldItem: string | null;
+    equipment?: Equipment;
     yaw: number;
     pitch: number;
     dimension: string | null;

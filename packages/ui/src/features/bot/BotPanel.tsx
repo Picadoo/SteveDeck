@@ -9,17 +9,16 @@ import {
   Trash2,
   Send,
   Bot as BotIcon,
-  BarChart3,
-  Search,
-  Package,
   Pencil,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { Button, Card, Input, Badge, StatusDot } from "@/components/ui/primitives";
+import { Button, Input, Badge, StatusDot } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
+import { healthPct } from "@/lib/format";
 import AddBotDialog, { type EditInitial } from "./AddBotDialog";
 import Console from "./Console";
+import OverviewTab from "./OverviewTab";
 import ModulesTab from "./ModulesTab";
 import LocationsTab from "./LocationsTab";
 import SchedulerTab from "./SchedulerTab";
@@ -36,8 +35,6 @@ export default function BotPanel() {
   const [tab, setTab] = useState<Tab>("overview");
   const [chat, setChat] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
-  const [sb, setSb] = useState<{ open: boolean; data: any }>({ open: false, data: null });
-  const [npcName, setNpcName] = useState("");
   const [edit, setEdit] = useState<{ open: boolean; initial?: EditInitial }>({ open: false });
 
   if (!bot) {
@@ -49,6 +46,8 @@ export default function BotPanel() {
     );
   }
 
+  const pct = healthPct(bot);
+
   async function sendChat(e: FormEvent) {
     e.preventDefault();
     const msg = chat.trim();
@@ -56,13 +55,6 @@ export default function BotPanel() {
     setChat("");
     const r = await cmd.chat(bot.id, msg);
     if (!r.ok) pushToast(r.error || "发送失败", "error");
-  }
-
-  async function openScoreboard() {
-    if (!bot) return;
-    const r = await cmd.moduleAction(bot.id, "scoreboard", "get");
-    if (!r.ok) pushToast(r.error || "获取计分板失败", "error");
-    setSb({ open: true, data: r.ok ? r.data : null });
   }
 
   async function openEdit() {
@@ -110,7 +102,7 @@ export default function BotPanel() {
 
         {bot.online && (
           <div className="mt-3 flex flex-wrap gap-2">
-            <Metric icon={<Heart className="h-3.5 w-3.5 text-danger" />} label="生命" value={bot.health ?? "-"} />
+            <Metric icon={<Heart className="h-3.5 w-3.5 text-danger" />} label="生命" value={pct != null ? `${pct}%` : "-"} />
             <Metric icon={<Drumstick className="h-3.5 w-3.5 text-warning" />} label="饱食" value={bot.food ?? "-"} />
             <Metric icon={<Star className="h-3.5 w-3.5 text-accent" />} label="等级" value={bot.level ?? "-"} />
             <Metric
@@ -129,7 +121,7 @@ export default function BotPanel() {
       </div>
 
       {/* 标签栏 */}
-      <div className="flex shrink-0 gap-1 border-b border-border px-4">
+      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4">
         <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>概览</TabButton>
         <TabButton active={tab === "ai"} onClick={() => setTab("ai")}>AI</TabButton>
         <TabButton active={tab === "modules"} onClick={() => setTab("modules")}>模块</TabButton>
@@ -142,52 +134,7 @@ export default function BotPanel() {
 
       {/* 内容 */}
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {tab === "overview" && (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="p-4">
-              <h3 className="mb-3 text-sm font-semibold">信息</h3>
-              <InfoRow label="服务器" value={bot.host} />
-              <InfoRow label="状态" value={bot.online ? "在线" : bot.reconnecting ? "重连中" : "离线"} />
-              {bot.modules.script && <InfoRow label="运行脚本" value={bot.modules.script} />}
-            </Card>
-            <Card className="p-4">
-              <h3 className="mb-3 text-sm font-semibold">服务器信息</h3>
-              <Button size="sm" variant="secondary" disabled={!bot.online} onClick={openScoreboard}>
-                <BarChart3 className="h-3.5 w-3.5" /> 查看计分板
-              </Button>
-            </Card>
-            <Card className="p-4">
-              <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
-                <Package className="h-4 w-4 text-accent" /> NPC 交互
-              </h3>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={!bot.online}
-                onClick={() => cmd.moduleAction(bot.id, "npc", "scan")}
-              >
-                <Search className="h-3.5 w-3.5" /> 扫描附近 NPC
-              </Button>
-              <div className="mt-2 flex gap-2">
-                <Input
-                  value={npcName}
-                  onChange={(e) => setNpcName(e.target.value)}
-                  placeholder="NPC 名称"
-                  disabled={!bot.online}
-                />
-                <Button
-                  size="sm"
-                  variant="primary"
-                  disabled={!bot.online || !npcName.trim()}
-                  onClick={() => cmd.moduleAction(bot.id, "npc", "interact", { name: npcName.trim() })}
-                >
-                  交互
-                </Button>
-              </div>
-              <p className="mt-2 text-[11px] text-muted">扫描结果见「日志」标签</p>
-            </Card>
-          </div>
-        )}
+        {tab === "overview" && <OverviewTab bot={bot} />}
         {tab === "ai" && <AiTab bot={bot} />}
         {tab === "modules" && <ModulesTab bot={bot} />}
         {tab === "locations" && <LocationsTab bot={bot} />}
@@ -235,37 +182,9 @@ export default function BotPanel() {
         </p>
       </Modal>
 
-      {/* 计分板 */}
-      <Modal open={sb.open} onClose={() => setSb({ open: false, data: null })} title="计分板">
-        <Scoreboard data={sb.data} />
-      </Modal>
-
       {/* 编辑机器人 */}
       <AddBotDialog open={edit.open} editId={bot.id} initial={edit.initial} onClose={() => setEdit({ open: false })} />
     </div>
-  );
-}
-
-function Scoreboard({ data }: { data: any }) {
-  if (!data) return <p className="text-sm text-muted">暂无计分板数据（服务器可能不支持）</p>;
-  const items: { name: string; value: number | string }[] = data.items || data.sidebar || [];
-  if (Array.isArray(items) && items.length) {
-    return (
-      <div className="space-y-1">
-        {data.title && <div className="mb-2 text-sm font-semibold">{data.title}</div>}
-        {items.map((it, i) => (
-          <div key={i} className="flex justify-between border-b border-border/50 py-1 text-sm last:border-0">
-            <span>{it.name}</span>
-            <span className="font-medium">{it.value}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  return (
-    <pre className="max-h-72 overflow-auto rounded-lg bg-surface-2/50 p-3 font-mono text-xs">
-      {JSON.stringify(data, null, 2)}
-    </pre>
   );
 }
 
@@ -284,21 +203,12 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
     <button
       onClick={onClick}
       className={cn(
-        "relative px-3 py-2.5 text-sm font-medium transition-colors",
+        "relative shrink-0 px-3 py-2.5 text-sm font-medium transition-colors",
         active ? "text-fg" : "text-muted hover:text-fg",
       )}
     >
       {children}
       {active && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-accent" />}
     </button>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between border-b border-border/60 py-1.5 text-sm last:border-0">
-      <span className="text-muted">{label}</span>
-      <span className="truncate pl-3 font-medium">{value}</span>
-    </div>
   );
 }

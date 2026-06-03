@@ -99,6 +99,22 @@ class BotManager {
     return this.configs.map((c) => this.buildSummary(c));
   }
 
+  /** 读取最大生命属性（RPG 服常把它调高到 >20）。取不到则回退 20。 */
+  private maxHealthOf(bot: any): number {
+    try {
+      const a = bot?.entity?.attributes;
+      if (a) {
+        const e =
+          a["minecraft:generic.max_health"] || a["generic.maxHealth"] || a["generic.max_health"];
+        const v = e?.value;
+        if (typeof v === "number" && v > 0) return Math.round(v);
+      }
+    } catch {
+      /* ignore */
+    }
+    return 20;
+  }
+
   buildSummary(cfg: BotConfig): BotSummary {
     const inst = this.bots.get(cfg.id);
     const bot = inst?.bot;
@@ -109,6 +125,7 @@ class BotManager {
       host: cfg.host,
       online,
       health: online ? Math.round(bot.health) : null,
+      maxHealth: online ? this.maxHealthOf(bot) : null,
       food: online ? Math.round(bot.food) : null,
       level: online ? (bot.experience ? bot.experience.level : 0) : null,
       pos: online
