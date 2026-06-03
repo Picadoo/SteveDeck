@@ -6,7 +6,14 @@ import {
   BotSummary,
   ServerEvents,
 } from "@mcbot/protocol";
-import { loadBots, saveBots, loadScripts as loadScriptsFile, saveScripts as saveScriptsFile } from "./storage";
+import {
+  loadBots,
+  saveBots,
+  loadScripts as loadScriptsFile,
+  saveScripts as saveScriptsFile,
+  loadCustomScripts as loadCustomScriptsFile,
+  saveCustomScripts as saveCustomScriptsFile,
+} from "./storage";
 
 // 复用的核心逻辑（CommonJS JS 模块）
 const BotInstance = require("./BotInstance");
@@ -155,7 +162,10 @@ class BotManager {
             autofarm: !!(inst.farmTask && inst.farmTask.active),
             mobhunter: !!(inst.mobHunterTask && inst.mobHunterTask.active),
             trashcleaner: !!(inst.trashCleanerTask && inst.trashCleanerTask.active),
-            script: (inst._runningScript && inst._runningScript.name) || null,
+            script:
+              (inst._runningScript && inst._runningScript.name) ||
+              (inst._customJs && `JS:${inst._customJs.name}`) ||
+              null,
           }
         : {},
       reconnecting: inst ? inst.reconnectAttempts > 0 && !online : false,
@@ -194,6 +204,12 @@ class BotManager {
   }
   saveScripts(scripts: Record<string, any>): void {
     saveScriptsFile(scripts);
+  }
+  loadCustomScripts(): Record<string, any> {
+    return loadCustomScriptsFile() as Record<string, any>;
+  }
+  saveCustomScripts(scripts: Record<string, any>): void {
+    saveCustomScriptsFile(scripts);
   }
   /** 遍历所有在线实例（用于同步脚本库等）。 */
   eachInstance(fn: (inst: any) => void): void {

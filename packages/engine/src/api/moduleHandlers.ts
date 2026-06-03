@@ -124,6 +124,51 @@ function dispatchAction(
         .openContainerAt(Number(args.x), Number(args.y), Number(args.z))
         .then((w: any) => ok(w))
         .catch((e: any) => fail(String(e?.message ?? e)));
+
+    // ===== 原生 JS 自定义脚本 =====
+    case "js:list":
+      return ok(
+        Object.values(botManager.loadCustomScripts()).map((s: any) => ({
+          name: s.name,
+          updatedAt: s.updatedAt || s.createdAt || null,
+        })),
+      );
+    case "js:get":
+      return ok(botManager.loadCustomScripts()[String(args.name)] ?? null);
+    case "js:save": {
+      const name = String(args.name || "").trim();
+      if (!name) return fail("脚本名不能为空");
+      const lib = botManager.loadCustomScripts();
+      const now = Date.now();
+      lib[name] = {
+        name,
+        code: String(args.code || ""),
+        createdAt: lib[name]?.createdAt || now,
+        updatedAt: now,
+      };
+      botManager.saveCustomScripts(lib);
+      return ok();
+    }
+    case "js:delete": {
+      const lib = botManager.loadCustomScripts();
+      delete lib[String(args.name)];
+      botManager.saveCustomScripts(lib);
+      return ok();
+    }
+    case "js:run": {
+      if (process.env.ENGINE_ALLOW_JS === "0")
+        return fail("引擎已禁用自定义 JS（设 ENGINE_ALLOW_JS=1 开启）");
+      const code =
+        args.code != null
+          ? String(args.code)
+          : String(botManager.loadCustomScripts()[String(args.name)]?.code || "");
+      if (!code.trim()) return fail("脚本为空");
+      if (!inst.runCustomJs) return fail("机器人需在线才能运行");
+      const r = inst.runCustomJs(String(args.name || "临时脚本"), code);
+      return r?.ok ? ok() : fail(r?.error || "运行失败");
+    }
+    case "js:stop":
+      return ok({ stopped: inst.stopCustomJs?.() ?? false });
     case "auto_farm:scan":
       inst.scanFarmland?.();
       return ok();

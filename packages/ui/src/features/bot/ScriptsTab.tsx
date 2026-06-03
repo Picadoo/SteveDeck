@@ -3,11 +3,14 @@ import { Play, Square, Plus, Pencil, Trash2, ScrollText, Repeat } from "lucide-r
 import { Card, Button, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
+import { cn } from "@/lib/cn";
 import ScriptEditor from "./ScriptEditor";
+import CustomJsPanel from "./CustomJsPanel";
 import type { BotSummary, ScriptSummary, BotScript } from "@mcbot/protocol";
 
 export default function ScriptsTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
+  const [mode, setMode] = useState<"visual" | "js">("visual");
   const [list, setList] = useState<ScriptSummary[]>([]);
   const [editing, setEditing] = useState<{ open: boolean; initial: BotScript | null }>({
     open: false,
@@ -56,12 +59,37 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted">脚本库为全局，可在任意机器人上运行</p>
-        <Button size="sm" variant="primary" onClick={openNew}>
-          <Plus className="h-3.5 w-3.5" /> 新建脚本
-        </Button>
+      <div className="flex gap-1 rounded-lg bg-surface-2 p-1 text-sm">
+        <button
+          onClick={() => setMode("visual")}
+          className={cn(
+            "flex-1 rounded-md px-3 py-1.5 transition-colors",
+            mode === "visual" ? "bg-surface font-medium text-fg shadow-sm" : "text-muted",
+          )}
+        >
+          积木脚本
+        </button>
+        <button
+          onClick={() => setMode("js")}
+          className={cn(
+            "flex-1 rounded-md px-3 py-1.5 transition-colors",
+            mode === "js" ? "bg-surface font-medium text-fg shadow-sm" : "text-muted",
+          )}
+        >
+          自定义 JS
+        </button>
       </div>
+
+      {mode === "js" ? (
+        <CustomJsPanel bot={bot} />
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted">脚本库为全局，可在任意机器人上运行</p>
+            <Button size="sm" variant="primary" onClick={openNew}>
+              <Plus className="h-3.5 w-3.5" /> 新建脚本
+            </Button>
+          </div>
 
       {list.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 text-center text-muted">
@@ -108,13 +136,15 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
         </div>
       )}
 
-      <ScriptEditor
-        open={editing.open}
-        initial={editing.initial}
-        botId={bot.id}
-        onClose={() => setEditing({ open: false, initial: null })}
-        onSave={handleSave}
-      />
+          <ScriptEditor
+            open={editing.open}
+            initial={editing.initial}
+            botId={bot.id}
+            onClose={() => setEditing({ open: false, initial: null })}
+            onSave={handleSave}
+          />
+        </>
+      )}
     </div>
   );
 }

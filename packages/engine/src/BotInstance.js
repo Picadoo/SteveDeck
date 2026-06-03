@@ -120,6 +120,7 @@ class BotInstance {
                 require('./modules/script_engine')(this);
                 require('./modules/fishing_hotspot')(this);
                 require('./modules/window_gui')(this);
+                require('./modules/custom_js')(this);
 
                 // 3. 配置恢复：统一恢复各模块上次的激活状态（含自动挖矿断线续挖）
                 const settings = this.config.settings || {};

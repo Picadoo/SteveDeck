@@ -215,4 +215,26 @@ export const cmd = {
         args: { x, y, z },
       }),
   },
+  js: {
+    list: (id: string) =>
+      emitAck<{ name: string; updatedAt: number | null }[]>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "js",
+        action: "list",
+      }),
+    get: (id: string, name: string) =>
+      emitAck<{ name: string; code: string } | null>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "js",
+        action: "get",
+        args: { name },
+      }),
+    save: (id: string, name: string, code: string) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "js", action: "save", args: { name, code } }),
+    del: (id: string, name: string) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "js", action: "delete", args: { name } }),
+    run: (id: string, name: string, code?: string) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "js", action: "run", args: { name, code } }),
+    stop: (id: string) => emitAck(ClientCommands.MODULE_ACTION, { id, module: "js", action: "stop" }),
+  },
 };

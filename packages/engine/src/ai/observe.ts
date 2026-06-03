@@ -64,7 +64,7 @@ export function buildObservation(id: string): any {
           automine: !!inst.autoMineTask?.active,
           autofarm: !!inst.farmTask?.active,
           mobhunter: !!inst.mobHunterTask?.active,
-          runningScript: inst._runningScript?.name || null,
+          runningScript: inst._runningScript?.name || (inst._customJs ? `JS:${inst._customJs.name}` : null),
         }
       : {},
     savedLocations: inst?.savedLocations || cfg.settings?.savedLocations || [],

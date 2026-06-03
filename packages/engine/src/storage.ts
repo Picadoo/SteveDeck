@@ -48,3 +48,26 @@ export function saveScripts(scripts: Record<string, unknown>): void {
   fs.writeFileSync(tmp, JSON.stringify(scripts, null, 2));
   fs.renameSync(tmp, file);
 }
+
+// ==================== 自定义 JS 脚本库（全局，单主人） ====================
+function customScriptsFile(): string {
+  return dataPath("custom_scripts.json");
+}
+
+export function loadCustomScripts(): Record<string, unknown> {
+  try {
+    const file = customScriptsFile();
+    if (!fs.existsSync(file)) return {};
+    const text = fs.readFileSync(file, "utf8");
+    return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveCustomScripts(scripts: Record<string, unknown>): void {
+  const file = customScriptsFile();
+  const tmp = file + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(scripts, null, 2));
+  fs.renameSync(tmp, file);
+}
