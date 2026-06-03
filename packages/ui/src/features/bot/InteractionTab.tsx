@@ -36,11 +36,14 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
   }, [bot.id, bot.online]);
 
   async function toggleDig(allow: boolean) {
+    setBehavior((b) => ({ respawnCommand: b?.respawnCommand ?? "", allowDig: allow })); // 立即反映
     const r = await cmd.behavior.setDig(bot.id, allow);
     if (r.ok) {
-      setBehavior((b) => ({ respawnCommand: b?.respawnCommand ?? "", allowDig: allow }));
       pushToast(allow ? "已允许破坏方块寻路" : "已切换为无破坏寻路", "success");
-    } else pushToast(r.error || "设置失败", "error");
+    } else {
+      pushToast(r.error || "设置失败", "error");
+      setBehavior((b) => ({ respawnCommand: b?.respawnCommand ?? "", allowDig: !allow })); // 回滚
+    }
   }
   async function saveRespawn() {
     const c = respawnDraft.trim();

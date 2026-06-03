@@ -40,6 +40,16 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
   const [stats, setStats] = useState<Record<string, any>>({});
   const [engineSettings, setEngineSettings] = useState<any>(null);
   const [pinned, setPinned] = useState<{ name: string }[]>([]);
+  // 乐观开关：点击后立即反映新状态（开关立刻动画），等服务器状态回来再对齐；失败则回滚
+  const [optim, setOptim] = useState<Record<string, boolean>>({});
+  const setOpt = (k: string, v: boolean) => setOptim((o) => ({ ...o, [k]: v }));
+  const clearOpt = (k: string) =>
+    setOptim((o) => {
+      if (!(k in o)) return o;
+      const n = { ...o };
+      delete n[k];
+      return n;
+    });
 
   // 拉取引擎里持久化的真实配置，用于配置对话框预填
   useEffect(() => {
@@ -99,11 +109,39 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
   }, [bot.id, bot.online, bot.modules.autofarm, bot.modules.automine, bot.modules.mobhunter]);
 
   function onToggle(def: ModuleDef, active: boolean) {
+    setOpt(def.key, active); // 立即反映，开关即时动画
     const cfg = def.fields.length ? getCfg(def) : undefined;
     cmd.toggleModule(bot.id, def.key, active, cfg).then((r) => {
-      if (!r.ok) pushToast(r.error || "操作失败", "error");
+      if (!r.ok) {
+        pushToast(r.error || "操作失败", "error");
+        clearOpt(def.key); // 失败回滚
+      }
     });
   }
+
+  // 服务器真实状态追上乐观值后，撤掉本地覆盖（之后由真实状态驱动）
+  useEffect(() => {
+    setOptim((o) => {
+      let changed = false;
+      const n = { ...o };
+      for (const def of MODULES) {
+        if (def.key in n && !!bot.modules[def.activeFlag] === n[def.key]) {
+          delete n[def.key];
+          changed = true;
+        }
+      }
+      for (const s of pinned) {
+        const k = `js:${s.name}`;
+        if (k in n && (bot.modules.script === `JS:${s.name}`) === n[k]) {
+          delete n[k];
+          changed = true;
+        }
+      }
+      return changed ? n : o;
+    });
+  }, [bot.modules, pinned]);
+
+  const checkedOf = (def: ModuleDef) => (def.key in optim ? optim[def.key] : isActive(def));
   function onSaveConfig(def: ModuleDef, cfg: Record<string, unknown>) {
     setModuleConfig(bot.id, def.key, cfg);
     if (def.applyVia === "config") cmd.configModule(bot.id, def.key, cfg);
@@ -130,7 +168,7 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
                   <div className="text-[11px] text-muted">{def.desc}</div>
                 </div>
               </div>
-              <Switch checked={active} onChange={(v) => onToggle(def, v)} disabled={!bot.online} />
+              <Switch checked={checkedOf(def)} onChange={(v) => onToggle(def, v)} disabled={!bot.online} />
             </div>
 
             {st && <StatsGrid data={st} />}
@@ -145,7 +183,8 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
       })}
 
       {pinned.map((s) => {
-        const running = bot.modules.script === `JS:${s.name}`;
+        const jsKey = `js:${s.name}`;
+        const running = jsKey in optim ? optim[jsKey] : bot.modules.script === `JS:${s.name}`;
         return (
           <Card key={`js:${s.name}`} className="p-4">
             <div className="flex items-start justify-between">
@@ -160,7 +199,15 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
               </div>
               <Switch
                 checked={running}
-                onChange={(v) => (v ? cmd.js.run(bot.id, s.name) : cmd.js.stop(bot.id))}
+                onChange={(v) => {
+                  setOpt(jsKey, v);
+                  (v ? cmd.js.run(bot.id, s.name) : cmd.js.stop(bot.id)).then((r) => {
+                    if (!r.ok) {
+                      pushToast(r.error || "操作失败", "error");
+                      clearOpt(jsKey);
+                    }
+                  });
+                }}
                 disabled={!bot.online}
               />
             </div>
