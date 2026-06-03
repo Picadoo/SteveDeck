@@ -42,6 +42,31 @@ function cleanName(s) {
   return String(s == null ? "" : s).replace(/§[0-9a-fk-orx]/gi, "");
 }
 
+/** 展平 JSON 聊天组件为纯文本 */
+function flattenChat(o) {
+  if (o == null) return "";
+  if (typeof o === "string") return o;
+  if (Array.isArray(o)) return o.map(flattenChat).join("");
+  let out = typeof o.text === "string" ? o.text : "";
+  if (o.extra) out += flattenChat(o.extra);
+  if (!out && typeof o.translate === "string") out = o.translate;
+  return out;
+}
+
+/** 名称可能是 JSON 聊天组件字符串（如 {"text":"战令"}），解析为纯文本 */
+function parseChat(s) {
+  if (typeof s !== "string") return flattenChat(s);
+  const t = s.trim();
+  if (t.startsWith("{") || t.startsWith("[")) {
+    try {
+      return flattenChat(JSON.parse(t));
+    } catch {
+      return s;
+    }
+  }
+  return s;
+}
+
 /** 把 mineflayer item.enchants 转成 ["锋利 V", ...] */
 function enchantNames(item) {
   try {
@@ -69,11 +94,25 @@ function customName(item) {
   try {
     const d =
       item && item.nbt && item.nbt.value && item.nbt.value.display && item.nbt.value.display.value;
-    if (d && d.Name && d.Name.value) name = d.Name.value;
+    if (d && d.Name && d.Name.value) name = parseChat(d.Name.value);
   } catch {
     /* ignore */
   }
   return cleanName(name);
+}
+
+/** 提取物品 Lore（去色码，多行用 \n 连接） */
+function lore(item) {
+  try {
+    const d =
+      item && item.nbt && item.nbt.value && item.nbt.value.display && item.nbt.value.display.value;
+    if (d && d.Lore && d.Lore.value && d.Lore.value.value) {
+      return d.Lore.value.value.map((l) => cleanName(parseChat(l))).join("\n");
+    }
+  } catch {
+    /* ignore */
+  }
+  return "";
 }
 
 /** 装备/手持物的精简摘要 */
@@ -87,4 +126,14 @@ function itemBrief(item) {
   };
 }
 
-module.exports = { ENCH_CN, roman, cleanName, enchantNames, customName, itemBrief };
+module.exports = {
+  ENCH_CN,
+  roman,
+  cleanName,
+  flattenChat,
+  parseChat,
+  enchantNames,
+  customName,
+  lore,
+  itemBrief,
+};

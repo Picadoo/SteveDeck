@@ -86,14 +86,14 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
 
   socket.on(
     ClientCommands.MODULE_ACTION,
-    (
+    async (
       { id, module, action, args = {} }: { id: string; module: string; action: string; args?: any },
       ack?: Ack,
     ) => {
       const inst = botManager.getInstance(id);
       if (!inst) return ack?.(fail("机器人不存在"));
       try {
-        ack?.(dispatchAction(io, inst, id, module, action, args));
+        ack?.(await dispatchAction(io, inst, id, module, action, args));
       } catch (e: any) {
         ack?.(fail(String(e?.message ?? e)));
       }
@@ -108,8 +108,22 @@ function dispatchAction(
   module: string,
   action: string,
   args: any,
-): CommandAck {
+): CommandAck | Promise<CommandAck> {
   switch (`${module}:${action}`) {
+    case "window:get":
+      return ok(inst.getWindow?.() ?? null);
+    case "window:click":
+      return inst
+        .clickWindowSlot(Number(args.slot), Number(args.button ?? 0), Number(args.mode ?? 0))
+        .then((w: any) => ok(w))
+        .catch((e: any) => fail(String(e?.message ?? e)));
+    case "window:close":
+      return ok({ closed: inst.closeGui?.() ?? false });
+    case "window:openAt":
+      return inst
+        .openContainerAt(Number(args.x), Number(args.y), Number(args.z))
+        .then((w: any) => ok(w))
+        .catch((e: any) => fail(String(e?.message ?? e)));
     case "auto_farm:scan":
       inst.scanFarmland?.();
       return ok();

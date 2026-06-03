@@ -55,7 +55,8 @@ export function buildObservation(id: string): any {
     inventory: [],
     nearbyPlayers: [],
     nearbyEntities: [],
-    recentChat: botManager.getRecentLogs(id).slice(-20),
+    recentChat: botManager.getRecentChat(id).slice(-20),
+    recentOps: botManager.getRecentOps(id).slice(-20),
     modules: inst
       ? {
           combat: !!inst.combatConfig?.enabled,

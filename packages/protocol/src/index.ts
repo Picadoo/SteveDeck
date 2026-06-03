@@ -114,6 +114,27 @@ export interface InventoryItem {
   enchants?: string[];
 }
 
+/** 窗口/GUI 中的单个槽位 */
+export interface WindowSlot {
+  slot: number;
+  name: string;
+  id: string;
+  count: number;
+  lore?: string;
+  enchants?: string[];
+}
+
+/** 服务器打开的窗口/GUI（箱子、菜单等） */
+export interface WindowState {
+  id: number;
+  type: string;
+  title: string;
+  slotCount: number;
+  /** 容器部分的槽位数；其后为玩家背包 */
+  inventoryStart: number | null;
+  slots: (WindowSlot | null)[];
+}
+
 /** 列表/看板用的精简状态 */
 export interface BotSummary {
   id: BotId;
@@ -176,6 +197,10 @@ export const ServerEvents = {
   MODULE_DATA: "module:data",
   /** 背包数据（复用引擎事件名） */
   INVENTORY: "player_inv_data",
+  /** 服务器打开了窗口/GUI（箱子/菜单） */
+  WINDOW_OPEN: "window_open",
+  /** 窗口/GUI 已关闭 */
+  WINDOW_CLOSE: "window_close",
   /** 机器人错误（致命断开等） */
   BOT_ERROR: "bot:error",
   /** 脚本列表 */
@@ -193,6 +218,8 @@ export interface ServerToClientPayloads {
   [ServerEvents.MODULE_STATE]: { id: BotId; module: string; state: unknown };
   [ServerEvents.MODULE_DATA]: { id: BotId; module: string; kind: string; data: unknown };
   [ServerEvents.INVENTORY]: { user: string; items: InventoryItem[] };
+  [ServerEvents.WINDOW_OPEN]: { user: string; window: WindowState };
+  [ServerEvents.WINDOW_CLOSE]: { user: string };
   [ServerEvents.BOT_ERROR]: { id: BotId; error: string };
   [ServerEvents.SCRIPT_LIST]: { scripts: ScriptSummary[] };
   [ServerEvents.SCRIPT_DETAIL]: { name: string; script: BotScript | null };
@@ -334,7 +361,10 @@ export interface Observation {
   nearbyPlayers: { name: string; display?: string; distance: number; pos: Vec3Like }[];
   /** name 优先为自定义名牌；custom 标记是否有名牌（RPG 命名生物/Boss） */
   nearbyEntities: { type: string; name: string; custom?: boolean; distance: number; pos: Vec3Like }[];
+  /** 服务器聊天 */
   recentChat: string[];
+  /** 机器人操作日志（动作/模块/脚本） */
+  recentOps: string[];
   modules: Record<string, unknown>;
   savedLocations: SavedLocation[];
   scoreboard?: unknown;

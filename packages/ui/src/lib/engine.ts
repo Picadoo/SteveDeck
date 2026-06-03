@@ -12,6 +12,7 @@ import {
   type BotScript,
   type InventoryItem,
   type Observation,
+  type WindowState,
 } from "@mcbot/protocol";
 import { useStore } from "@/store/useStore";
 
@@ -134,6 +135,12 @@ export function connect(url: string, token: string): void {
   socket.on(ServerEvents.INVENTORY, (p: { user: string; items: InventoryItem[] }) => {
     if (p.user) useStore.getState().setInventory(p.user, p.items || []);
   });
+  socket.on(ServerEvents.WINDOW_OPEN, (p: { user: string; window: WindowState }) => {
+    if (p.user) useStore.getState().setWindow(p.user, p.window);
+  });
+  socket.on(ServerEvents.WINDOW_CLOSE, (p: { user: string }) => {
+    if (p.user) useStore.getState().setWindow(p.user, null);
+  });
 }
 
 export function disconnect(): void {
@@ -188,4 +195,24 @@ export const cmd = {
     stop: (id: string) => emitAck(ClientCommands.SCRIPT_STOP, { id }),
   },
   observe: (id: string) => emitAck<Observation>(ClientCommands.AI_OBSERVE, { id }),
+  window: {
+    get: (id: string) =>
+      emitAck<WindowState | null>(ClientCommands.MODULE_ACTION, { id, module: "window", action: "get" }),
+    click: (id: string, slot: number, button = 0, mode = 0) =>
+      emitAck<WindowState | null>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "window",
+        action: "click",
+        args: { slot, button, mode },
+      }),
+    close: (id: string) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "window", action: "close" }),
+    openAt: (id: string, x: number, y: number, z: number) =>
+      emitAck<WindowState | null>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "window",
+        action: "openAt",
+        args: { x, y, z },
+      }),
+  },
 };

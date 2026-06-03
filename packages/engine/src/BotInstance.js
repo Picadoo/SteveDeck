@@ -119,6 +119,7 @@ class BotInstance {
                 require('./modules/scoreboard')(this);
                 require('./modules/script_engine')(this);
                 require('./modules/fishing_hotspot')(this);
+                require('./modules/window_gui')(this);
 
                 // 3. 配置恢复：统一恢复各模块上次的激活状态（含自动挖矿断线续挖）
                 const settings = this.config.settings || {};
@@ -240,7 +241,8 @@ class BotInstance {
                     user: this.config.username,
                     ownerId: this.config.ownerId,
                     msg: this.msgBuffer.trim(),
-                    time: new Date().toLocaleTimeString()
+                    time: new Date().toLocaleTimeString(),
+                    chat: true // 服务器聊天（区别于机器人操作日志）
                 });
                 this.msgBuffer = "";
             }, 100);

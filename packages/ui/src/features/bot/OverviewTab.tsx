@@ -5,7 +5,6 @@ import {
   Star,
   Globe2,
   MapPin,
-  Shield,
   Users,
   Search,
   RefreshCw,
@@ -24,7 +23,7 @@ import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import { healthBar, healthTone } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import type { BotSummary, Observation, EquipItem } from "@mcbot/protocol";
+import type { BotSummary, Observation } from "@mcbot/protocol";
 
 const DIM_CN: Record<string, string> = {
   overworld: "主世界",
@@ -71,16 +70,6 @@ const MOB_CN: Record<string, string> = {
   rabbit: "兔子",
   iron_golem: "铁傀儡",
 };
-
-type EquipKey = "head" | "chest" | "legs" | "feet" | "mainHand" | "offHand";
-const EQUIP_SLOTS: { key: EquipKey; label: string }[] = [
-  { key: "head", label: "头盔" },
-  { key: "chest", label: "胸甲" },
-  { key: "legs", label: "护腿" },
-  { key: "feet", label: "靴子" },
-  { key: "mainHand", label: "主手" },
-  { key: "offHand", label: "副手" },
-];
 
 // 活动进度文案（取自各模块 stats）
 const fmtMine = (s: any) => (s ? `已挖 ${s.total ?? 0}${s.rate != null ? ` · ${s.rate}/分` : ""}` : "搜索矿物中…");
@@ -157,10 +146,11 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
   const sb: any = obs?.scoreboard;
   const sbItems: { name: string; value: number | string }[] = sb?.items || sb?.sidebar || [];
 
-  const feed = (obs?.recentChat ?? [])
+  // 最近动态 = 机器人操作日志（动作/模块/脚本），不含服务器聊天
+  const feed = (obs?.recentOps ?? [])
     .map((l) => l.replace(/\s+/g, " ").trim())
-    .filter((l) => l && !/Sweep in \d+ second/i.test(l))
-    .slice(-6)
+    .filter(Boolean)
+    .slice(-8)
     .reverse();
 
   return (
@@ -248,18 +238,6 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
               ? `${bot.pos.x}, ${bot.pos.y}, ${bot.pos.z}`
               : "—"}
         </span>
-      </Card>
-
-      {/* 装备 */}
-      <Card className="p-4">
-        <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
-          <Shield className="h-4 w-4 text-accent" /> 装备
-        </h3>
-        <div className="grid gap-1.5 sm:grid-cols-2">
-          {EQUIP_SLOTS.map(({ key, label }) => (
-            <EquipRow key={key} label={label} item={self?.equipment?.[key] ?? null} />
-          ))}
-        </div>
       </Card>
 
       {/* 附近 */}
@@ -430,33 +408,6 @@ function StatTile({
         </div>
       )}
     </Card>
-  );
-}
-
-function EquipRow({ label, item }: { label: string; item: EquipItem | null }) {
-  return (
-    <div className="flex items-center gap-2 rounded-lg bg-surface-2/50 px-2.5 py-1.5">
-      <span className="w-9 shrink-0 text-[11px] text-muted">{label}</span>
-      {item ? (
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-sm font-medium">{item.name}</span>
-            {item.count > 1 && <span className="text-[11px] text-muted">×{item.count}</span>}
-          </div>
-          {item.enchants && item.enchants.length > 0 && (
-            <div className="mt-0.5 flex flex-wrap gap-1">
-              {item.enchants.map((e, i) => (
-                <span key={i} className="rounded bg-accent/12 px-1.5 py-px text-[10px] text-accent">
-                  {e}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <span className="flex-1 text-sm text-muted/50">—</span>
-      )}
-    </div>
   );
 }
 

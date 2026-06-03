@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { BotStatus, BotSummary, LogLine, InventoryItem } from "@mcbot/protocol";
+import type { BotStatus, BotSummary, LogLine, InventoryItem, WindowState } from "@mcbot/protocol";
 
 export type ConnStatus = "disconnected" | "connecting" | "online" | "error";
 
@@ -31,11 +31,14 @@ interface AppState {
   moduleConfigs: Record<string, Record<string, unknown>>;
   /** 背包数据，按机器人用户名键 */
   inventory: Record<string, InventoryItem[]>;
+  /** 当前打开的窗口/GUI，按机器人用户名键（null 表示无） */
+  windows: Record<string, WindowState | null>;
   toasts: Toast[];
 
   setTheme: (t: "light" | "dark") => void;
   setModuleConfig: (botId: string, module: string, config: Record<string, unknown>) => void;
   setInventory: (user: string, items: InventoryItem[]) => void;
+  setWindow: (user: string, win: WindowState | null) => void;
   pushToast: (message: string, tone?: ToastTone) => void;
   dismissToast: (id: number) => void;
   toggleTheme: () => void;
@@ -76,6 +79,7 @@ export const useStore = create<AppState>((set, get) => ({
   selectedId: null,
   moduleConfigs: {},
   inventory: {},
+  windows: {},
   toasts: [],
 
   pushToast: (message, tone = "info") => {
@@ -91,6 +95,7 @@ export const useStore = create<AppState>((set, get) => ({
     })),
   setInventory: (user, items) =>
     set((s) => ({ inventory: { ...s.inventory, [user]: items } })),
+  setWindow: (user, win) => set((s) => ({ windows: { ...s.windows, [user]: win } })),
   setTheme: (t) => {
     applyTheme(t);
     set({ theme: t });

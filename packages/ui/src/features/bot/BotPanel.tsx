@@ -18,6 +18,7 @@ import { cmd } from "@/lib/engine";
 import { healthPct } from "@/lib/format";
 import AddBotDialog, { type EditInitial } from "./AddBotDialog";
 import Console from "./Console";
+import GuiWindow from "./GuiWindow";
 import OverviewTab from "./OverviewTab";
 import ModulesTab from "./ModulesTab";
 import LocationsTab from "./LocationsTab";
@@ -184,6 +185,9 @@ export default function BotPanel() {
 
       {/* 编辑机器人 */}
       <AddBotDialog open={edit.open} editId={bot.id} initial={edit.initial} onClose={() => setEdit({ open: false })} />
+
+      {/* 服务器打开的窗口/GUI（箱子/菜单），自动弹出可操作 */}
+      <GuiWindow bot={bot} />
     </div>
   );
 }
