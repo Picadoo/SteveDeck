@@ -22,7 +22,10 @@ module.exports = (botInstance) => {
                 totals[key] = (totals[key] || 0) + it.count;
             }
             const prev = botInstance._itemTotals;
-            if (prev) {
+            // 登录宽限期：很多服务器登录后由插件数据库回填背包（会瞬间「获得」一大堆），
+            // 开局 12 秒内只更新基线、不刷日志，避免刷屏；之后才记录真实增减。
+            const inGrace = botInstance.spawnedAt && Date.now() - botInstance.spawnedAt < 12000;
+            if (prev && !inGrace) {
                 for (const k of new Set([...Object.keys(totals), ...Object.keys(prev)])) {
                     const d = (totals[k] || 0) - (prev[k] || 0);
                     if (d > 0) emitItem(`获得 ${k} ×${d}`);

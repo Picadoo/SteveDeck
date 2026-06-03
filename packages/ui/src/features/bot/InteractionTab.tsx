@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Card, Button, Input, Badge, Switch } from "@/components/ui/primitives";
 import { HoldButton } from "@/components/Joystick";
+import McText from "@/components/McText";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import SchedulerTab from "./SchedulerTab";
@@ -100,7 +101,8 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
     if (r.ok) setSb(r.data ?? { empty: true });
     else pushToast(r.error || "获取计分板失败", "error");
   }
-  const sbItems: { name: string; value: number | string }[] = sb?.items || sb?.sidebar || [];
+  const sbItems: { name: string; raw?: string; value: number | string }[] =
+    sb?.items || sb?.sidebar || [];
 
   return (
     <div className="space-y-4">
@@ -277,11 +279,15 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
         </Button>
         {sbItems.length > 0 ? (
           <div className="mt-2 space-y-1">
-            {sb?.title && <div className="text-sm font-semibold">{sb.title}</div>}
+            {(sb?.sidebarTitleRaw || sb?.sidebarTitle) && (
+              <div className="text-sm font-semibold">
+                <McText text={sb.sidebarTitleRaw || sb.sidebarTitle} />
+              </div>
+            )}
+            {/* 侧边栏内容都在文本行里（分值多为排序号，故不展示） */}
             {sbItems.map((it, i) => (
-              <div key={i} className="flex justify-between border-b border-border/40 py-1 text-sm last:border-0">
-                <span className="truncate pr-2 text-muted">{it.name}</span>
-                <span className="font-medium tabular-nums">{it.value}</span>
+              <div key={i} className="truncate border-b border-border/40 py-1 text-sm last:border-0">
+                <McText text={it.raw || it.name} />
               </div>
             ))}
           </div>

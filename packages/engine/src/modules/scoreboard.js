@@ -13,64 +13,61 @@ module.exports = (botInstance) => {
         bossBar: {}     // id -> { title, health, color }
     };
 
-    const cleanColor = (str) => {
-        if (!str) return '';
-        if (typeof str === 'object') {
-            // JSON chat component
+    // 取带颜色的文本（兼容 prismarine-chat ChatMessage / JSON 组件 / §字符串）
+    const motd = (v) => {
+        if (v == null) return '';
+        if (typeof v === 'object') {
+            try { if (typeof v.toMotd === 'function') return v.toMotd(); } catch (e) { /* ignore */ }
             try {
-                if (str.text !== undefined) return str.text;
-                if (str.extra) return str.extra.map(e => e.text || '').join('');
-                return JSON.stringify(str);
-            } catch (e) { return String(str); }
+                if (typeof v.toString === 'function') {
+                    const s = v.toString();
+                    if (s && s !== '[object Object]') return s;
+                }
+            } catch (e) { /* ignore */ }
+            if (v.text !== undefined) return String(v.text);
+            if (Array.isArray(v.extra)) return v.extra.map((e) => e.text || '').join('');
+            return '';
         }
-        return String(str).replace(/§[0-9a-fk-orx]/gi, '').trim();
+        return String(v);
     };
+    const cleanColor = (v) => motd(v).replace(/§[0-9a-fk-orx]/gi, '').trim();
 
-    // 解析侧边栏
+    // 解析侧边栏。bot.scoreboard 按「显示位置」索引：.sidebar(=[1]) 是主侧边栏；
+    // 3~18 是按队伍颜色区分的侧边栏（部分服用这些）。
     const updateSidebar = () => {
         try {
-            // mineflayer 的 scoreboard 对象
             const sb = bot.scoreboard;
             if (!sb) return;
 
-            // 找到 sidebar position 的 scoreboard
-            let sidebarObj = null;
-            for (const key in sb) {
-                const board = sb[key];
-                if (board && board.position === 1) { // 1 = sidebar
-                    sidebarObj = board;
-                    break;
+            let sidebarObj = sb.sidebar || sb[1];
+            if (!sidebarObj) {
+                for (let pos = 3; pos <= 18; pos++) {
+                    if (sb[pos]) { sidebarObj = sb[pos]; break; }
                 }
             }
 
-            // 备用：直接取 sidebar 属性
-            if (!sidebarObj && sb.sidebar) {
-                sidebarObj = sb.sidebar;
+            if (!sidebarObj) {
+                botInstance._scoreboard.sidebar = [];
+                botInstance._scoreboard.sidebarTitle = '';
+                botInstance._scoreboard.sidebarTitleRaw = '';
+                return;
             }
-
-            if (!sidebarObj) return;
 
             botInstance._scoreboard.sidebarTitle = cleanColor(sidebarObj.title || '');
+            botInstance._scoreboard.sidebarTitleRaw = motd(sidebarObj.title || '');
 
-            const items = [];
-            if (sidebarObj.items && Array.isArray(sidebarObj.items)) {
-                sidebarObj.items.forEach(item => {
-                    items.push({
-                        name: cleanColor(item.displayName || item.name || ''),
-                        value: item.value !== undefined ? item.value : 0
-                    });
-                });
-            } else if (sidebarObj.itemsMap) {
-                // 某些版本用 itemsMap
-                for (const [name, item] of Object.entries(sidebarObj.itemsMap)) {
-                    items.push({
-                        name: cleanColor(item.displayName || name),
-                        value: item.value !== undefined ? item.value : 0
-                    });
-                }
-            }
-
-            botInstance._scoreboard.sidebar = items;
+            // items getter 已按分值降序（与游戏内一致）。每行可见文本取 displayName（含队伍前后缀）
+            const rows = Array.isArray(sidebarObj.items) ? sidebarObj.items : [];
+            botInstance._scoreboard.sidebar = rows
+                .map((item) => {
+                    const src = item.displayName ?? item.name;
+                    return {
+                        name: cleanColor(src),
+                        raw: motd(src),
+                        value: item.value !== undefined ? item.value : 0,
+                    };
+                })
+                .filter((r) => r.name || r.raw);
         } catch (e) {
             // 计分板解析失败不影响其他功能
         }
