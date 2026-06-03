@@ -94,10 +94,48 @@ module.exports = (botInstance) => {
     return false;
   };
 
-  // 打开指定坐标的容器（箱子/木桶等）
+  // 扫描附近容器（箱子/木桶/潜影盒等），返回坐标+距离，省去手填 XYZ
+  botInstance.scanContainers = () => {
+    if (!bot.entity) return [];
+    const mcData = require("minecraft-data")(bot.version);
+    const names = [
+      "chest", "trapped_chest", "ender_chest", "barrel", "hopper", "dispenser", "dropper",
+      "shulker_box", "white_shulker_box", "orange_shulker_box", "magenta_shulker_box",
+      "light_blue_shulker_box", "yellow_shulker_box", "lime_shulker_box", "pink_shulker_box",
+      "gray_shulker_box", "light_gray_shulker_box", "cyan_shulker_box", "purple_shulker_box",
+      "blue_shulker_box", "brown_shulker_box", "green_shulker_box", "red_shulker_box", "black_shulker_box",
+    ];
+    const ids = names.map((n) => mcData.blocksByName[n] && mcData.blocksByName[n].id).filter((x) => x != null);
+    let positions = [];
+    try {
+      positions = bot.findBlocks({ matching: ids, maxDistance: 32, count: 40 });
+    } catch {
+      /* ignore */
+    }
+    return positions
+      .map((p) => {
+        const block = bot.blockAt(p);
+        return {
+          x: p.x, y: p.y, z: p.z,
+          name: (block && block.name) || "container",
+          distance: Math.round(bot.entity.position.distanceTo(p) * 10) / 10,
+        };
+      })
+      .sort((a, b) => a.distance - b.distance);
+  };
+
+  // 打开坐标处容器：先寻路靠近再开
   botInstance.openContainerAt = async (x, y, z) => {
     const block = bot.blockAt(mkVec(x, y, z));
     if (!block) throw new Error("该位置没有方块");
+    try {
+      const { goals } = require("mineflayer-pathfinder");
+      if (bot.entity.position.distanceTo(block.position) > 3) {
+        await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 2));
+      }
+    } catch {
+      /* 靠不近也尝试直接开 */
+    }
     const win = await bot.openContainer(block);
     return serialize(win);
   };

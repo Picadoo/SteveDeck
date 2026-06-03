@@ -232,10 +232,21 @@ function dispatchAction(
       return res?.success ? ok() : fail(res?.error || "前往失败");
     }
     case "npc:scan":
-      inst.scanNearbyNPCs?.();
-      return ok();
+      return ok(inst.scanNearbyNPCs?.() ?? []);
     case "npc:interact":
       inst.interactWithNPC?.(String(args.name || ""));
+      return ok();
+    case "container:scan":
+      return ok(inst.scanContainers?.() ?? []);
+    case "move:goto":
+      inst.move?.(Number(args.x), Number(args.y), Number(args.z));
+      return ok();
+    case "move:stop":
+      try {
+        inst.bot?.pathfinder?.setGoal(null);
+      } catch {
+        /* ignore */
+      }
       return ok();
     case "scoreboard:get":
       return ok(inst.getScoreboard?.() ?? null);

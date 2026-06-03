@@ -4,45 +4,31 @@ module.exports = (botInstance) => {
     const bot = botInstance.bot;
     let mcData = null;
 
+    // 返回附近实体数组（供交互页内联显示，不再刷日志）
     botInstance.scanNearbyNPCs = () => {
-        if (!bot || !bot.entities) return;
-        if (!mcData) mcData = require('minecraft-data')(bot.version); // 缓存数据
+        if (!bot || !bot.entities || !bot.entity) return [];
+        if (!mcData) mcData = require('minecraft-data')(bot.version);
 
-        const entities = Object.values(bot.entities);
-        let foundCount = 0;
-
-        entities.forEach(entity => {
-            if (entity === bot.entity) return;
-            if (['object', 'item', 'xp_orb'].includes(entity.type)) return;
-
+        const out = [];
+        for (const entity of Object.values(bot.entities)) {
+            if (entity === bot.entity) continue;
+            if (['object', 'item', 'xp_orb', 'orb'].includes(entity.type)) continue;
             const dist = bot.entity.position.distanceTo(entity.position);
-            if (dist < 32) {
-                let typeName = entity.name || entity.type;
-                // 修复逻辑：不再频繁查找庞大的数组，提升扫描速度
-                if (!isNaN(typeName)) {
-                    typeName = mcData.entities[typeName]?.name || `id_${typeName}`;
-                }
+            if (dist >= 32) continue;
 
-                let rawName = entity.customName || entity.username || "";
-                let cleanName = rawName.toString().replace(/§[0-9a-fk-orx]/gi, '').trim();
+            let typeName = entity.name || entity.type;
+            if (!isNaN(typeName)) typeName = mcData.entities[typeName]?.name || `id_${typeName}`;
+            const rawName = (entity.customName || entity.username || "").toString().replace(/§[0-9a-fk-orx]/gi, '').trim();
 
-                botInstance.io.to(botInstance._room).to('admin').emit('log', {
-                    user: bot.username,
-                    ownerId: botInstance.config.ownerId,
-                    msg: `>> [${typeName}] ${cleanName || "[未命名]"} | 距离: ${Math.round(dist)}m | ID: ${entity.id}`,
-                    time: new Date().toLocaleTimeString()
-                });
-                foundCount++;
-            }
-        });
-
-        if (foundCount === 0) {
-            botInstance.io.to(botInstance._room).to('admin').emit('log', {
-                user: bot.username,
-                ownerId: botInstance.config.ownerId,
-                msg: "📡 [雷达] 32格内空空如也。"
+            out.push({
+                id: entity.id,
+                type: typeName,
+                name: rawName || null,
+                distance: Math.round(dist * 10) / 10,
             });
         }
+        out.sort((a, b) => a.distance - b.distance);
+        return out;
     };
 
     botInstance.interactWithNPC = async (input) => {

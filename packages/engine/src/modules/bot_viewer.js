@@ -15,7 +15,19 @@ module.exports = (botInstance) => {
     usedPorts.add(port);
     try {
       const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-      mineflayerViewer(bot, { port, firstPerson: true, viewDistance: 4 });
+      // 第三人称：能看到机器人本体与周围，且可点击地面让它走过去
+      mineflayerViewer(bot, { port, firstPerson: false, viewDistance: 4 });
+      // 点击视角里的方块 → 机器人寻路走过去
+      try {
+        const { goals } = require('mineflayer-pathfinder');
+        bot.viewer.on('blockClicked', (block) => {
+          if (block && block.position) {
+            try {
+              bot.pathfinder.setGoal(new goals.GoalNear(block.position.x, block.position.y, block.position.z, 1));
+            } catch { /* ignore */ }
+          }
+        });
+      } catch { /* ignore */ }
       botInstance._viewerPort = port;
       return { port };
     } catch (e) {
