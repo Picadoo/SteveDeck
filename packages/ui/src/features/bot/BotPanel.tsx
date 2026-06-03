@@ -21,14 +21,14 @@ import Console from "./Console";
 import GuiWindow from "./GuiWindow";
 import OverviewTab from "./OverviewTab";
 import ModulesTab from "./ModulesTab";
+import InteractionTab from "./InteractionTab";
 import LocationsTab from "./LocationsTab";
-import SchedulerTab from "./SchedulerTab";
 import ScriptsTab from "./ScriptsTab";
 import InventoryTab from "./InventoryTab";
 import AiTab from "./AiTab";
 import { cn } from "@/lib/cn";
 
-type Tab = "overview" | "ai" | "modules" | "locations" | "scheduler" | "scripts" | "inventory" | "console";
+type Tab = "overview" | "ai" | "modules" | "interaction" | "locations" | "scripts" | "inventory" | "console";
 
 export default function BotPanel() {
   const bot = useStore((s) => s.bots.find((b) => b.id === s.selectedId));
@@ -126,8 +126,8 @@ export default function BotPanel() {
         <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>概览</TabButton>
         <TabButton active={tab === "ai"} onClick={() => setTab("ai")}>AI</TabButton>
         <TabButton active={tab === "modules"} onClick={() => setTab("modules")}>模块</TabButton>
+        <TabButton active={tab === "interaction"} onClick={() => setTab("interaction")}>交互</TabButton>
         <TabButton active={tab === "locations"} onClick={() => setTab("locations")}>地点</TabButton>
-        <TabButton active={tab === "scheduler"} onClick={() => setTab("scheduler")}>定时</TabButton>
         <TabButton active={tab === "scripts"} onClick={() => setTab("scripts")}>脚本</TabButton>
         <TabButton active={tab === "inventory"} onClick={() => setTab("inventory")}>背包</TabButton>
         <TabButton active={tab === "console"} onClick={() => setTab("console")}>日志</TabButton>
@@ -138,8 +138,8 @@ export default function BotPanel() {
         {tab === "overview" && <OverviewTab bot={bot} />}
         {tab === "ai" && <AiTab bot={bot} />}
         {tab === "modules" && <ModulesTab bot={bot} />}
+        {tab === "interaction" && <InteractionTab bot={bot} />}
         {tab === "locations" && <LocationsTab bot={bot} />}
-        {tab === "scheduler" && <SchedulerTab bot={bot} />}
         {tab === "scripts" && <ScriptsTab bot={bot} />}
         {tab === "inventory" && <InventoryTab bot={bot} />}
         {tab === "console" && <Console botId={bot.id} />}

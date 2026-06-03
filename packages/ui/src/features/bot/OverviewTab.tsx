@@ -6,8 +6,6 @@ import {
   Globe2,
   MapPin,
   Users,
-  Search,
-  RefreshCw,
   Activity,
   Coffee,
   Swords,
@@ -19,9 +17,8 @@ import {
   FileCode2,
   Clock,
 } from "lucide-react";
-import { Card, Button, Input, Badge } from "@/components/ui/primitives";
+import { Card, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
-import { useStore } from "@/store/useStore";
 import { healthBar, healthTone, fmtUptime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import type { BotSummary, Observation } from "@mcbot/protocol";
@@ -69,10 +66,8 @@ const fmtHunter = (s: any) =>
     : "搜寻怪物中…";
 
 export default function OverviewTab({ bot }: { bot: BotSummary }) {
-  const pushToast = useStore((s) => s.pushToast);
   const [obs, setObs] = useState<Observation | null>(null);
   const [stats, setStats] = useState<Record<string, any>>({});
-  const [npcName, setNpcName] = useState("");
 
   const m = bot.modules;
 
@@ -296,39 +291,6 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
         </Card>
       )}
 
-      {/* NPC 交互 */}
-      <Card className="p-4">
-        <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
-          <Search className="h-4 w-4 text-accent" /> NPC 交互
-        </h3>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={() => cmd.moduleAction(bot.id, "npc", "scan")}>
-            <Search className="h-3.5 w-3.5" /> 扫描附近 NPC
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={async () => {
-              const r = await cmd.moduleAction(bot.id, "scoreboard", "get");
-              if (!r.ok) pushToast(r.error || "获取计分板失败", "error");
-            }}
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> 刷新计分板
-          </Button>
-        </div>
-        <div className="mt-2 flex gap-2">
-          <Input value={npcName} onChange={(e) => setNpcName(e.target.value)} placeholder="NPC 名称" />
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={!npcName.trim()}
-            onClick={() => cmd.moduleAction(bot.id, "npc", "interact", { name: npcName.trim() })}
-          >
-            交互
-          </Button>
-        </div>
-        <p className="mt-2 text-[11px] text-muted">扫描结果见「日志」标签</p>
-      </Card>
     </div>
   );
 }
