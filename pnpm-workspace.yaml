@@ -4,3 +4,5 @@ packages:
 allowBuilds:
   canvas: true
   esbuild: true
+patchedDependencies:
+  prismarine-viewer@1.33.0: patches/prismarine-viewer@1.33.0.patch
