@@ -1,19 +1,17 @@
 import { useMemo, useState } from "react";
 import { Bot, Plus, LogOut, Heart, Drumstick, Server, ChevronDown } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { StatusDot, IconButton, Badge } from "@/components/ui/primitives";
+import { StatusDot, IconButton, Button, Badge } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { disconnect } from "@/lib/engine";
 import { healthPct, healthTone } from "@/lib/format";
-import AddBotDialog from "@/features/bot/AddBotDialog";
 import type { BotSummary } from "@mcbot/protocol";
 
-export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+export default function Sidebar({ onNavigate, onAddBot }: { onNavigate?: () => void; onAddBot: () => void }) {
   const bots = useStore((s) => s.bots);
   const selectedId = useStore((s) => s.selectedId);
   const setSelected = useStore((s) => s.setSelected);
   const conn = useStore((s) => s.conn);
-  const [addOpen, setAddOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   // 按服务器（host）分组
@@ -43,7 +41,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <span className="text-sm font-semibold">机器人</span>
           <Badge tone="neutral">{bots.length}</Badge>
         </div>
-        <IconButton onClick={() => setAddOpen(true)} title="添加机器人">
+        <IconButton onClick={onAddBot} title="添加机器人">
           <Plus className="h-4 w-4" />
         </IconButton>
       </div>
@@ -51,10 +49,11 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       {/* 列表（按服务器分组） */}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
         {bots.length === 0 ? (
-          <div className="mt-10 px-4 text-center text-xs text-muted">
-            还没有机器人
-            <br />
-            点击右上角 + 添加
+          <div className="mt-10 flex flex-col items-center gap-3 px-4 text-center">
+            <p className="text-xs text-muted">还没有机器人</p>
+            <Button size="sm" variant="secondary" onClick={onAddBot}>
+              <Plus className="h-4 w-4" /> 添加机器人
+            </Button>
           </div>
         ) : (
           <div className="space-y-2">
@@ -118,8 +117,6 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </IconButton>
         </div>
       </div>
-
-      <AddBotDialog open={addOpen} onClose={() => setAddOpen(false)} />
     </aside>
   );
 }

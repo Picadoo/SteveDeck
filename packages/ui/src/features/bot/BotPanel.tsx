@@ -12,6 +12,7 @@ import {
   Pencil,
   Eye,
   History,
+  Plus,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Button, Input, Badge, StatusDot } from "@/components/ui/primitives";
@@ -33,7 +34,7 @@ import { cn } from "@/lib/cn";
 
 type Tab = "overview" | "ai" | "modules" | "interaction" | "locations" | "scripts" | "inventory" | "console";
 
-export default function BotPanel() {
+export default function BotPanel({ onAddBot }: { onAddBot: () => void }) {
   const bot = useStore((s) => s.bots.find((b) => b.id === s.selectedId));
   const pushToast = useStore((s) => s.pushToast);
   const chatHistory = useStore((s) => s.chatHistory);
@@ -48,9 +49,12 @@ export default function BotPanel() {
 
   if (!bot) {
     return (
-      <div className="flex h-full flex-col items-center justify-center text-center text-muted">
-        <BotIcon className="mb-3 h-10 w-10 opacity-40" />
-        <p className="text-sm">从左侧选择一个机器人，或点击 + 添加</p>
+      <div className="flex h-full flex-col items-center justify-center gap-4 text-center text-muted">
+        <BotIcon className="h-10 w-10 opacity-40" />
+        <p className="text-sm">从左侧选择一个机器人，或新建一个</p>
+        <Button variant="primary" onClick={onAddBot}>
+          <Plus className="h-4 w-4" /> 添加机器人
+        </Button>
       </div>
     );
   }
