@@ -40,6 +40,50 @@ function entityCustomName(e: any): string | null {
   return txt(e?.customName) || (e && typeof e.displayName === "object" ? txt(e.displayName) : null);
 }
 
+/** 视线水平朝向 → 方位+坐标轴（用 mineflayer 自身公式，确保与实际移动一致） */
+function facingOf(yaw: number): string {
+  const dx = -Math.sin(yaw);
+  const dz = -Math.cos(yaw);
+  if (Math.abs(dx) >= Math.abs(dz)) return dx > 0 ? "东 (+X)" : "西 (-X)";
+  return dz > 0 ? "南 (+Z)" : "北 (-Z)";
+}
+
+/** timeOfDay(tick) → 白天/黄昏/夜晚/黎明 */
+function dayPhase(t: number): string {
+  const d = (((t || 0) % 24000) + 24000) % 24000;
+  if (d < 12000) return "白天";
+  if (d < 13800) return "黄昏";
+  if (d < 22200) return "夜晚";
+  return "黎明";
+}
+
+/** 当前状态效果（药水 buff/debuff）：名称 + 等级 + 剩余秒 + 是否负面 */
+function effectsOf(bot: any): any[] {
+  try {
+    const eff = bot?.entity?.effects;
+    if (!eff) return [];
+    const mcData = require("minecraft-data")(bot.version);
+    return Object.values(eff)
+      .map((e: any) => {
+        const info = mcData?.effects?.[e?.id];
+        return {
+          name: info?.displayName || info?.name || `effect_${e?.id}`,
+          level: (e?.amplifier ?? 0) + 1, // amplifier 0 = I 级
+          seconds: typeof e?.duration === "number" ? Math.round(e.duration / 20) : null,
+          bad: info?.type === "bad",
+        };
+      })
+      .filter((e: any) => e.name);
+  } catch {
+    return [];
+  }
+}
+
+/** 实体是否敌对（按 minecraft-data 分类 kind） */
+function isHostile(kind: any): boolean {
+  return /hostile/i.test(String(kind || ""));
+}
+
 /** 把机器人当前可感知的世界状态整理成 AI 友好的快照。 */
 export function buildObservation(id: string): any {
   const inst = botManager.getInstance(id);
@@ -77,12 +121,20 @@ export function buildObservation(id: string): any {
   const floorPos = (p: any) => ({ x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) });
 
   const slots = bot.inventory?.slots || [];
+  const maxHp = maxHealthOf(bot);
+  const vel = bot.entity.velocity;
   obs.self = {
     pos: floorPos(pos),
     health: Math.round(bot.health),
-    maxHealth: maxHealthOf(bot),
+    maxHealth: maxHp,
+    healthPct: maxHp > 0 ? Math.round((bot.health / maxHp) * 100) : null,
     food: Math.round(bot.food),
+    foodSaturation: Math.round(bot.foodSaturation ?? 0),
+    // 氧气仅在缺氧（潜水/憋气）时才有意义，满值不噪声
+    oxygen: typeof bot.oxygenLevel === "number" && bot.oxygenLevel < 20 ? bot.oxygenLevel : null,
     xpLevel: bot.experience?.level ?? 0,
+    xpProgress: Math.round((bot.experience?.progress ?? 0) * 100),
+    ping: typeof bot.player?.ping === "number" ? bot.player.ping : null,
     heldItem: bot.heldItem?.name ?? null,
     equipment: {
       mainHand: itemBrief(bot.heldItem),
@@ -92,8 +144,14 @@ export function buildObservation(id: string): any {
       legs: itemBrief(slots[7]),
       feet: itemBrief(slots[8]),
     },
+    effects: effectsOf(bot),
+    facing: facingOf(bot.entity.yaw ?? 0),
     yaw: r1(bot.entity.yaw ?? 0),
     pitch: r1(bot.entity.pitch ?? 0),
+    onGround: !!bot.entity.onGround,
+    inWater: !!bot.entity.isInWater,
+    moving: vel ? Math.abs(vel.x) + Math.abs(vel.z) > 0.05 : false,
+    vehicle: bot.vehicle ? bot.vehicle.name || bot.vehicle.displayName || "riding" : null,
     dimension: bot.game?.dimension ?? null,
     gameMode: bot.game?.gameMode ?? null,
   };
@@ -126,6 +184,8 @@ export function buildObservation(id: string): any {
           e.kind ||
           "unknown",
         custom: !!custom,
+        category: e.kind || null,
+        hostile: isHostile(e.kind),
         distance: r1(d),
         pos: floorPos(e.position),
       };
@@ -144,6 +204,13 @@ export function buildObservation(id: string): any {
     others.sort((a, b) => a.distance - b.distance);
     obs.nearbyEntities = others.slice(0, 20);
     obs.nearbyPlayers.sort((a: any, b: any) => a.distance - b.distance);
+
+    // 威胁概览：附近敌对生物数量 + 最近的一只（AI 决策用）
+    const hostiles = others.filter((o) => o.hostile);
+    obs.threats = {
+      hostileCount: hostiles.length,
+      nearest: hostiles[0] ? { name: hostiles[0].name, distance: hostiles[0].distance } : null,
+    };
   } catch {
     /* ignore */
   }
@@ -180,6 +247,37 @@ export function buildObservation(id: string): any {
       .map((p: any) => ({ name: p?.username, display: txt(p?.displayName) }))
       .filter((p: any) => p.name && p.display && p.display !== p.name)
       .slice(0, 12);
+  } catch {
+    /* ignore */
+  }
+
+  // 环境（时间/天气）
+  try {
+    obs.environment = {
+      timeOfDay: dayPhase(bot.time?.timeOfDay),
+      isDay: !!bot.time?.isDay,
+      raining: !!bot.isRaining,
+      thundering: (bot.thunderState ?? 0) > 0,
+    };
+  } catch {
+    /* ignore */
+  }
+
+  // 一句话情景摘要：供 AI 快速读取全局态势（不必逐字段解析）
+  try {
+    const s = obs.self;
+    const env = obs.environment;
+    const t = obs.threats;
+    obs.summary = [
+      env ? `${env.timeOfDay}${env.raining ? "·雨" : ""}` : "",
+      `生命${s.healthPct ?? "?"}% 饱食${s.food}`,
+      s.effects?.length ? `效果:${s.effects.map((e: any) => `${e.name}${e.level}`).join(",")}` : "",
+      t?.hostileCount ? `敌对${t.hostileCount}(最近${t.nearest.name} ${t.nearest.distance}m)` : "无敌对",
+      obs.nearbyPlayers.length ? `玩家${obs.nearbyPlayers.length}` : "",
+      s.heldItem ? `手持${s.heldItem}` : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
   } catch {
     /* ignore */
   }

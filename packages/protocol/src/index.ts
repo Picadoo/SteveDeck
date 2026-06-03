@@ -363,19 +363,53 @@ export interface Observation {
     health: number;
     /** 最大生命（RPG 服可能 >20） */
     maxHealth?: number;
+    /** 生命百分比 */
+    healthPct?: number | null;
     food: number;
+    /** 隐藏饱和度缓冲 */
+    foodSaturation?: number;
+    /** 氧气（仅缺氧时有值，满值为 null） */
+    oxygen?: number | null;
     xpLevel: number;
+    /** 当前等级进度 % */
+    xpProgress?: number;
+    /** 网络延迟（毫秒） */
+    ping?: number | null;
     heldItem: string | null;
     equipment?: Equipment;
+    /** 当前状态效果（药水 buff/debuff） */
+    effects?: { name: string; level: number; seconds: number | null; bad: boolean }[];
+    /** 视线水平朝向（方位+坐标轴） */
+    facing?: string;
     yaw: number;
     pitch: number;
+    /** 是否落地 / 在水中 / 正在移动 */
+    onGround?: boolean;
+    inWater?: boolean;
+    moving?: boolean;
+    /** 乘坐的载具（如有） */
+    vehicle?: string | null;
     dimension: string | null;
     gameMode: string | null;
   } | null;
   inventory: { name: string; count: number; displayName?: string; enchants?: string[] }[];
   nearbyPlayers: { name: string; display?: string; distance: number; pos: Vec3Like }[];
-  /** name 优先为自定义名牌；custom 标记是否有名牌（RPG 命名生物/Boss） */
-  nearbyEntities: { type: string; name: string; custom?: boolean; distance: number; pos: Vec3Like }[];
+  /** name 优先为自定义名牌；custom 标记是否有名牌；hostile/category 来自 minecraft-data 分类 */
+  nearbyEntities: {
+    type: string;
+    name: string;
+    custom?: boolean;
+    category?: string | null;
+    hostile?: boolean;
+    distance: number;
+    pos: Vec3Like;
+  }[];
+  /** 威胁概览：附近敌对生物 */
+  threats?: { hostileCount: number; nearest: { name: string; distance: number } | null };
+  /** 环境（时间/天气） */
+  environment?: { timeOfDay: string; isDay: boolean; raining: boolean; thundering: boolean };
+  /** 一句话情景摘要（供 AI 快速读取） */
+  summary?: string;
   /** 服务器聊天 */
   recentChat: string[];
   /** 机器人操作日志（动作/模块/脚本） */

@@ -73,15 +73,57 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
         <p className="text-sm text-muted">加载中…</p>
       ) : (
         <>
+          {obs.summary && (
+            <Card className="flex items-center gap-2 p-3">
+              <Sparkles className="h-4 w-4 shrink-0 text-accent" />
+              <span className="text-xs leading-relaxed">{obs.summary}</span>
+            </Card>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
             <Card className="p-4">
               <h3 className="mb-2 text-sm font-semibold">自身</h3>
               {obs.self ? (
                 <div className="space-y-1 text-xs">
                   <Row k="坐标" v={`${obs.self.pos.x}, ${obs.self.pos.y}, ${obs.self.pos.z}`} />
-                  <Row k="生命 / 饱食" v={`${obs.self.health} / ${obs.self.food}`} />
+                  <Row
+                    k="生命"
+                    v={`${obs.self.health}/${obs.self.maxHealth ?? 20}${
+                      obs.self.healthPct != null ? ` (${obs.self.healthPct}%)` : ""
+                    }`}
+                  />
+                  <Row k="饱食 / 饱和" v={`${obs.self.food} / ${obs.self.foodSaturation ?? "—"}`} />
+                  {obs.self.oxygen != null && <Row k="氧气" v={`${obs.self.oxygen}/20`} />}
+                  <Row k="经验" v={`Lv${obs.self.xpLevel} (${obs.self.xpProgress ?? 0}%)`} />
+                  <Row k="朝向" v={obs.self.facing ?? "—"} />
+                  <Row
+                    k="状态"
+                    v={[
+                      obs.self.onGround ? "落地" : "空中",
+                      obs.self.inWater ? "水中" : "",
+                      obs.self.moving ? "移动中" : "静止",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  />
                   <Row k="手持" v={obs.self.heldItem || "—"} />
-                  <Row k="维度" v={obs.self.dimension || "—"} />
+                  <Row k="维度 / 模式" v={`${obs.self.dimension || "—"} / ${obs.self.gameMode || "—"}`} />
+                  {obs.self.effects && obs.self.effects.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {obs.self.effects.map((e, i) => (
+                        <span
+                          key={i}
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-[10px]",
+                            e.bad ? "bg-danger/15 text-danger" : "bg-success/15 text-success",
+                          )}
+                        >
+                          {e.name}
+                          {e.level > 1 ? ` ${e.level}` : ""}
+                          {e.seconds != null ? ` ${e.seconds}s` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-xs text-muted">机器人离线</p>
@@ -90,10 +132,31 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
             <Card className="p-4">
               <h3 className="mb-2 text-sm font-semibold">周围</h3>
               <div className="space-y-1 text-xs">
+                <Row
+                  k="敌对生物"
+                  v={
+                    obs.threats
+                      ? `${obs.threats.hostileCount}${
+                          obs.threats.nearest
+                            ? ` (最近 ${obs.threats.nearest.name} ${obs.threats.nearest.distance}m)`
+                            : ""
+                        }`
+                      : "0"
+                  }
+                />
                 <Row k="附近玩家" v={String(obs.nearbyPlayers.length)} />
                 <Row k="附近实体" v={String(obs.nearbyEntities.length)} />
+                <Row
+                  k="环境"
+                  v={
+                    obs.environment
+                      ? `${obs.environment.timeOfDay}${obs.environment.raining ? " · 雨" : ""}${
+                          obs.environment.thundering ? " · 雷" : ""
+                        }`
+                      : "—"
+                  }
+                />
                 <Row k="背包物品种类" v={String(obs.inventory.length)} />
-                <Row k="最近消息" v={String(obs.recentChat.length)} />
               </div>
             </Card>
           </div>
