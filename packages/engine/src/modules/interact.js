@@ -4,6 +4,17 @@ module.exports = (botInstance) => {
     const bot = botInstance.bot;
     let mcData = null;
 
+    // 取带颜色的名字（兼容 ChatMessage / 字符串）
+    const nameMotd = (v) => {
+        if (v == null) return '';
+        if (typeof v === 'object') {
+            try { if (typeof v.toMotd === 'function') return v.toMotd(); } catch (e) { /* ignore */ }
+            try { const s = v.toString(); if (s && s !== '[object Object]') return s; } catch (e) { /* ignore */ }
+            return '';
+        }
+        return String(v);
+    };
+
     // 返回附近实体数组（供交互页内联显示，不再刷日志）
     botInstance.scanNearbyNPCs = () => {
         if (!bot || !bot.entities || !bot.entity) return [];
@@ -18,12 +29,16 @@ module.exports = (botInstance) => {
 
             let typeName = entity.name || entity.type;
             if (!isNaN(typeName)) typeName = mcData.entities[typeName]?.name || `id_${typeName}`;
-            const rawName = (entity.customName || entity.username || "").toString().replace(/§[0-9a-fk-orx]/gi, '').trim();
+            // 自定义名牌/玩家名：保留颜色码（nameRaw）供前端彩色渲染，name 为去色纯文本
+            const src = entity.customName || entity.username || "";
+            const nameRaw = nameMotd(src).trim();
+            const name = nameRaw.replace(/§[0-9a-fk-orx]/gi, '').trim();
 
             out.push({
                 id: entity.id,
                 type: typeName,
-                name: rawName || null,
+                name: name || null,
+                nameRaw: nameRaw || null,
                 distance: Math.round(dist * 10) / 10,
             });
         }
