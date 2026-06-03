@@ -12,12 +12,16 @@ export default function Console({ botId }: { botId: string }) {
   const clearLog = useStore((s) => s.clearLog);
   const pushToast = useStore((s) => s.pushToast);
   const [filter, setFilter] = useState("");
+  const [level, setLevel] = useState<"all" | "chat" | "op">("all");
   const [autoScroll, setAutoScroll] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
-  const shown = filter
-    ? logs.filter((l) => l.text.toLowerCase().includes(filter.toLowerCase()))
-    : logs;
+  const shown = logs.filter((l) => {
+    if (level === "chat" && l.level !== "chat") return false;
+    if (level === "op" && l.level === "chat") return false;
+    if (filter && !l.text.toLowerCase().includes(filter.toLowerCase())) return false;
+    return true;
+  });
 
   useEffect(() => {
     if (!autoScroll) return;
@@ -37,6 +41,20 @@ export default function Console({ botId }: { botId: string }) {
   return (
     <div className="flex h-full flex-col">
       <div className="mb-2 flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-[11px]">
+          {(["all", "chat", "op"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setLevel(v)}
+              className={cn(
+                "px-2 py-1 transition-colors",
+                level === v ? "bg-accent/15 text-accent" : "text-muted hover:text-fg",
+              )}
+            >
+              {v === "all" ? "全部" : v === "chat" ? "消息" : "操作"}
+            </button>
+          ))}
+        </div>
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}

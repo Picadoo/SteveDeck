@@ -1,7 +1,39 @@
-const { enchantNames } = require('../utils/items');
+const { enchantNames, customName } = require('../utils/items');
 
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
+
+    // 物品动态日志（操作类，不带 chat 标记）
+    const emitItem = (msg) =>
+        botInstance.io.to(botInstance._room).to('admin').emit('log', {
+            user: bot.username,
+            ownerId: botInstance.config.ownerId,
+            msg,
+            time: new Date().toLocaleTimeString(),
+        });
+
+    // 对比全槽位总量，记录净增减：捡到/获得装备(+)、存箱/丢弃/用掉(-)
+    const trackItemFlow = () => {
+        try {
+            const totals = {};
+            for (const it of bot.inventory.slots) {
+                if (!it) continue;
+                const key = customName(it) || it.displayName || it.name;
+                totals[key] = (totals[key] || 0) + it.count;
+            }
+            const prev = botInstance._itemTotals;
+            if (prev) {
+                for (const k of new Set([...Object.keys(totals), ...Object.keys(prev)])) {
+                    const d = (totals[k] || 0) - (prev[k] || 0);
+                    if (d > 0) emitItem(`📥 获得 ${k} ×${d}`);
+                    else if (d < 0) emitItem(`📤 失去 ${k} ×${-d}`);
+                }
+            }
+            botInstance._itemTotals = totals;
+        } catch (e) {
+            /* ignore */
+        }
+    };
 
     // 封装同步函数
     const syncInventory = () => {
@@ -34,6 +66,8 @@ module.exports = (botInstance) => {
             ownerId: botInstance.config.ownerId,
             items: items
         });
+
+        trackItemFlow();
     };
 
     // 挂载到实例上供外部调用
