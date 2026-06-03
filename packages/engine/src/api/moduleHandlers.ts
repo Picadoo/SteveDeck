@@ -182,7 +182,7 @@ function dispatchAction(
 
     // ===== 机器人视角（prismarine-viewer web） =====
     case "viewer:start":
-      return ok(inst.startViewer());
+      return ok(inst.startViewer(!!args.firstPerson));
     case "viewer:stop":
       return ok({ stopped: inst.stopViewer?.() ?? false });
     case "auto_farm:scan":

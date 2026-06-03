@@ -234,7 +234,8 @@ class BotInstance {
 
         // 优化消息处理逻辑
         this.bot.on('message', (jsonMsg) => {
-            const raw = jsonMsg.toAnsi().replace(/\u001b\[[0-9;]*m/g, '');
+            // 保留 §/§x 颜色与格式码（前端渲染彩色）；尾部 ANSI 清洗对 §motd 无副作用
+            const raw = (typeof jsonMsg.toMotd === "function" ? jsonMsg.toMotd() : jsonMsg.toString()).replace(/\u001b\[[0-9;]*m/g, '');
             if (!raw.trim()) return;
 
             this.msgBuffer += raw + "\n";

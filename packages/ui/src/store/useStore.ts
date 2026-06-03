@@ -33,12 +33,15 @@ interface AppState {
   inventory: Record<string, InventoryItem[]>;
   /** 当前打开的窗口/GUI，按机器人用户名键（null 表示无） */
   windows: Record<string, WindowState | null>;
+  /** 最近发送的聊天/命令（全局，持久化，去重） */
+  chatHistory: string[];
   toasts: Toast[];
 
   setTheme: (t: "light" | "dark") => void;
   setModuleConfig: (botId: string, module: string, config: Record<string, unknown>) => void;
   setInventory: (user: string, items: InventoryItem[]) => void;
   setWindow: (user: string, win: WindowState | null) => void;
+  pushCmd: (c: string) => void;
   pushToast: (message: string, tone?: ToastTone) => void;
   dismissToast: (id: number) => void;
   toggleTheme: () => void;
@@ -71,6 +74,17 @@ function initialTheme(): "light" | "dark" {
   return "dark";
 }
 
+const CMD_KEY = "mcbot.cmdhistory";
+function loadCmdHistory(): string[] {
+  try {
+    const raw = localStorage.getItem(CMD_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
 export const useStore = create<AppState>((set, get) => ({
   theme: initialTheme(),
   conn: { status: "disconnected", url: "", token: "" },
@@ -80,6 +94,7 @@ export const useStore = create<AppState>((set, get) => ({
   moduleConfigs: {},
   inventory: {},
   windows: {},
+  chatHistory: loadCmdHistory(),
   toasts: [],
 
   pushToast: (message, tone = "info") => {
@@ -96,6 +111,18 @@ export const useStore = create<AppState>((set, get) => ({
   setInventory: (user, items) =>
     set((s) => ({ inventory: { ...s.inventory, [user]: items } })),
   setWindow: (user, win) => set((s) => ({ windows: { ...s.windows, [user]: win } })),
+  pushCmd: (c) =>
+    set((s) => {
+      const cmd = c.trim();
+      if (!cmd) return {};
+      const next = [cmd, ...s.chatHistory.filter((x) => x !== cmd)].slice(0, 30);
+      try {
+        localStorage.setItem(CMD_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return { chatHistory: next };
+    }),
   setTheme: (t) => {
     applyTheme(t);
     set({ theme: t });

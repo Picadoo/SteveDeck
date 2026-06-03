@@ -7,16 +7,22 @@ const usedPorts = new Set();
 module.exports = (botInstance) => {
   const bot = botInstance.bot;
 
-  botInstance.startViewer = () => {
-    if (botInstance._viewerPort) return { port: botInstance._viewerPort, reused: true };
+  botInstance.startViewer = (firstPerson = false) => {
+    firstPerson = !!firstPerson;
+    if (botInstance._viewerPort) {
+      if (botInstance._viewerFirstPerson === firstPerson)
+        return { port: botInstance._viewerPort, reused: true, firstPerson };
+      botInstance.stopViewer(); // 切换人称需重启
+    }
     let port = nextPort;
     while (usedPorts.has(port)) port++;
     nextPort = port + 1;
     usedPorts.add(port);
     try {
       const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-      // 第三人称：能看到机器人本体与周围，且可点击地面让它走过去
-      mineflayerViewer(bot, { port, firstPerson: false, viewDistance: 4 });
+      // firstPerson=true 第一人称(镜头=机器人，跟随最稳)；false 第三人称(看得到本体，可点地面走)
+      mineflayerViewer(bot, { port, firstPerson, viewDistance: 4 });
+      botInstance._viewerFirstPerson = firstPerson;
       // 点击视角里的方块 → 机器人寻路走过去
       try {
         const { goals } = require('mineflayer-pathfinder');
@@ -29,7 +35,7 @@ module.exports = (botInstance) => {
         });
       } catch { /* ignore */ }
       botInstance._viewerPort = port;
-      return { port };
+      return { port, firstPerson };
     } catch (e) {
       usedPorts.delete(port);
       throw new Error('视角启动失败：' + (e && e.message ? e.message : e));

@@ -245,11 +245,12 @@ export const cmd = {
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "js", action: "pin", args: { name, pinned } }),
   },
   viewer: {
-    start: (id: string) =>
-      emitAck<{ port: number; reused?: boolean }>(ClientCommands.MODULE_ACTION, {
+    start: (id: string, firstPerson = false) =>
+      emitAck<{ port: number; reused?: boolean; firstPerson?: boolean }>(ClientCommands.MODULE_ACTION, {
         id,
         module: "viewer",
         action: "start",
+        args: { firstPerson },
       }),
     stop: (id: string) =>
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "viewer", action: "stop" }),

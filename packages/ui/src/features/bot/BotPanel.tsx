@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode, type KeyboardEvent } from "react";
 import {
   Heart,
   Drumstick,
@@ -11,6 +11,7 @@ import {
   Bot as BotIcon,
   Pencil,
   Eye,
+  History,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Button, Input, Badge, StatusDot } from "@/components/ui/primitives";
@@ -35,8 +36,12 @@ type Tab = "overview" | "ai" | "modules" | "interaction" | "locations" | "script
 export default function BotPanel() {
   const bot = useStore((s) => s.bots.find((b) => b.id === s.selectedId));
   const pushToast = useStore((s) => s.pushToast);
+  const chatHistory = useStore((s) => s.chatHistory);
+  const pushCmd = useStore((s) => s.pushCmd);
   const [tab, setTab] = useState<Tab>("overview");
   const [chat, setChat] = useState("");
+  const [histIdx, setHistIdx] = useState(-1);
+  const [showHist, setShowHist] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [edit, setEdit] = useState<{ open: boolean; initial?: EditInitial }>({ open: false });
   const [viewer, setViewer] = useState(false);
@@ -52,13 +57,33 @@ export default function BotPanel() {
 
   const pct = healthPct(bot);
 
+  async function send(msg: string) {
+    if (!msg.trim() || !bot) return;
+    pushCmd(msg.trim());
+    const r = await cmd.chat(bot.id, msg.trim());
+    if (!r.ok) pushToast(r.error || "发送失败", "error");
+  }
   async function sendChat(e: FormEvent) {
     e.preventDefault();
     const msg = chat.trim();
-    if (!msg || !bot) return;
     setChat("");
-    const r = await cmd.chat(bot.id, msg);
-    if (!r.ok) pushToast(r.error || "发送失败", "error");
+    setHistIdx(-1);
+    await send(msg);
+  }
+  function onChatKey(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const i = Math.min(histIdx + 1, chatHistory.length - 1);
+      if (i >= 0 && chatHistory[i] !== undefined) {
+        setHistIdx(i);
+        setChat(chatHistory[i]);
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const i = histIdx - 1;
+      setHistIdx(i);
+      setChat(i < 0 ? "" : chatHistory[i] ?? "");
+    }
   }
 
   async function openEdit() {
@@ -154,11 +179,42 @@ export default function BotPanel() {
       </div>
 
       {/* 聊天栏 */}
-      <form onSubmit={sendChat} className="flex shrink-0 gap-2 border-t border-border p-3">
+      <form onSubmit={sendChat} className="relative flex shrink-0 gap-2 border-t border-border p-3">
+        {showHist && chatHistory.length > 0 && (
+          <div className="absolute bottom-full left-3 mb-1 max-h-56 w-72 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-lg">
+            <div className="px-3 py-1 text-[10px] text-muted">最近命令（点击重发）</div>
+            {chatHistory.map((c, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  setShowHist(false);
+                  send(c);
+                }}
+                className="block w-full truncate px-3 py-1.5 text-left text-xs hover:bg-surface-2"
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={!bot.online || chatHistory.length === 0}
+          onClick={() => setShowHist((v) => !v)}
+          title="最近命令（输入框里按 ↑/↓ 也能翻历史）"
+        >
+          <History className="h-4 w-4" />
+        </Button>
         <Input
           value={chat}
-          onChange={(e) => setChat(e.target.value)}
-          placeholder={bot.online ? "发送聊天 / 命令（如 /home）" : "机器人离线"}
+          onChange={(e) => {
+            setChat(e.target.value);
+            setHistIdx(-1);
+          }}
+          onKeyDown={onChatKey}
+          placeholder={bot.online ? "发送聊天 / 命令（如 /home）· ↑ 翻历史" : "机器人离线"}
           disabled={!bot.online}
         />
         <Button type="submit" variant="primary" disabled={!bot.online || !chat.trim()}>

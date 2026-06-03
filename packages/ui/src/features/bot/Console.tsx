@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Trash2, Copy, ArrowDownToLine } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
+import McText from "@/components/McText";
 import type { LogLine } from "@mcbot/protocol";
 
 // 模块级稳定空数组：避免 zustand v5 选择器返回新引用导致无限重渲染
@@ -90,7 +91,7 @@ export default function Console({ botId }: { botId: string }) {
               )}
             >
               <span className="mr-2 select-none text-muted">{l.time}</span>
-              {l.text}
+              <McText text={l.text} />
             </div>
           ))
         )}
