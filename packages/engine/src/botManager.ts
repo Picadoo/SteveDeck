@@ -149,6 +149,7 @@ class BotManager {
       maxHealth: online ? this.maxHealthOf(bot) : null,
       food: online ? Math.round(bot.food) : null,
       level: online ? (bot.experience ? bot.experience.level : 0) : null,
+      ping: online && typeof bot.player?.ping === "number" ? bot.player.ping : null,
       pos: online
         ? {
             x: Math.floor(bot.entity.position.x),

@@ -12,6 +12,7 @@ import {
   Pencil,
   Eye,
   History,
+  Wifi,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Button, Input, Badge, StatusDot } from "@/components/ui/primitives";
@@ -140,6 +141,13 @@ export default function BotPanel() {
             <Metric icon={<Drumstick className="h-3.5 w-3.5 text-warning" />} label="饱食" value={bot.food ?? "-"} />
             <Metric icon={<Star className="h-3.5 w-3.5 text-accent" />} label="等级" value={bot.level ?? "-"} />
             <Metric
+              icon={<Wifi className="h-3.5 w-3.5 text-success" />}
+              label="延迟"
+              value={
+                bot.ping != null ? <span className={pingTone(bot.ping)}>{bot.ping}ms</span> : "-"
+              }
+            />
+            <Metric
               icon={<MapPin className="h-3.5 w-3.5 text-success" />}
               label="坐标"
               value={bot.pos ? `${bot.pos.x}, ${bot.pos.y}, ${bot.pos.z}` : "-"}
@@ -257,6 +265,13 @@ export default function BotPanel() {
       <ViewerModal bot={bot} open={viewer} onClose={() => setViewer(false)} />
     </div>
   );
+}
+
+/** 延迟着色：流畅 <80ms 绿 / 一般 <200ms 黄 / 偏高 红 */
+function pingTone(ms: number): string {
+  if (ms < 80) return "text-success";
+  if (ms < 200) return "text-warning";
+  return "text-danger";
 }
 
 function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) {

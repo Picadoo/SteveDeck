@@ -159,6 +159,8 @@ export interface BotSummary {
   maxHealth?: number | null;
   food: number | null;
   level: number | null;
+  /** 机器人到服务器的网络延迟（毫秒）；取不到为 null */
+  ping?: number | null;
   pos: Vec3Like | null;
   modules: ModuleFlags;
   reconnecting: boolean;

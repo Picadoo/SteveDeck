@@ -314,9 +314,12 @@ class BotInstance {
             reconnectDelay: this.config.settings?.reconnectDelay || 5,
             schedules: this.config.settings?.schedules || []
         };
-        // 变化检测：坐标取整+生命+模块/存档作签名。静止挂机(钓鱼/待命)时避免每 2s 空推；
+        // 网络延迟（tablist ping，毫秒）；取不到为 null
+        const ping = typeof this.bot.player?.ping === 'number' ? this.bot.player.ping : null;
+        // 变化检测：坐标取整+生命+延迟(25ms 桶)+模块/存档作签名。静止挂机(钓鱼/待命)时避免每 2s 空推；
         // 无变化时也最多 30s 保活推一次，不影响前端在线显示。
-        const sig = `${Math.floor(pos.x)},${Math.floor(pos.y)},${Math.floor(pos.z)}|${this.bot.health}|${this.bot.food}|${this.bot.experience?.level || 0}|${this.savedLocations.length}|${JSON.stringify(modules)}`;
+        const pingBucket = ping == null ? 'x' : Math.round(ping / 25);
+        const sig = `${Math.floor(pos.x)},${Math.floor(pos.y)},${Math.floor(pos.z)}|${this.bot.health}|${this.bot.food}|${this.bot.experience?.level || 0}|${pingBucket}|${this.savedLocations.length}|${JSON.stringify(modules)}`;
         const now = Date.now();
         if (sig === this._lastStatusSig && now - this._lastStatusEmitAt < 30000) return;
         this._lastStatusSig = sig;
@@ -330,6 +333,7 @@ class BotInstance {
             health: this.bot.health,
             food: this.bot.food,
             level: this.bot.experience?.level || 0,
+            ping,
             savedLocations: this.savedLocations,
             modules
         });
