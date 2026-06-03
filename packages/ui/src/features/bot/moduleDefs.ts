@@ -88,7 +88,7 @@ export const MODULES: ModuleDef[] = [
     activeFlag: "autofarm",
     applyVia: "toggle",
     fields: [
-      { key: "crops", label: "作物类型", type: "multiselect", default: ["wheat"], options: CROPS },
+      { key: "cropTypes", label: "作物类型", type: "multiselect", default: ["wheat"], options: CROPS },
       { key: "scanRadius", label: "扫描半径", type: "number", default: 32, min: 16, max: 64 },
       { key: "useBoneMeal", label: "使用骨粉催熟", type: "switch", default: true },
       { key: "autoReplant", label: "自动补种", type: "switch", default: true },

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, useEffect, type FormEvent, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import { Button, Input } from "@/components/ui/primitives";
@@ -7,11 +7,46 @@ import { useStore } from "@/store/useStore";
 
 const EMPTY = { username: "", host: "", port: "25565", version: "1.20.1", loginPassword: "" };
 
-export default function AddBotDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export interface EditInitial {
+  username: string;
+  host: string;
+  port?: number;
+  version?: string;
+  loginPassword?: string;
+}
+
+export default function AddBotDialog({
+  open,
+  onClose,
+  editId,
+  initial,
+}: {
+  open: boolean;
+  onClose: () => void;
+  editId?: string;
+  initial?: EditInitial;
+}) {
   const pushToast = useStore((s) => s.pushToast);
   const [form, setForm] = useState({ ...EMPTY });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const isEdit = !!editId;
+
+  useEffect(() => {
+    if (!open) return;
+    if (initial) {
+      setForm({
+        username: initial.username || "",
+        host: initial.host || "",
+        port: String(initial.port ?? 25565),
+        version: initial.version || "1.20.1",
+        loginPassword: initial.loginPassword || "",
+      });
+    } else {
+      setForm({ ...EMPTY });
+    }
+    setErr(null);
+  }, [open, initial]);
 
   function set<K extends keyof typeof form>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -25,25 +60,26 @@ export default function AddBotDialog({ open, onClose }: { open: boolean; onClose
     }
     setBusy(true);
     setErr(null);
-    const res = await cmd.addBot({
+    const payload = {
       username: form.username.trim(),
       host: form.host.trim(),
       port: Number(form.port) || 25565,
       version: form.version.trim() || undefined,
       loginPassword: form.loginPassword || undefined,
-    });
+    };
+    const res = isEdit ? await cmd.updateBot(editId!, payload) : await cmd.addBot(payload);
     setBusy(false);
     if (res.ok) {
-      setForm({ ...EMPTY });
+      if (!isEdit) setForm({ ...EMPTY });
       onClose();
-      pushToast("机器人已添加，正在连接…", "success");
+      pushToast(isEdit ? "已保存，正在重连…" : "机器人已添加，正在连接…", "success");
     } else {
-      setErr(res.error || "添加失败");
+      setErr(res.error || (isEdit ? "保存失败" : "添加失败"));
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="添加机器人">
+    <Modal open={open} onClose={onClose} title={isEdit ? "编辑机器人" : "添加机器人"}>
       <form onSubmit={submit} className="space-y-3.5">
         <Field label="用户名（MC 登录名）">
           <Input value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="例如 MyBot" autoFocus />
@@ -68,12 +104,10 @@ export default function AddBotDialog({ open, onClose }: { open: boolean; onClose
         {err && <div className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{err}</div>}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            取消
-          </Button>
+          <Button type="button" variant="ghost" onClick={onClose}>取消</Button>
           <Button type="submit" variant="primary" disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            添加并连接
+            {isEdit ? "保存修改" : "添加并连接"}
           </Button>
         </div>
       </form>

@@ -12,11 +12,13 @@ import {
   BarChart3,
   Search,
   Package,
+  Pencil,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Button, Card, Input, Badge, StatusDot } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
+import AddBotDialog, { type EditInitial } from "./AddBotDialog";
 import Console from "./Console";
 import ModulesTab from "./ModulesTab";
 import LocationsTab from "./LocationsTab";
@@ -36,6 +38,7 @@ export default function BotPanel() {
   const [confirmDel, setConfirmDel] = useState(false);
   const [sb, setSb] = useState<{ open: boolean; data: any }>({ open: false, data: null });
   const [npcName, setNpcName] = useState("");
+  const [edit, setEdit] = useState<{ open: boolean; initial?: EditInitial }>({ open: false });
 
   if (!bot) {
     return (
@@ -60,6 +63,12 @@ export default function BotPanel() {
     const r = await cmd.moduleAction(bot.id, "scoreboard", "get");
     if (!r.ok) pushToast(r.error || "获取计分板失败", "error");
     setSb({ open: true, data: r.ok ? r.data : null });
+  }
+
+  async function openEdit() {
+    if (!bot) return;
+    const r = await cmd.getBotConfig(bot.id);
+    setEdit({ open: true, initial: r.ok && r.data ? (r.data as EditInitial) : { username: bot.username, host: bot.host } });
   }
 
   return (
@@ -89,6 +98,9 @@ export default function BotPanel() {
             </Button>
             <Button size="sm" variant="secondary" onClick={() => cmd.stop(bot.id)}>
               <Square className="h-3.5 w-3.5" /> 停止
+            </Button>
+            <Button size="sm" variant="ghost" onClick={openEdit} title="编辑">
+              <Pencil className="h-3.5 w-3.5" />
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setConfirmDel(true)} title="删除">
               <Trash2 className="h-3.5 w-3.5 text-danger" />
@@ -227,6 +239,9 @@ export default function BotPanel() {
       <Modal open={sb.open} onClose={() => setSb({ open: false, data: null })} title="计分板">
         <Scoreboard data={sb.data} />
       </Modal>
+
+      {/* 编辑机器人 */}
+      <AddBotDialog open={edit.open} editId={bot.id} initial={edit.initial} onClose={() => setEdit({ open: false })} />
     </div>
   );
 }

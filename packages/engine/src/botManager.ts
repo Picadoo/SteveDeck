@@ -216,6 +216,30 @@ class BotManager {
     return true;
   }
 
+  updateBot(id: string, patch: Partial<BotConfigInput>): boolean {
+    const cfg = this.configs.find((c) => c.id === id);
+    if (!cfg) return false;
+    if (patch.username !== undefined) cfg.username = patch.username;
+    if (patch.host !== undefined) cfg.host = patch.host;
+    if (patch.port !== undefined) cfg.port = patch.port;
+    if (patch.version !== undefined) cfg.version = patch.version;
+    if (patch.loginPassword !== undefined) cfg.loginPassword = patch.loginPassword;
+    this.persist();
+    // 重建实例以套用新的连接参数
+    const had = this.bots.get(id);
+    if (had) {
+      try {
+        had.stop();
+      } catch {
+        /* ignore */
+      }
+      this.bots.delete(id);
+      this.recentLogs.delete(id);
+      this.spawn(cfg);
+    }
+    return true;
+  }
+
   reconnect(id: string): void {
     const inst = this.bots.get(id);
     if (inst?.reconnect) inst.reconnect();

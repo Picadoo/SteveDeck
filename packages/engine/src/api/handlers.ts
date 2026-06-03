@@ -74,6 +74,27 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
     },
   );
 
+  socket.on(ClientCommands.BOT_UPDATE, ({ id, patch }: { id: string; patch: any }, ack?: Ack) => {
+    const done = botManager.updateBot(id, patch || {});
+    if (done) broadcastSnapshot(io);
+    ack?.(done ? ok() : fail("机器人不存在"));
+  });
+
+  socket.on(ClientCommands.BOT_CONFIG, ({ id }: { id: string }, ack?: Ack) => {
+    const cfg = botManager.getConfig(id);
+    if (!cfg) return ack?.(fail("机器人不存在"));
+    ack?.(
+      ok({
+        username: cfg.username,
+        host: cfg.host,
+        port: cfg.port,
+        version: cfg.version,
+        loginPassword: cfg.loginPassword,
+        settings: cfg.settings,
+      }),
+    );
+  });
+
   socket.on(ClientCommands.AI_OBSERVE, ({ id }: { id: string }, ack?: Ack) => {
     const obs = buildObservation(id);
     ack?.(obs ? ok(obs) : fail("机器人不存在"));

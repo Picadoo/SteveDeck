@@ -163,6 +163,13 @@ function emitAck<T = unknown>(event: string, payload: unknown): Promise<CommandA
 export const cmd = {
   addBot: (input: BotConfigInput) => emitAck<{ id: string }>(ClientCommands.BOT_ADD, input),
   deleteBot: (id: string) => emitAck(ClientCommands.BOT_DELETE, { id }),
+  updateBot: (id: string, patch: Partial<BotConfigInput>) =>
+    emitAck(ClientCommands.BOT_UPDATE, { id, patch }),
+  getBotConfig: (id: string) =>
+    emitAck<{ username: string; host: string; port: number; version: string; loginPassword?: string; settings: any }>(
+      ClientCommands.BOT_CONFIG,
+      { id },
+    ),
   reconnect: (id: string) => emitAck(ClientCommands.BOT_RECONNECT, { id }),
   stop: (id: string) => emitAck(ClientCommands.BOT_STOP, { id }),
   chat: (id: string, message: string) => emitAck(ClientCommands.BOT_CHAT, { id, message }),

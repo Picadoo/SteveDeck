@@ -203,6 +203,8 @@ export const ClientCommands = {
   BOT_STOP: "bot:stop",
   BOT_CHAT: "bot:chat",
   BOT_GOTO: "bot:goto",
+  BOT_UPDATE: "bot:update",
+  BOT_CONFIG: "bot:config",
   MODULE_TOGGLE: "module:toggle",
   MODULE_CONFIG: "module:config",
   MODULE_ACTION: "module:action",
@@ -225,6 +227,8 @@ export interface ClientToServerPayloads {
   [ClientCommands.BOT_STOP]: { id: BotId };
   [ClientCommands.BOT_CHAT]: { id: BotId; message: string };
   [ClientCommands.BOT_GOTO]: { id: BotId; x: number; y: number; z: number };
+  [ClientCommands.BOT_UPDATE]: { id: BotId; patch: Partial<BotConfigInput> };
+  [ClientCommands.BOT_CONFIG]: { id: BotId };
   [ClientCommands.MODULE_TOGGLE]: { id: BotId; module: ModuleName; active: boolean };
   [ClientCommands.MODULE_CONFIG]: { id: BotId; module: ModuleName; config: Record<string, unknown> };
   [ClientCommands.MODULE_ACTION]: { id: BotId; module: string; action: string; args?: Record<string, unknown> };

@@ -38,9 +38,33 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [editing, setEditing] = useState<ModuleDef | null>(null);
   const [stats, setStats] = useState<Record<string, any>>({});
+  const [engineSettings, setEngineSettings] = useState<any>(null);
+
+  // 拉取引擎里持久化的真实配置，用于配置对话框预填
+  useEffect(() => {
+    cmd.getBotConfig(bot.id).then((r) => {
+      if (r.ok && r.data) setEngineSettings(r.data.settings || {});
+    });
+  }, [bot.id]);
 
   const isActive = (def: ModuleDef) => !!bot.modules[def.activeFlag];
-  const getCfg = (def: ModuleDef) => moduleConfigs[`${bot.id}:${def.key}`] ?? defaultConfig(def);
+
+  function engineConfigFor(def: ModuleDef): Record<string, unknown> | undefined {
+    const s = engineSettings;
+    if (!s) return undefined;
+    if (def.key === "combat") return s.combatConfig;
+    if (def.key === "auto_farm") return typeof s.autoFarm === "object" ? s.autoFarm : undefined;
+    if (def.key === "mob_hunter") return s.mobHunter?.config;
+    if (def.key === "automine") return s.autoMine?.config;
+    return undefined;
+  }
+
+  // 优先级：默认值 < 引擎真实配置 < 本地未保存的修改
+  const getCfg = (def: ModuleDef): Record<string, unknown> => ({
+    ...defaultConfig(def),
+    ...(engineConfigFor(def) || {}),
+    ...(moduleConfigs[`${bot.id}:${def.key}`] || {}),
+  });
 
   // 实时统计轮询（仅在线 + 有激活的统计型模块时）
   useEffect(() => {
