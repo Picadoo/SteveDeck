@@ -1,6 +1,22 @@
-import { useState, useEffect } from "react";
-import { Search, Boxes, BarChart3, RefreshCw, Clock, Navigation, Square, MapPin, Pickaxe } from "lucide-react";
+import { useState, useEffect, type ReactNode } from "react";
+import {
+  Search,
+  Boxes,
+  BarChart3,
+  RefreshCw,
+  Clock,
+  Navigation,
+  Square,
+  MapPin,
+  Pickaxe,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ChevronsUp,
+} from "lucide-react";
 import { Card, Button, Input, Badge, Switch } from "@/components/ui/primitives";
+import { HoldButton } from "@/components/Joystick";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import SchedulerTab from "./SchedulerTab";
@@ -168,9 +184,42 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
         <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
           <Navigation className="h-4 w-4 text-accent" /> 走动
         </h3>
-        <p className="mb-2 text-[11px] text-muted">
-          填坐标让机器人寻路过去；或开「视角」后直接点画面里的地面，它就走过去。
-        </p>
+
+        {/* 手动操控方向盘（按住移动，松开即停）+ 跳 */}
+        <div className="mb-3 flex items-center gap-4">
+          <div className="grid grid-cols-3 gap-1">
+            <span />
+            <Dir dir="forward" botId={bot.id} disabled={disabled} title="前进">
+              <ArrowUp className="h-4 w-4" />
+            </Dir>
+            <span />
+            <Dir dir="left" botId={bot.id} disabled={disabled} title="左移">
+              <ArrowLeft className="h-4 w-4" />
+            </Dir>
+            <HoldButton
+              title="跳"
+              disabled={disabled}
+              className="h-9 w-9 rounded-lg border border-border bg-surface-2 text-accent hover:bg-surface disabled:opacity-40"
+              onPress={() => cmd.control.set(bot.id, { jump: true })}
+              onRelease={() => cmd.control.set(bot.id, { jump: false })}
+            >
+              <ChevronsUp className="h-4 w-4" />
+            </HoldButton>
+            <Dir dir="right" botId={bot.id} disabled={disabled} title="右移">
+              <ArrowRight className="h-4 w-4" />
+            </Dir>
+            <span />
+            <Dir dir="back" botId={bot.id} disabled={disabled} title="后退">
+              <ArrowDown className="h-4 w-4" />
+            </Dir>
+            <span />
+          </div>
+          <div className="flex-1 text-[11px] leading-relaxed text-muted">
+            按住方向键手动走动，松开即停（中间是跳）。想更顺手就开「视角」用虚拟摇杆。
+          </div>
+        </div>
+
+        <p className="mb-1.5 text-[11px] text-muted">或填坐标让它自动寻路过去：</p>
         <div className="flex gap-1.5">
           <Input value={xyz.x} onChange={(e) => setXyz((v) => ({ ...v, x: e.target.value }))} placeholder="X" disabled={disabled} />
           <Input value={xyz.y} onChange={(e) => setXyz((v) => ({ ...v, y: e.target.value }))} placeholder="Y" disabled={disabled} />
@@ -178,7 +227,7 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
           <Button size="sm" variant="primary" disabled={disabled} onClick={goto}>
             <MapPin className="h-3.5 w-3.5" /> 前往
           </Button>
-          <Button size="sm" variant="ghost" disabled={disabled} onClick={() => cmd.moduleAction(bot.id, "move", "stop")} title="停止">
+          <Button size="sm" variant="ghost" disabled={disabled} onClick={() => cmd.control.stop(bot.id)} title="停止">
             <Square className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -249,5 +298,32 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
         <SchedulerTab bot={bot} />
       </div>
     </div>
+  );
+}
+
+/** 方向键：按住持续移动，松开即停 */
+function Dir({
+  dir,
+  botId,
+  disabled,
+  title,
+  children,
+}: {
+  dir: "forward" | "back" | "left" | "right";
+  botId: string;
+  disabled?: boolean;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <HoldButton
+      title={title}
+      disabled={disabled}
+      className="h-9 w-9 rounded-lg border border-border bg-surface-2 text-fg hover:bg-surface disabled:opacity-40"
+      onPress={() => cmd.control.set(botId, { [dir]: true })}
+      onRelease={() => cmd.control.set(botId, { [dir]: false })}
+    >
+      {children}
+    </HoldButton>
   );
 }

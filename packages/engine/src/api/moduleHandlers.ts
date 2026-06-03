@@ -244,10 +244,47 @@ function dispatchAction(
     case "move:stop":
       try {
         inst.bot?.pathfinder?.setGoal(null);
+        inst.bot?.clearControlStates?.();
       } catch {
         /* ignore */
       }
       return ok();
+
+    // ===== 手动操控（虚拟摇杆 / 方向键）：setControlState 持续控制 =====
+    case "move:control": {
+      const b = inst.bot;
+      if (!b?.entity) return fail("机器人离线");
+      try {
+        b.pathfinder?.setGoal(null); // 手动控制时停掉寻路，避免互相打架
+      } catch {
+        /* ignore */
+      }
+      for (const s of ["forward", "back", "left", "right", "jump", "sprint", "sneak"]) {
+        if (s in args) {
+          try {
+            b.setControlState(s, !!args[s]);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      return ok();
+    }
+    case "move:turn": {
+      const b = inst.bot;
+      if (!b?.entity) return fail("机器人离线");
+      const yaw = b.entity.yaw + (Number(args.dyaw) || 0);
+      const pitch = Math.max(
+        -Math.PI / 2,
+        Math.min(Math.PI / 2, b.entity.pitch + (Number(args.dpitch) || 0)),
+      );
+      try {
+        b.look(yaw, pitch, false);
+      } catch {
+        /* ignore */
+      }
+      return ok();
+    }
 
     // ===== 行为设置：寻路破坏模式 / 复活后指令 =====
     case "behavior:get":

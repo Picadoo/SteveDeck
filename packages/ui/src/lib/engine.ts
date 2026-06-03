@@ -255,6 +255,13 @@ export const cmd = {
     stop: (id: string) =>
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "viewer", action: "stop" }),
   },
+  control: {
+    set: (id: string, states: Partial<Record<"forward" | "back" | "left" | "right" | "jump" | "sprint" | "sneak", boolean>>) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "move", action: "control", args: states }),
+    turn: (id: string, dyaw: number, dpitch = 0) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "move", action: "turn", args: { dyaw, dpitch } }),
+    stop: (id: string) => emitAck(ClientCommands.MODULE_ACTION, { id, module: "move", action: "stop" }),
+  },
   behavior: {
     get: (id: string) =>
       emitAck<{ allowDig: boolean; respawnCommand: string }>(ClientCommands.MODULE_ACTION, {

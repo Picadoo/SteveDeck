@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { User, Users, Send, Heart, Drumstick, MapPin } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { User, Users, Send, Heart, Drumstick, MapPin, Gamepad2, ChevronUp, RotateCcw, RotateCw } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import { Button, Input } from "@/components/ui/primitives";
+import Joystick, { HoldButton } from "@/components/Joystick";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import { healthPct } from "@/lib/format";
@@ -9,13 +10,7 @@ import { MODULES } from "./moduleDefs";
 import { cn } from "@/lib/cn";
 import type { BotSummary } from "@mcbot/protocol";
 
-// 视角里可一键开关的「快速验证」模块：边看 3D 边切，立刻看效果
-const QUICK_KEYS = ["combat", "fishing", "mob_hunter"];
-const QUICK_MODULES = QUICK_KEYS.map((k) => MODULES.find((m) => m.key === k)).filter(
-  (m): m is (typeof MODULES)[number] => !!m,
-);
-
-/** 机器人实时视角：第三人称(可点地面走) / 第一人称(镜头跟随最稳) + 坐标浮层 + 模块快速开关 + 边看边发指令 */
+/** 机器人实时视角：第三/第一人称 + 坐标浮层 + 虚拟摇杆操控 + 模块快速开关 + 边看边发指令 */
 export default function ViewerModal({
   bot,
   open,
@@ -30,7 +25,9 @@ export default function ViewerModal({
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [firstPerson, setFirstPerson] = useState(false);
+  const [controls, setControls] = useState(false);
   const [cmdText, setCmdText] = useState("");
+  const lastStates = useRef("");
 
   useEffect(() => {
     if (!open) return;
@@ -54,6 +51,14 @@ export default function ViewerModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, bot.id, firstPerson]);
 
+  // 关闭视角时停止一切操控，避免机器人继续走
+  useEffect(() => {
+    if (!open) return;
+    return () => {
+      cmd.control.stop(bot.id);
+    };
+  }, [open, bot.id]);
+
   const pos = bot.pos;
   const pct = healthPct(bot);
 
@@ -63,9 +68,26 @@ export default function ViewerModal({
     setCmdText("");
     await cmd.chat(bot.id, m);
   }
-  function toggleModule(key: string, active: boolean) {
-    cmd.toggleModule(bot.id, key, active).then((r) => {
-      if (!r.ok) pushToast(r.error || "操作失败", "error");
+  function onVector(v: { x: number; y: number }) {
+    const dead = 0.28;
+    const mag = Math.hypot(v.x, v.y);
+    const states = {
+      forward: v.y < -dead,
+      back: v.y > dead,
+      left: v.x < -dead,
+      right: v.x > dead,
+      sprint: mag > 0.85,
+    };
+    const key = JSON.stringify(states);
+    if (key !== lastStates.current) {
+      lastStates.current = key;
+      cmd.control.set(bot.id, states);
+    }
+  }
+  function toggleControls() {
+    setControls((v) => {
+      if (v) cmd.control.stop(bot.id); // 收起即停
+      return !v;
     });
   }
 
@@ -76,14 +98,17 @@ export default function ViewerModal({
       title={`${bot.username} · 实时视角`}
       footer={
         <>
+          <Button variant={controls ? "primary" : "ghost"} onClick={toggleControls}>
+            <Gamepad2 className="h-3.5 w-3.5" /> {controls ? "隐藏操控" : "操控"}
+          </Button>
           <Button variant="ghost" onClick={() => setFirstPerson((v) => !v)}>
             {firstPerson ? (
               <>
-                <Users className="h-3.5 w-3.5" /> 切第三人称
+                <Users className="h-3.5 w-3.5" /> 第三人称
               </>
             ) : (
               <>
-                <User className="h-3.5 w-3.5" /> 切第一人称
+                <User className="h-3.5 w-3.5" /> 第一人称
               </>
             )}
           </Button>
@@ -101,7 +126,7 @@ export default function ViewerModal({
             {loading ? "正在启动视角…" : "未启动"}
           </div>
         )}
-        {/* 坐标 / 状态浮层（lucide 图标，匹配整体界面） */}
+        {/* 坐标 / 状态浮层 */}
         {pos && (
           <div className="pointer-events-none absolute left-2 top-2 flex items-center gap-2.5 rounded-md bg-black/55 px-2.5 py-1 font-mono text-[11px] text-white shadow">
             <span className="flex items-center gap-1">
@@ -118,11 +143,46 @@ export default function ViewerModal({
             </span>
           </div>
         )}
+
+        {/* 虚拟摇杆操控层（手机端式）：摇杆走动 + 跳 + 左右转 */}
+        {controls && (
+          <div className="pointer-events-none absolute inset-0 z-10">
+            <div className="absolute bottom-3 left-3">
+              <Joystick onVector={onVector} />
+            </div>
+            <div className="absolute bottom-3 right-3 flex flex-col items-center gap-2">
+              <HoldButton
+                title="跳"
+                className="h-12 w-12 rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-sm active:bg-white/30"
+                onPress={() => cmd.control.set(bot.id, { jump: true })}
+                onRelease={() => cmd.control.set(bot.id, { jump: false })}
+              >
+                <ChevronUp className="h-6 w-6" />
+              </HoldButton>
+              <div className="flex gap-2">
+                <HoldButton
+                  title="左转"
+                  className="h-11 w-11 rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-sm active:bg-white/30"
+                  onTick={() => cmd.control.turn(bot.id, -0.32)}
+                >
+                  <RotateCcw className="h-5 w-5" />
+                </HoldButton>
+                <HoldButton
+                  title="右转"
+                  className="h-11 w-11 rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-sm active:bg-white/30"
+                  onTick={() => cmd.control.turn(bot.id, 0.32)}
+                >
+                  <RotateCw className="h-5 w-5" />
+                </HoldButton>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 模块快速开关：边看边切，立刻验证效果 */}
+      {/* 模块快速开关：所有模块，边看边切 */}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {QUICK_MODULES.map((def) => {
+        {MODULES.map((def) => {
           const Icon = def.icon;
           const active = !!bot.modules[def.activeFlag];
           return (
@@ -130,7 +190,11 @@ export default function ViewerModal({
               key={def.key}
               type="button"
               disabled={!bot.online}
-              onClick={() => toggleModule(def.key, !active)}
+              onClick={() =>
+                cmd.toggleModule(bot.id, def.key, !active).then((r) => {
+                  if (!r.ok) pushToast(r.error || "操作失败", "error");
+                })
+              }
               className={cn(
                 "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40",
                 active
@@ -140,7 +204,6 @@ export default function ViewerModal({
             >
               <Icon className="h-3.5 w-3.5" />
               {def.name}
-              <span className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-accent" : "bg-muted/40")} />
             </button>
           );
         })}
@@ -165,7 +228,7 @@ export default function ViewerModal({
         </Button>
       </form>
       <p className="mt-1 text-[11px] leading-relaxed text-muted">
-        第三人称：点画面里的地面，机器人会走过去；第一人称：镜头=机器人视线，跟随最稳。关闭即停。
+        操控：摇杆走动（推到底=疾跑）、跳、左右转；第三人称可点地面寻路过去，第一人称镜头跟随最稳。关闭即停。
       </p>
     </Modal>
   );
