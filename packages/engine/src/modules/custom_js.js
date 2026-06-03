@@ -41,8 +41,12 @@ module.exports = (botInstance) => {
       goto: (x, y, z, range = 1) =>
         new Promise((resolve) => {
           try {
-            const mcData = require("minecraft-data")(bot.version);
-            bot.pathfinder.setMovements(new Movements(bot, mcData));
+            // 复用实例的「无破坏模式」策略（受保护地图不挖不搭）；老实例回退默认
+            const mv =
+              typeof botInstance.makeMovements === "function"
+                ? botInstance.makeMovements()
+                : new Movements(bot, require("minecraft-data")(bot.version));
+            bot.pathfinder.setMovements(mv);
             bot.pathfinder.setGoal(new goals.GoalNear(x, y, z, range));
             const done = () => {
               bot.removeListener("goal_reached", done);
@@ -74,13 +78,13 @@ module.exports = (botInstance) => {
     const st = { name: name || "未命名脚本", cancelled: false };
     state = st;
     botInstance._customJs = st;
-    emitLog(`▶ 运行「${st.name}」`);
+    emitLog(`运行「${st.name}」`);
 
     let fn;
     try {
       fn = new AsyncFunction("api", "bot", "log", "sleep", "chat", "Vec3", "require", code);
     } catch (e) {
-      emitLog(`❌ 语法错误: ${e.message}`);
+      emitLog(`语法错误: ${e.message}`);
       state = null;
       botInstance._customJs = null;
       return { ok: false, error: e.message };
@@ -90,9 +94,9 @@ module.exports = (botInstance) => {
     Promise.resolve()
       .then(() => fn(api, bot, api.log, api.sleep, api.chat, api.Vec3, require))
       .then(() => {
-        if (!st.cancelled) emitLog(`✅ 「${st.name}」结束`);
+        if (!st.cancelled) emitLog(`「${st.name}」结束`);
       })
-      .catch((e) => emitLog(`❌ 错误: ${e && e.message ? e.message : e}`))
+      .catch((e) => emitLog(`错误: ${e && e.message ? e.message : e}`))
       .finally(() => {
         if (state === st) {
           state = null;
@@ -105,7 +109,7 @@ module.exports = (botInstance) => {
   botInstance.stopCustomJs = () => {
     if (!state) return false;
     state.cancelled = true;
-    emitLog(`⏹ 停止「${state.name}」`);
+    emitLog(`停止「${state.name}」`);
     try {
       bot.pathfinder.setGoal(null);
     } catch {

@@ -21,7 +21,10 @@ module.exports = (botInstance) => {
     try {
       const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
       // firstPerson=true 第一人称(镜头=机器人，跟随最稳)；false 第三人称(看得到本体，可点地面走)
-      mineflayerViewer(bot, { port, firstPerson, viewDistance: 4 });
+      // viewDistance 控制流式区块半径：3 区块≈48格，足够看清机器人周围，又比默认省一大截带宽/显存/CPU。
+      // 可用 ENGINE_VIEWER_DISTANCE 覆盖（性能差的机器调 2，画面大的调 4~6）。
+      const viewDistance = Math.max(2, Math.min(8, Number(process.env.ENGINE_VIEWER_DISTANCE) || 3));
+      mineflayerViewer(bot, { port, firstPerson, viewDistance });
       botInstance._viewerFirstPerson = firstPerson;
       // 点击视角里的方块 → 机器人寻路走过去
       try {

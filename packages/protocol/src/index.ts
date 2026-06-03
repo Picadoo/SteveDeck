@@ -54,6 +54,10 @@ export interface BotSettings {
   reconnectDelay?: number;
   maxReconnectAttempts?: number;
   viewDistance?: "far" | "normal" | "short" | "tiny" | number;
+  /** 寻路是否允许破坏方块。默认 false（多数服务器地图受保护，挖不动会卡路径）。 */
+  allowDig?: boolean;
+  /** 复活后自动执行的指令（如 /back、/spawn），用于多世界 RPG 服回到原处。 */
+  respawnCommand?: string;
   combat?: boolean;
   combatConfig?: CombatConfig;
   fishing?: boolean;

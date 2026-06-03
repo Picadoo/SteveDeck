@@ -42,7 +42,7 @@ module.exports = (botInstance) => {
             botInstance.io.to(botInstance._room).to('admin').emit('log', {
                 user: bot.username,
                 ownerId: botInstance.config.ownerId,
-                msg: `❌ 未找到目标: "${input}"`
+                msg: `未找到目标: "${input}"`
             });
             return;
         }
@@ -52,7 +52,7 @@ module.exports = (botInstance) => {
             botInstance.io.to(botInstance._room).to('admin').emit('log', {
                 user: bot.username,
                 ownerId: botInstance.config.ownerId,
-                msg: `🚀 正在同步坐标并靠近...`
+                msg: `正在同步坐标并靠近...`
             });
 
             await bot.pathfinder.goto(new goals.GoalFollow(target, 2)); // 稍微拉开距离防止挤压NPC
@@ -67,13 +67,13 @@ module.exports = (botInstance) => {
             botInstance.io.to(botInstance._room).to('admin').emit('log', {
                 user: bot.username,
                 ownerId: botInstance.config.ownerId,
-                msg: `🤝 交互指令已送达 (TargetID: ${target.id})`
+                msg: `交互指令已送达 (TargetID: ${target.id})`
             });
         } catch (err) {
             botInstance.io.to(botInstance._room).to('admin').emit('log', {
                 user: bot.username,
                 ownerId: botInstance.config.ownerId,
-                msg: `⚠️ 交互失败: ${err.message}`
+                msg: `交互失败: ${err.message}`
             });
         }
     };

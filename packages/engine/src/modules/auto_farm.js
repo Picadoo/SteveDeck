@@ -98,7 +98,7 @@ module.exports = (botInstance) => {
             botInstance.farmTask.stats.lastHarvest = new Date();
 
             const total = Object.values(botInstance.farmTask.stats.harvested).reduce((a, b) => a + b, 0);
-            emitLog(`🌾 收割 ${CROP_DATABASE[cropType].name} (${position.x}, ${position.y}, ${position.z}) [总计: ${total}]`);
+            emitLog(`收割 ${CROP_DATABASE[cropType].name} (${position.x}, ${position.y}, ${position.z}) [总计: ${total}]`);
             return true;
         } catch (err) {
             // 寻路失败或挖掘失败，跳过这个作物
@@ -200,7 +200,7 @@ module.exports = (botInstance) => {
                 const cropList = Object.entries(cropCounts)
                     .map(([type, count]) => `${CROP_DATABASE[type].name}×${count}`)
                     .join(', ');
-                emitLog(`🔍 发现 ${allMatureCrops.length} 个成熟作物: ${cropList}`);
+                emitLog(`发现 ${allMatureCrops.length} 个成熟作物: ${cropList}`);
 
                 for (const crop of allMatureCrops) {
                     if (!botInstance.farmTask.active) break;
@@ -221,7 +221,7 @@ module.exports = (botInstance) => {
                 }
             }
         } catch (err) {
-            emitLog(`⚠️ 农场出错: ${err.message}`);
+            emitLog(`农场出错: ${err.message}`);
         } finally {
             botInstance.farmTask._isRunning = false;
         }
@@ -262,7 +262,7 @@ module.exports = (botInstance) => {
             botInstance.farmTask._isRunning = false;
 
             const cropNames = botInstance.farmTask.cropTypes.map(t => CROP_DATABASE[t]?.name || t).join('、');
-            emitLog(`🌱 启动自动农场\n  作物: ${cropNames}\n  扫描半径: ${botInstance.farmTask.scanRadius}格\n  自动补种: ${botInstance.farmTask.autoReplant ? '是' : '否'}\n  使用骨粉: ${botInstance.farmTask.useBoneMeal ? '是' : '否'}`);
+            emitLog(`启动自动农场\n  作物: ${cropNames}\n  扫描半径: ${botInstance.farmTask.scanRadius}格\n  自动补种: ${botInstance.farmTask.autoReplant ? '是' : '否'}\n  使用骨粉: ${botInstance.farmTask.useBoneMeal ? '是' : '否'}`);
 
             if (botInstance.farmTask.timer) clearInterval(botInstance.farmTask.timer);
             botInstance.farmTask.timer = setInterval(farmCycle, 20000);
@@ -282,9 +282,9 @@ module.exports = (botInstance) => {
                 for (const [ct, count] of Object.entries(stats.harvestedByType)) {
                     detail += `    ${CROP_DATABASE[ct]?.name || ct}: 收割${count}个, 种植${stats.plantedByType[ct] || 0}个\n`;
                 }
-                emitLog(`📊 农场统计\n  运行: ${stats.runTime}分钟\n  总收割: ${stats.totalHarvested}个\n  总种植: ${stats.totalPlanted}个\n${detail}  骨粉: ${stats.boneMealUsed}个\n  效率: ${stats.harvestRate}个/分钟`);
+                emitLog(`农场统计\n  运行: ${stats.runTime}分钟\n  总收割: ${stats.totalHarvested}个\n  总种植: ${stats.totalPlanted}个\n${detail}  骨粉: ${stats.boneMealUsed}个\n  效率: ${stats.harvestRate}个/分钟`);
             }
-            emitLog(`❌ 自动农场已关闭`);
+            emitLog(`自动农场已关闭`);
         }
     };
 
@@ -296,7 +296,7 @@ module.exports = (botInstance) => {
         });
 
         if (farmlandBlocks.length === 0) {
-            emitLog(`⚠️ 附近没有发现耕地`);
+            emitLog(`附近没有发现耕地`);
             return null;
         }
 
@@ -308,7 +308,7 @@ module.exports = (botInstance) => {
         });
         avgY = Math.floor(avgY / farmlandBlocks.length);
 
-        emitLog(`🔍 扫描到农田\n  数量: ${farmlandBlocks.length}块\n  范围: (${minX}, ${avgY}, ${minZ}) 到 (${maxX}, ${avgY}, ${maxZ})\n  面积: ${(maxX - minX + 1) * (maxZ - minZ + 1)}格`);
+        emitLog(`扫描到农田\n  数量: ${farmlandBlocks.length}块\n  范围: (${minX}, ${avgY}, ${minZ}) 到 (${maxX}, ${avgY}, ${maxZ})\n  面积: ${(maxX - minX + 1) * (maxZ - minZ + 1)}格`);
         return { count: farmlandBlocks.length, area: { x1: minX, z1: minZ, x2: maxX, z2: maxZ, y: avgY } };
     };
 

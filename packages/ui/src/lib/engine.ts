@@ -130,7 +130,7 @@ export function connect(url: string, token: string): void {
     if (p.id) useStore.getState().appendLog(p.id, p.line);
   });
   socket.on(ServerEvents.BOT_ERROR, (p: { id: string; error: string }) => {
-    if (p.id) useStore.getState().appendLog(p.id, { time: now(), text: "⚠️ " + p.error, level: "error" });
+    if (p.id) useStore.getState().appendLog(p.id, { time: now(), text: p.error, level: "error" });
   });
   socket.on(ServerEvents.INVENTORY, (p: { user: string; items: InventoryItem[] }) => {
     if (p.user) useStore.getState().setInventory(p.user, p.items || []);
@@ -254,5 +254,27 @@ export const cmd = {
       }),
     stop: (id: string) =>
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "viewer", action: "stop" }),
+  },
+  behavior: {
+    get: (id: string) =>
+      emitAck<{ allowDig: boolean; respawnCommand: string }>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "behavior",
+        action: "get",
+      }),
+    setDig: (id: string, allow: boolean) =>
+      emitAck<{ allowDig: boolean }>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "behavior",
+        action: "setDig",
+        args: { allow },
+      }),
+    setRespawnCmd: (id: string, command: string) =>
+      emitAck<{ respawnCommand: string }>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "behavior",
+        action: "setRespawnCmd",
+        args: { command },
+      }),
   },
 };

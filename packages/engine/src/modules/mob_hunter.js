@@ -374,7 +374,7 @@ module.exports = (botInstance) => {
         const task = botInstance.mobHunterTask;
         task.stats.kills[name] = (task.stats.kills[name] || 0) + 1;
         task.stats.totalKills++;
-        emitLog(`💀 击杀 ${name} [总计: ${task.stats.totalKills}]`);
+        emitLog(`击杀 ${name} [总计: ${task.stats.totalKills}]`);
     };
 
     const handleEntityDead = (entity) => {
@@ -438,13 +438,13 @@ module.exports = (botInstance) => {
                 clearGoal();
                 try { bot.clearControlStates(); } catch (e) {}
                 const names = nearbyPlayers.map(p => p.username).join(', ');
-                emitLog(`⚠️ 检测到玩家 [${names}]，暂停追怪`);
+                emitLog(`检测到玩家 [${names}]，暂停追怪`);
             }
         } else if (task.pausedByPlayer) {
             task.pausedByPlayer = false;
             const wait = RESUME_COOLDOWN_MIN + Math.random() * RESUME_COOLDOWN_RANGE;
             resumeAfter = Date.now() + wait;
-            emitLog(`✅ 玩家已离开，${Math.floor(wait / 1000)} 秒后恢复`);
+            emitLog(`玩家已离开，${Math.floor(wait / 1000)} 秒后恢复`);
         }
     };
 
@@ -490,7 +490,7 @@ module.exports = (botInstance) => {
                 if (target) {
                     task.currentTarget = target;
                     targetAcquiredAt = Date.now();
-                    emitLog(`🎯 锁定目标: ${getEntityDisplayName(target)}`);
+                    emitLog(`锁定目标: ${getEntityDisplayName(target)}`);
                 } else {
                     idleScan();
                 }
@@ -513,15 +513,15 @@ module.exports = (botInstance) => {
         damageHistory.clear();
         try { bot.clearControlStates(); } catch (e) {}
 
-        emitLog(`💀 机器人死亡 (第${task.stats.deaths}次)`);
+        emitLog(`机器人死亡 (第${task.stats.deaths}次)`);
 
         if (task.maxDeaths > 0 && task.stats.deaths >= task.maxDeaths) {
-            emitLog(`⚠️ 达到最大死亡次数(${task.maxDeaths})，自动停止追怪`);
+            emitLog(`达到最大死亡次数(${task.maxDeaths})，自动停止追怪`);
             botInstance.toggleMobHunter(false);
             return;
         }
         if (task.stopOnDeath) {
-            emitLog(`⚠️ 死亡后自动停止追怪`);
+            emitLog(`死亡后自动停止追怪`);
             botInstance.toggleMobHunter(false);
             return;
         }
@@ -537,7 +537,7 @@ module.exports = (botInstance) => {
         if (!botInstance.mobHunterTask.isDead) return;
         botInstance.mobHunterTask.isDead = false;
         botInstance.mobHunterTask.currentTarget = null;
-        emitLog(`✨ 机器人已重生`);
+        emitLog(`机器人已重生`);
 
         if (botInstance.mobHunterTask.autoReturnOnDeath && botInstance.mobHunterTask.active) {
             setTimeout(() => {
@@ -546,7 +546,7 @@ module.exports = (botInstance) => {
                 }
             }, 2000);
         } else {
-            emitLog(`⏸️ 等待手动返回追怪区域...`);
+            emitLog(`等待手动返回追怪区域...`);
         }
     };
 
@@ -554,10 +554,10 @@ module.exports = (botInstance) => {
         if (!botInstance.mobHunterTask.active || !bot.entity) return;
         const returnPoint = botInstance.mobHunterTask.returnPoint || botInstance.mobHunterTask.lastPosition;
         if (!returnPoint) {
-            emitLog(`⚠️ 没有设置返回点，无法返回`);
+            emitLog(`没有设置返回点，无法返回`);
             return;
         }
-        emitLog(`🚶 正在返回追怪区域 (${Math.floor(returnPoint.x)}, ${Math.floor(returnPoint.y)}, ${Math.floor(returnPoint.z)})`);
+        emitLog(`正在返回追怪区域 (${Math.floor(returnPoint.x)}, ${Math.floor(returnPoint.y)}, ${Math.floor(returnPoint.z)})`);
 
         try {
             bot.pathfinder.setMovements(getMovements());
@@ -565,7 +565,7 @@ module.exports = (botInstance) => {
                 Math.floor(returnPoint.x), Math.floor(returnPoint.y), Math.floor(returnPoint.z)
             ));
         } catch (e) {
-            emitLog(`⚠️ 返回失败: ${e.message}`);
+            emitLog(`返回失败: ${e.message}`);
         }
     };
 
@@ -625,7 +625,7 @@ module.exports = (botInstance) => {
             if (botInstance.combatConfig && botInstance.combatConfig.enabled) {
                 prevCombatEnabled = true;
                 botInstance.combatConfig.enabled = false;
-                emitLog(`🔒 已暂停杀戮光环（互斥）`);
+                emitLog(`已暂停杀戮光环（互斥）`);
             } else {
                 prevCombatEnabled = null;
             }
@@ -636,7 +636,7 @@ module.exports = (botInstance) => {
                 ? `关键词: ${task.keywords.join(', ')}`
                 : `全部怪物 (黑名单: ${task.blacklist.length}个)`;
 
-            emitLog(`🎯 启动追怪系统\n  模式: ${modeText}\n  安全检测: ${task.safetyEnabled ? '开启' : '关闭'}\n  攻击范围: ${task.attackRange}格`);
+            emitLog(`启动追怪系统\n  模式: ${modeText}\n  安全检测: ${task.safetyEnabled ? '开启' : '关闭'}\n  攻击范围: ${task.attackRange}格`);
 
             if (task.timer) clearInterval(task.timer);
             if (task.safetyCheckTimer) clearInterval(task.safetyCheckTimer);
@@ -674,7 +674,7 @@ module.exports = (botInstance) => {
             // 还原杀戮光环
             if (prevCombatEnabled === true && botInstance.combatConfig) {
                 botInstance.combatConfig.enabled = true;
-                emitLog(`🔓 已恢复杀戮光环`);
+                emitLog(`已恢复杀戮光环`);
             }
             prevCombatEnabled = null;
 
@@ -684,9 +684,9 @@ module.exports = (botInstance) => {
                 for (const [mob, count] of Object.entries(stats.killsByType)) {
                     detail += `    ${mob}: ${count}个\n`;
                 }
-                emitLog(`📊 追怪统计\n  运行: ${stats.runTime}分钟\n  总击杀: ${stats.totalKills}个\n${detail}  死亡: ${stats.deaths}次\n  效率: ${stats.killRate}个/分钟\n  玩家检测: ${stats.playersDetected}次`);
+                emitLog(`追怪统计\n  运行: ${stats.runTime}分钟\n  总击杀: ${stats.totalKills}个\n${detail}  死亡: ${stats.deaths}次\n  效率: ${stats.killRate}个/分钟\n  玩家检测: ${stats.playersDetected}次`);
             }
-            emitLog(`❌ 追怪系统已关闭`);
+            emitLog(`追怪系统已关闭`);
         }
     };
 
@@ -694,7 +694,7 @@ module.exports = (botInstance) => {
         if (!bot.entity) return { success: false, error: '机器人未在线' };
         const center = bot.entity.position.clone();
         botInstance.mobHunterTask.huntArea = { center: { x: center.x, y: center.y, z: center.z }, radius };
-        emitLog(`📍 设置圆形追怪区域\n  中心: (${Math.floor(center.x)}, ${Math.floor(center.y)}, ${Math.floor(center.z)})\n  半径: ${radius}格`);
+        emitLog(`设置圆形追怪区域\n  中心: (${Math.floor(center.x)}, ${Math.floor(center.y)}, ${Math.floor(center.z)})\n  半径: ${radius}格`);
         return { success: true };
     };
 
@@ -704,7 +704,7 @@ module.exports = (botInstance) => {
             y1: Math.min(y1, y2), y2: Math.max(y1, y2),
             z1: Math.min(z1, z2), z2: Math.max(z1, z2)
         };
-        emitLog(`📍 设置矩形追怪区域\n  范围: (${x1},${y1},${z1}) 到 (${x2},${y2},${z2})`);
+        emitLog(`设置矩形追怪区域\n  范围: (${x1},${y1},${z1}) 到 (${x2},${y2},${z2})`);
         return { success: true };
     };
 

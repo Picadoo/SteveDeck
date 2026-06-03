@@ -54,7 +54,7 @@ module.exports = (botInstance) => {
         const lines = [...sniff.buckets.entries()]
             .sort((a, b) => b[1].count - a[1].count)
             .map(([id, b]) => `  [${id}] ${particleName(id)} ×${b.count}  最近(${b.nearest.x.toFixed(0)}, ${b.nearest.y.toFixed(0)}, ${b.nearest.z.toFixed(0)}) ${b.nearest.dist.toFixed(1)}m`);
-        emitLog(`🔬 粒子嗅探（近${FLUSH_INTERVAL / 1000}秒，${SNIFF_RADIUS}格内）:\n${lines.join('\n')}`);
+        emitLog(`粒子嗅探（近${FLUSH_INTERVAL / 1000}秒，${SNIFF_RADIUS}格内）:\n${lines.join('\n')}`);
         sniff.buckets.clear();
     };
 
@@ -68,7 +68,7 @@ module.exports = (botInstance) => {
 
     botInstance.startParticleSniff = () => {
         if (sniff.active) return;
-        if (!bot._client) { emitLog('⚠️ 客户端未就绪，无法嗅探'); return; }
+        if (!bot._client) { emitLog('客户端未就绪，无法嗅探'); return; }
         sniff.active = true;
         sniff.buckets.clear();
         sniff.seen.clear();
@@ -95,7 +95,7 @@ module.exports = (botInstance) => {
 
                 if (!sniff.seen.has(id)) {
                     sniff.seen.add(id);
-                    emitLog(`🔬 发现新粒子: [${id}] ${particleName(id)} @ (${packet.x.toFixed(0)}, ${packet.y.toFixed(0)}, ${packet.z.toFixed(0)}) ${dist.toFixed(1)}m, count字段=${packet.particles}`);
+                    emitLog(`发现新粒子: [${id}] ${particleName(id)} @ (${packet.x.toFixed(0)}, ${packet.y.toFixed(0)}, ${packet.z.toFixed(0)}) ${dist.toFixed(1)}m, count字段=${packet.particles}`);
                 }
             } catch (e) { /* 单包异常忽略 */ }
         };
@@ -103,7 +103,7 @@ module.exports = (botInstance) => {
         sniff.onStatus = (packet) => {
             try {
                 if (packet && packet.entityStatus === 31) {
-                    emitLog(`🎣 检测到咬钩信号 entity_status=31 (entityId=${packet.entityId}) —— 本服支持标准咬钩检测`);
+                    emitLog(`检测到咬钩信号 entity_status=31 (entityId=${packet.entityId}) —— 本服支持标准咬钩检测`);
                 }
             } catch (e) { /* 忽略 */ }
         };
@@ -114,7 +114,7 @@ module.exports = (botInstance) => {
         botInstance.timers = botInstance.timers || [];
         botInstance.timers.push(sniff.flushTimer);
 
-        emitLog(`🔬 粒子嗅探已开启：监听 world_particles + entity_status（${SNIFF_RADIUS}格内，每${FLUSH_INTERVAL / 1000}秒汇总）。请站到钓鱼点附近，观察热点出现时是哪个粒子 id。`);
+        emitLog(`粒子嗅探已开启：监听 world_particles + entity_status（${SNIFF_RADIUS}格内，每${FLUSH_INTERVAL / 1000}秒汇总）。请站到钓鱼点附近，观察热点出现时是哪个粒子 id。`);
     };
 
     botInstance.stopParticleSniff = () => {
@@ -122,7 +122,7 @@ module.exports = (botInstance) => {
         sniff.active = false;
         detach();
         flush(); // 输出最后一批
-        emitLog('🔬 粒子嗅探已关闭');
+        emitLog('粒子嗅探已关闭');
     };
 
     botInstance.cleanupHooks = botInstance.cleanupHooks || [];

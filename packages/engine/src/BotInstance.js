@@ -138,6 +138,9 @@ class BotInstance {
                     }, 2000); // 延迟2秒，给服务器加载时间
                 }
 
+                // 应用寻路策略（默认无破坏模式，适配受保护地图）
+                this.applyMovements();
+
                 // 启动状态同步
                 if (this.statusTimer) clearInterval(this.statusTimer);
                 this.statusTimer = setInterval(() => this.updateStatus(), 2000);
@@ -271,9 +274,29 @@ class BotInstance {
             logger.warn(`[${this.config.username}] 被踢出: ${text || '(无原因)'}`);
             this.io.to(this._room).to('admin').emit('log', {
                 user: this.config.username, ownerId: this.config.ownerId,
-                msg: `⚠️ 被服务器踢出: ${text || '(无原因)'}`, time: new Date().toLocaleTimeString()
+                msg: `被服务器踢出: ${text || '(无原因)'}`, time: new Date().toLocaleTimeString()
             });
             if (isFatalKick(reason)) this._fatalReason = text || '不可恢复的断开';
+        });
+
+        // 自动复活：mineflayer 默认死亡即自动重生（无需手动）。此处仅记录可见日志，
+        // 并在复活后按需执行回点指令（多世界 RPG 服死亡会回主城，用 /back、/spawn 等返回）。
+        this.bot.on('death', () => {
+            this.io.to(this._room).to('admin').emit('log', {
+                user: this.config.username, ownerId: this.config.ownerId,
+                msg: '机器人死亡，正在自动复活…', time: new Date().toLocaleTimeString()
+            });
+            const respawnCmd = this.config.settings?.respawnCommand?.trim();
+            if (respawnCmd) {
+                setTimeout(() => {
+                    if (!this.bot) return;
+                    this.bot.chat(respawnCmd);
+                    this.io.to(this._room).to('admin').emit('log', {
+                        user: this.config.username, ownerId: this.config.ownerId,
+                        msg: `复活后执行: ${respawnCmd}`, time: new Date().toLocaleTimeString()
+                    });
+                }, 1500);
+            }
         });
     }
 
@@ -312,16 +335,41 @@ class BotInstance {
         });
     }
 
+    // 构建寻路移动策略。
+    // 默认「无破坏模式」：不挖方块、不搭脚手架、不搭柱子——多数服务器地图受保护，
+    // 挖/搭都会失败并让寻路反复卡死。设 settings.allowDig=true 可恢复破坏式寻路（自建/创造服适用）。
+    makeMovements() {
+        const mcData = require('minecraft-data')(this.bot.version);
+        const m = new Movements(this.bot, mcData);
+        const allowDig = !!this.config.settings?.allowDig;
+        m.canDig = allowDig;
+        if (!allowDig) {
+            m.scafoldingBlocks = []; // 不放置脚手架方块
+            m.allow1by1towers = false; // 不搭柱子
+        }
+        return m;
+    }
+
+    // 把当前的移动策略应用到 pathfinder（登录后及切换破坏模式时调用）。
+    applyMovements() {
+        try {
+            if (this.bot?.pathfinder) this.bot.pathfinder.setMovements(this.makeMovements());
+        } catch (e) {
+            logger.error(`[${this.config.username}] 应用寻路策略失败:`, e.message);
+        }
+    }
+
     // 寻路实现
     move(x, y, z) {
         if (this.bot?.pathfinder) {
-            const mcData = require('minecraft-data')(this.bot.version);
-            this.bot.pathfinder.setMovements(new Movements(this.bot, mcData));
+            this.bot.pathfinder.setMovements(this.makeMovements());
             this.bot.pathfinder.setGoal(new goals.GoalBlock(x, y, z));
-            
+
+            const mode = this.config.settings?.allowDig ? '破坏' : '无破坏';
             this.io.to(this._room).to('admin').emit('log', {
                 user: this.config.username,
-                msg: `📍 启动寻路至: ${x}, ${y}, ${z}`,
+                ownerId: this.config.ownerId,
+                msg: `启动寻路至 ${x}, ${y}, ${z}（${mode}模式）`,
                 time: new Date().toLocaleTimeString()
             });
         }
@@ -441,7 +489,7 @@ class BotInstance {
         this.io.to(this._room).to('admin').emit('log', {
             user: this.config.username,
             ownerId: this.config.ownerId,
-            msg: `💾 已保存地点: ${name} (${location.x}, ${location.y}, ${location.z})`,
+            msg: `已保存地点: ${name} (${location.x}, ${location.y}, ${location.z})`,
             time: new Date().toLocaleTimeString()
         });
 
@@ -460,7 +508,7 @@ class BotInstance {
         this.io.to(this._room).to('admin').emit('log', {
             user: this.config.username,
             ownerId: this.config.ownerId,
-            msg: `🗑️ 已删除地点: ${deleted.name}`,
+            msg: `已删除地点: ${deleted.name}`,
             time: new Date().toLocaleTimeString()
         });
 
@@ -479,7 +527,7 @@ class BotInstance {
             this.io.to(this._room).to('admin').emit('log', {
                 user: this.config.username,
                 ownerId: this.config.ownerId,
-                msg: `🌀 切图指令: ${location.command}，2.5秒后寻路`,
+                msg: `切图指令: ${location.command}，2.5秒后寻路`,
                 time: new Date().toLocaleTimeString()
             });
             setTimeout(() => {

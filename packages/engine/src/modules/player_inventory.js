@@ -25,8 +25,8 @@ module.exports = (botInstance) => {
             if (prev) {
                 for (const k of new Set([...Object.keys(totals), ...Object.keys(prev)])) {
                     const d = (totals[k] || 0) - (prev[k] || 0);
-                    if (d > 0) emitItem(`📥 获得 ${k} ×${d}`);
-                    else if (d < 0) emitItem(`📤 失去 ${k} ×${-d}`);
+                    if (d > 0) emitItem(`获得 ${k} ×${d}`);
+                    else if (d < 0) emitItem(`失去 ${k} ×${-d}`);
                 }
             }
             botInstance._itemTotals = totals;

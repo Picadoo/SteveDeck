@@ -145,7 +145,7 @@ module.exports = (botInstance) => {
     botInstance.io.to(botInstance._room).to("admin").emit("log", {
       user: bot.username,
       ownerId: botInstance.config.ownerId,
-      msg: `📦 打开界面：${txt(win.title) || "容器"}`,
+      msg: `打开界面：${txt(win.title) || "容器"}`,
       time: new Date().toLocaleTimeString(),
     });
   };

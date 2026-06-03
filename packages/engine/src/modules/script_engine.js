@@ -151,7 +151,7 @@ module.exports = (botInstance) => {
             if (!resolved) return true;
             return evalExpr(resolved);
         } catch (e) {
-            emitLog(`⚠️ 条件解析失败: ${cond}`);
+            emitLog(`条件解析失败: ${cond}`);
             return false;
         }
     }
@@ -266,7 +266,7 @@ module.exports = (botInstance) => {
             return false;
         }
 
-        emitLog(`⚠️ 未知条件: ${c}`);
+        emitLog(`未知条件: ${c}`);
         return false;
     }
 
@@ -348,7 +348,7 @@ module.exports = (botInstance) => {
             case 'goto_location': {
                 const locName = step.name || step.location || '';
                 const loc = (botInstance.savedLocations || []).find(l => l.name === locName);
-                if (!loc) { emitLog(`⚠️ 未找到保存的地点: ${locName}`); break; }
+                if (!loc) { emitLog(`未找到保存的地点: ${locName}`); break; }
                 emitLog(`前往地点「${locName}」(${loc.x}, ${loc.y}, ${loc.z})`);
                 const locGoal = new goals.GoalBlock(loc.x, loc.y, loc.z);
                 const locPromise = bot.pathfinder.goto(locGoal);
@@ -360,7 +360,7 @@ module.exports = (botInstance) => {
 
             case 'chat': {
                 const msg = step.msg || '';
-                if (isChatBlocked(msg)) { emitLog('⚠️ 消息被安全策略拦截'); break; }
+                if (isChatBlocked(msg)) { emitLog('消息被安全策略拦截'); break; }
                 emitLog(`发送: ${msg}`);
                 bot.chat(msg);
                 break;
@@ -370,7 +370,7 @@ module.exports = (botInstance) => {
                 const text = step.text || step.cmd || '';
                 if (!text) break;
                 const final = text.startsWith('/') ? text : '/' + text;
-                if (isChatBlocked(final)) { emitLog(`⚠️ 命令被安全策略拦截: ${final}`); break; }
+                if (isChatBlocked(final)) { emitLog(`命令被安全策略拦截: ${final}`); break; }
                 emitLog(`命令: ${final}`);
                 bot.chat(final);
                 break;
@@ -381,7 +381,7 @@ module.exports = (botInstance) => {
                 const msg = step.msg || '';
                 if (target && msg) {
                     const final = `/msg ${target} ${msg}`;
-                    if (isChatBlocked(final)) { emitLog('⚠️ 私聊被安全策略拦截'); break; }
+                    if (isChatBlocked(final)) { emitLog('私聊被安全策略拦截'); break; }
                     emitLog(`私聊 ${target}: ${msg}`);
                     bot.chat(final);
                 }
@@ -439,7 +439,7 @@ module.exports = (botInstance) => {
             case 'click_slot': {
                 const slot = Number(step.slot);
                 const button = Number(step.button) || 0;
-                if (!bot.currentWindow) { emitLog(`⚠️ 没有打开界面，跳过`); break; }
+                if (!bot.currentWindow) { emitLog(`没有打开界面，跳过`); break; }
                 await waitForGuiReady(ctx);
                 emitLog(`点击槽位 ${slot}`);
                 await bot.clickWindow(slot, button, 0);
@@ -464,14 +464,14 @@ module.exports = (botInstance) => {
                     emitLog(`装备: ${item.name}`);
                     await bot.equip(item, step.dest || 'hand');
                 } else {
-                    emitLog(`⚠️ 没有: ${step.item}`);
+                    emitLog(`没有: ${step.item}`);
                 }
                 break;
             }
 
             case 'equip_best_weapon': {
                 const items = bot.inventory.items().filter(i => /sword|axe/.test(i.name));
-                if (items.length === 0) { emitLog('⚠️ 背包无武器'); break; }
+                if (items.length === 0) { emitLog('背包无武器'); break; }
                 try {
                     const mc = require('minecraft-data')(bot.version);
                     items.sort((a, b) => {
@@ -516,7 +516,7 @@ module.exports = (botInstance) => {
                 };
                 for (let i = 0; i < count && !ctx.aborted; i++) {
                     const entity = findTarget();
-                    if (!entity) { emitLog('⚠️ 没有可攻击目标'); break; }
+                    if (!entity) { emitLog('没有可攻击目标'); break; }
                     emitLog(`攻击 ${entity.name || entity.username || entity.id} (${i + 1}/${count})`);
                     try { bot.attack(entity); } catch (e) {}
                     if (i < count - 1) await sleep(interval);
@@ -549,7 +549,7 @@ module.exports = (botInstance) => {
 
             case 'return_home': {
                 const rp = botInstance.mobHunterTask?.returnPoint;
-                if (!rp) { emitLog('⚠️ 未设置归家点'); break; }
+                if (!rp) { emitLog('未设置归家点'); break; }
                 emitLog(`回家 (${Math.floor(rp.x)}, ${Math.floor(rp.y)}, ${Math.floor(rp.z)})`);
                 await bot.pathfinder.goto(new goals.GoalBlock(
                     Math.floor(rp.x), Math.floor(rp.y), Math.floor(rp.z)
@@ -567,7 +567,7 @@ module.exports = (botInstance) => {
                         s && (s.name || '').toLowerCase().includes(itemName)
                     );
                 }, timeout, ctx);
-                if (!found) emitLog(`⚠️ 超时未找到: ${step.item}`);
+                if (!found) emitLog(`超时未找到: ${step.item}`);
                 break;
             }
 
@@ -589,7 +589,7 @@ module.exports = (botInstance) => {
                         emitVars();
                     }
                 } else {
-                    emitLog(`⚠️ 等待聊天超时`);
+                    emitLog(`等待聊天超时`);
                 }
                 break;
             }
@@ -640,7 +640,7 @@ module.exports = (botInstance) => {
 
             case 'find_and_click_slot': {
                 const button = Number(step.button) || 0;
-                if (!bot.currentWindow) { emitLog(`⚠️ 没有打开界面`); break; }
+                if (!bot.currentWindow) { emitLog(`没有打开界面`); break; }
                 await waitForGuiReady(ctx);
                 // 增强匹配：matchLore 同时搜 lore；slotFrom/slotTo 限定槽位范围；save_slot 把命中槽位存入变量。
                 // 全部可选，老脚本(只填 item)行为不变。
@@ -657,7 +657,7 @@ module.exports = (botInstance) => {
                     await sleep(300);
                     if (bot.currentWindow) await waitForGuiReady(ctx);
                 } else {
-                    emitLog(`⚠️ 界面中未找到: ${step.item}`);
+                    emitLog(`界面中未找到: ${step.item}`);
                 }
                 break;
             }
@@ -667,7 +667,7 @@ module.exports = (botInstance) => {
                 const timeout = (Number(step.timeout) || 60) * 1000;
                 emitLog(`等待条件: ${cond}`);
                 const ok = await pollUntil(() => evalCondition(cond), timeout, ctx);
-                if (!ok) emitLog(`⚠️ 条件等待超时: ${cond}`);
+                if (!ok) emitLog(`条件等待超时: ${cond}`);
                 break;
             }
 
@@ -693,7 +693,7 @@ module.exports = (botInstance) => {
             }
 
             default:
-                emitLog(`⚠️ 未知动作: ${action}`);
+                emitLog(`未知动作: ${action}`);
         }
     }
 
@@ -705,7 +705,7 @@ module.exports = (botInstance) => {
             if (ctx.aborted || !bot.entity) return;
             ctx.totalSteps = (ctx.totalSteps || 0) + 1;
             if (ctx.totalSteps > MAX_TOTAL_STEPS) {
-                emitLog(`⚠️ 总执行步数超过 ${MAX_TOTAL_STEPS}，强制终止（疑似死循环）`);
+                emitLog(`总执行步数超过 ${MAX_TOTAL_STEPS}，强制终止（疑似死循环）`);
                 ctx.aborted = true;
                 return;
             }
@@ -733,7 +733,7 @@ module.exports = (botInstance) => {
                     const times = Number(step.times) || 0;
                     const subSteps = step.steps || [];
                     if (times <= 0 && subSteps.length === 0) {
-                        emitLog('⚠️ 已阻止空的无限重复块');
+                        emitLog('已阻止空的无限重复块');
                         continue;
                     }
                     let count = 0;
@@ -777,12 +777,12 @@ module.exports = (botInstance) => {
 
                 if (step.do === 'run_script') {
                     const scriptName = resolveVars(String(step.name || ''));
-                    if (!scriptName) { emitLog('⚠️ run_script 缺少 name'); continue; }
+                    if (!scriptName) { emitLog('run_script 缺少 name'); continue; }
                     if (ctx.callDepth >= MAX_CALL_DEPTH) {
-                        emitLog(`⚠️ 子脚本嵌套超过 ${MAX_CALL_DEPTH} 层`); continue;
+                        emitLog(`子脚本嵌套超过 ${MAX_CALL_DEPTH} 层`); continue;
                     }
                     const subScript = botInstance._scripts[scriptName];
-                    if (!subScript) { emitLog(`⚠️ 子脚本不存在: ${scriptName}`); continue; }
+                    if (!subScript) { emitLog(`子脚本不存在: ${scriptName}`); continue; }
 
                     // 参数注入：保存原值，调用后还原
                     const savedVars = {};
@@ -828,7 +828,7 @@ module.exports = (botInstance) => {
                 }
 
             } catch (err) {
-                emitLog(`⚠️ 步骤 ${i + 1} (${step.do}) 出错: ${err.message}`);
+                emitLog(`步骤 ${i + 1} (${step.do}) 出错: ${err.message}`);
                 emitError(pathStr, step.do, err.message);
             }
         }
@@ -847,7 +847,7 @@ module.exports = (botInstance) => {
         const ctx = { name, aborted: false, callDepth: 0, totalSteps: 0, loopIter: 0 };
         botInstance._runningScript = ctx;
         emitStatus(name, 'running');
-        emitLog(`▶ 启动脚本: ${name}`);
+        emitLog(`启动脚本: ${name}`);
 
         try {
             const doLoop = script.loop === true;
@@ -869,7 +869,7 @@ module.exports = (botInstance) => {
         } finally {
             botInstance._runningScript = null;
             emitStatus(name, 'stopped');
-            emitLog(`■ 脚本结束: ${name}`);
+            emitLog(`脚本结束: ${name}`);
         }
     }
 

@@ -1,13 +1,21 @@
 import { useEffect, useState } from "react";
-import { User, Users, Send } from "lucide-react";
+import { User, Users, Send, Heart, Drumstick, MapPin } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import { Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import { healthPct } from "@/lib/format";
+import { MODULES } from "./moduleDefs";
+import { cn } from "@/lib/cn";
 import type { BotSummary } from "@mcbot/protocol";
 
-/** 机器人实时视角：第三人称(可点地面走) / 第一人称(镜头跟随最稳) + 坐标浮层 + 边看边发指令 */
+// 视角里可一键开关的「快速验证」模块：边看 3D 边切，立刻看效果
+const QUICK_KEYS = ["combat", "fishing", "mob_hunter"];
+const QUICK_MODULES = QUICK_KEYS.map((k) => MODULES.find((m) => m.key === k)).filter(
+  (m): m is (typeof MODULES)[number] => !!m,
+);
+
+/** 机器人实时视角：第三人称(可点地面走) / 第一人称(镜头跟随最稳) + 坐标浮层 + 模块快速开关 + 边看边发指令 */
 export default function ViewerModal({
   bot,
   open,
@@ -48,11 +56,17 @@ export default function ViewerModal({
 
   const pos = bot.pos;
   const pct = healthPct(bot);
+
   async function send() {
     const m = cmdText.trim();
     if (!m) return;
     setCmdText("");
     await cmd.chat(bot.id, m);
+  }
+  function toggleModule(key: string, active: boolean) {
+    cmd.toggleModule(bot.id, key, active).then((r) => {
+      if (!r.ok) pushToast(r.error || "操作失败", "error");
+    });
   }
 
   return (
@@ -87,12 +101,49 @@ export default function ViewerModal({
             {loading ? "正在启动视角…" : "未启动"}
           </div>
         )}
-        {/* 坐标 / 状态浮层 */}
+        {/* 坐标 / 状态浮层（lucide 图标，匹配整体界面） */}
         {pos && (
-          <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-black/55 px-2 py-1 font-mono text-[11px] text-white shadow">
-            XYZ {pos.x}, {pos.y}, {pos.z} · ❤ {pct ?? "-"}% · 🍗 {bot.food ?? "-"}
+          <div className="pointer-events-none absolute left-2 top-2 flex items-center gap-2.5 rounded-md bg-black/55 px-2.5 py-1 font-mono text-[11px] text-white shadow">
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3 w-3 text-emerald-400" />
+              {pos.x}, {pos.y}, {pos.z}
+            </span>
+            <span className="flex items-center gap-1">
+              <Heart className="h-3 w-3 text-rose-400" />
+              {pct ?? "-"}%
+            </span>
+            <span className="flex items-center gap-1">
+              <Drumstick className="h-3 w-3 text-amber-400" />
+              {bot.food ?? "-"}
+            </span>
           </div>
         )}
+      </div>
+
+      {/* 模块快速开关：边看边切，立刻验证效果 */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {QUICK_MODULES.map((def) => {
+          const Icon = def.icon;
+          const active = !!bot.modules[def.activeFlag];
+          return (
+            <button
+              key={def.key}
+              type="button"
+              disabled={!bot.online}
+              onClick={() => toggleModule(def.key, !active)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40",
+                active
+                  ? "border-accent/40 bg-accent/15 text-accent"
+                  : "border-border bg-surface-2/50 text-muted hover:text-fg",
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {def.name}
+              <span className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-accent" : "bg-muted/40")} />
+            </button>
+          );
+        })}
       </div>
 
       {/* 边看边发指令 */}

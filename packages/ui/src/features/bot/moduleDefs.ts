@@ -29,12 +29,12 @@ export interface ModuleDef {
 }
 
 const CROPS = [
-  { value: "wheat", label: "🌾 小麦" },
-  { value: "carrots", label: "🥕 胡萝卜" },
-  { value: "potatoes", label: "🥔 土豆" },
-  { value: "beetroots", label: "🌱 甜菜根" },
-  { value: "pumpkin", label: "🎃 南瓜" },
-  { value: "melon", label: "🍉 西瓜" },
+  { value: "wheat", label: "小麦" },
+  { value: "carrots", label: "胡萝卜" },
+  { value: "potatoes", label: "土豆" },
+  { value: "beetroots", label: "甜菜根" },
+  { value: "pumpkin", label: "南瓜" },
+  { value: "melon", label: "西瓜" },
 ];
 
 export const MODULES: ModuleDef[] = [

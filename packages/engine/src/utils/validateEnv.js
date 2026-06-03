@@ -38,25 +38,25 @@ function validateEnv() {
     // 打印结果
     if (errors.length > 0) {
         if (process.env.NODE_ENV === 'production') {
-            console.error('\n❌ 环境配置错误:');
+            console.error('\n环境配置错误:');
             errors.forEach(err => console.error(`  - ${err}`));
             console.error('\n请检查.env文件或环境变量设置\n');
             process.exit(1);
         } else {
             // 开发环境降级为警告，不阻止启动
-            console.warn('\n⚠️  环境配置问题（开发环境，不阻止启动）:');
+            console.warn('\n 环境配置问题（开发环境，不阻止启动）:');
             errors.forEach(err => console.warn(`  - ${err}`));
             console.warn('');
         }
     }
 
     if (warnings.length > 0) {
-        console.warn('\n⚠️  环境配置警告:');
+        console.warn('\n 环境配置警告:');
         warnings.forEach(warn => console.warn(`  - ${warn}`));
         console.warn('');
     }
 
-    console.log('✅ 环境变量验证通过');
+    console.log('环境变量验证通过');
 }
 
 /**

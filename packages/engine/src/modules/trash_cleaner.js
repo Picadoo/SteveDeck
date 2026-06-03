@@ -30,7 +30,7 @@ module.exports = (botInstance) => {
             if (isTrash) {
                 try {
                     // 打印日志并丢弃整叠物品
-                    emitLog(`🗑️ 自动清理: 丢弃 ${item.name} x${item.count}`);
+                    emitLog(`自动清理: 丢弃 ${item.name} x${item.count}`);
 
                     await bot.tossStack(item);
                     // 稍微等待一下，防止丢弃动作太快导致封号或出错
@@ -48,7 +48,7 @@ module.exports = (botInstance) => {
         botInstance.trashCleanerTask.trashItems = items;
 
         if (active) {
-            emitLog("✅ 自动清理开启：将定期清理指定垃圾");
+            emitLog("自动清理开启：将定期清理指定垃圾");
             // 每 10 秒扫描一次背包
             if (botInstance.trashCleanerTask.timer) clearInterval(botInstance.trashCleanerTask.timer);
             botInstance.trashCleanerTask.timer = setInterval(cleanInventory, 10000);
@@ -60,7 +60,7 @@ module.exports = (botInstance) => {
             // 立即执行一次
             cleanInventory();
         } else {
-            emitLog("❌ 自动清理已关闭");
+            emitLog("自动清理已关闭");
             if (botInstance.trashCleanerTask.timer) {
                 clearInterval(botInstance.trashCleanerTask.timer);
                 botInstance.trashCleanerTask.timer = null;

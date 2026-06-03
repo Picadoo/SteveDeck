@@ -70,6 +70,34 @@ if (variant === "slim") {
   log("精简版：已移除 prismarine-viewer / canvas / three");
 }
 
+// 3.5 完整版：裁剪 3D 视角材质——prismarine-viewer 自带 16 个版本的 blocksStates(110MB)+textures(77MB)，
+//      但每个 bot 只用自己版本。只保留常用版本，体积可从 ~248MB 砍到 ~75-120MB。
+//      （worker.js 61MB 是浏览器端渲染器代码，必须保留。）可用 ENGINE_VIEWER_VERSIONS 覆盖保留集。
+if (variant === "full") {
+  const keep = new Set(
+    (process.env.ENGINE_VIEWER_VERSIONS || "1.8.8,1.12.2,1.16.4,1.18.1,1.20.1")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  const pnpmDir = path.join(out, "node_modules", ".pnpm");
+  const pvName = fs.existsSync(pnpmDir) && fs.readdirSync(pnpmDir).find((n) => n.startsWith("prismarine-viewer@"));
+  const pub = pvName && path.join(pnpmDir, pvName, "node_modules", "prismarine-viewer", "public");
+  if (pub && fs.existsSync(pub)) {
+    const before = dirSizeMB(pub);
+    const isVer = (v) => /^\d+\.\d+/.test(v); // 仅动版本号命名的条目，避免误删 entity 等公共资源
+    for (const sub of ["blocksStates", "textures"]) {
+      const dir = path.join(pub, sub);
+      if (!fs.existsSync(dir)) continue;
+      for (const f of fs.readdirSync(dir)) {
+        const v = f.replace(/\.(json|png)$/, "");
+        if (isVer(v) && !keep.has(v)) fs.rmSync(path.join(dir, f), { recursive: true, force: true });
+      }
+    }
+    log(`完整版：视角材质裁剪 ${before}→${dirSizeMB(pub)} MB（保留 ${[...keep].join("/")}）`);
+  }
+}
+
 // 4. 带上 node.exe（用当前 Node 运行时；napi 预编译二进制 ABI 稳定）
 const nodeExe = process.execPath;
 fs.copyFileSync(nodeExe, path.join(out, path.basename(nodeExe)));

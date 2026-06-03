@@ -42,7 +42,7 @@ module.exports = (botInstance) => {
     const schedule = (ms) => {
         if (task._tickTimer) clearTimeout(task._tickTimer);
         if (task._manualTick) return; // 测试手动驱动模式：状态照常转移，但不自动调度，避免与手动 tick 重入
-        task._tickTimer = setTimeout(() => { tick().catch(e => emitLog(`⚠️ tick异常: ${e.message}`)); }, ms);
+        task._tickTimer = setTimeout(() => { tick().catch(e => emitLog(`tick异常: ${e.message}`)); }, ms);
         botInstance.timers = botInstance.timers || [];
         botInstance.timers.push(task._tickTimer);
     };
@@ -138,7 +138,7 @@ module.exports = (botInstance) => {
 
         if (task.targetIds.length === 0) {
             task.targetIds = buildTargetIds();
-            if (task.targetIds.length === 0) { emitLog('⚠️ 目标方块名无效，已停机'); return botInstance.stopAutoMine(); }
+            if (task.targetIds.length === 0) { emitLog('目标方块名无效，已停机'); return botInstance.stopAutoMine(); }
         }
 
         const positions = bot.findBlocks({ matching: task.targetIds, maxDistance: task.config.scanRadius, count: task.config.queueSize }) || [];
@@ -166,7 +166,7 @@ module.exports = (botInstance) => {
             if (task.approachFails >= (task.config.advance.maxFails || 5)) {
                 task.approachFails = 0;
                 task.queue = [];
-                emitLog('⚠️ 连续无法到达目标矿，转移到新区域');
+                emitLog('连续无法到达目标矿，转移到新区域');
                 setState('ADVANCE');
                 return schedule(H.actionInterval(task.config.humanize, 800));
             }
@@ -187,7 +187,7 @@ module.exports = (botInstance) => {
         let tool = null;
         try { tool = bot.pathfinder.bestHarvestTool(block); if (tool) await bot.equip(tool, 'hand'); } catch (e) {}
         const canDig = typeof bot.canDigBlock === 'function' ? bot.canDigBlock(block) : true;
-        if (!tool && !canDig) { emitLog(`⚠️ 无合适工具，跳过 ${block.name}`); return nextFromQueueOrScan(); }
+        if (!tool && !canDig) { emitLog(`无合适工具，跳过 ${block.name}`); return nextFromQueueOrScan(); }
 
         try {
             await bot.lookAt(pos.offset ? pos.offset(0.5, 0.5, 0.5) : { x: pos.x + 0.5, y: pos.y + 0.5, z: pos.z + 0.5 }, true);
@@ -216,7 +216,7 @@ module.exports = (botInstance) => {
         } catch (e) {
             task.advanceFails++;
             if (task.advanceFails >= (task.config.advance.maxFails || 5)) {
-                emitLog(`⚠️ 连续 ${task.advanceFails} 次无法推进，停机`);
+                emitLog(`连续 ${task.advanceFails} 次无法推进，停机`);
                 return botInstance.stopAutoMine();
             }
             setState('ADVANCE');
@@ -227,7 +227,7 @@ module.exports = (botInstance) => {
     async function doPause() {
         if (task.waitingScript) return; // 正在等脚本，避免重入
         task.stats.fullEvents++;
-        emitLog('📦 背包已满，执行清理策略...');
+        emitLog('背包已满，执行清理策略...');
 
         // 1) 先丢垃圾
         const dropped = await dropTrashItems();
@@ -239,20 +239,20 @@ module.exports = (botInstance) => {
         const hasScript = sname && botInstance._scripts && botInstance._scripts[sname];
         if (hasScript && typeof botInstance.startScript === 'function') {
             if (botInstance._runningScript) { await waitScriptDone((task.config.onFull.scriptTimeout || 120) * 1000); }
-            emitLog(`📦 调用回收脚本: ${sname}`);
+            emitLog(`调用回收脚本: ${sname}`);
             task.waitingScript = true;
             try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (e) {}
             botInstance.startScript(sname);
             const res = await waitScriptDone((task.config.onFull.scriptTimeout || 120) * 1000);
             task.waitingScript = false;
-            if (res === 'timeout') { emitLog('⚠️ 回收脚本超时，停机'); return botInstance.stopAutoMine(); }
+            if (res === 'timeout') { emitLog('回收脚本超时，停机'); return botInstance.stopAutoMine(); }
             if (!task.active) return;
             setState('SCAN');
             return schedule(H.actionInterval(task.config.humanize, 500));
         }
 
         // 3) 保底
-        emitLog('⚠️ 背包满且无可用清理策略（无垃圾可丢/未配回收脚本），停机');
+        emitLog('背包满且无可用清理策略（无垃圾可丢/未配回收脚本），停机');
         return botInstance.stopAutoMine();
     }
 
@@ -277,7 +277,7 @@ module.exports = (botInstance) => {
             botInstance.config.settings = botInstance.config.settings || {};
             botInstance.config.settings.autoMine = { active: true, config: task.config };
             if (typeof botInstance.saveConfig === 'function') botInstance.saveConfig();
-            emitLog(`⛏️ 启动挖矿: ${task.config.targets.join(', ')} | 拟人:${task.config.humanize}`);
+            emitLog(`启动挖矿: ${task.config.targets.join(', ')} | 拟人:${task.config.humanize}`);
             schedule(300);
         } else {
             botInstance.stopAutoMine();

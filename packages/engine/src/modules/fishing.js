@@ -17,7 +17,7 @@ module.exports = (botInstance) => {
         );
 
         if (!rod) {
-            emitLog("⚠️ 背包无鱼竿，已自动关闭钓鱼模块");
+            emitLog("背包无鱼竿，已自动关闭钓鱼模块");
 
             if (!botInstance.config.settings) botInstance.config.settings = {};
             botInstance.config.settings.fishing = false;
@@ -45,7 +45,7 @@ module.exports = (botInstance) => {
                         item.slot !== rod.slot
                     );
                     if (otherRod) {
-                        emitLog("🔄 鱼竿耐久不足，切换备用鱼竿");
+                        emitLog("鱼竿耐久不足，切换备用鱼竿");
                         await bot.equip(otherRod, 'hand');
                     }
                 }
@@ -69,7 +69,7 @@ module.exports = (botInstance) => {
             if (!botInstance.fishingActive) return;
             // 超时不刷屏，只在非超时错误时打日志
             if (!err.message.includes('超时')) {
-                emitLog(`❌ 钓鱼出错: ${err.message}`);
+                emitLog(`钓鱼出错: ${err.message}`);
             }
             if (botInstance.fishingActive) setTimeout(fishingLoop, 2000);
         }

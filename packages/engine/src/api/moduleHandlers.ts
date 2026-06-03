@@ -248,6 +248,28 @@ function dispatchAction(
         /* ignore */
       }
       return ok();
+
+    // ===== 行为设置：寻路破坏模式 / 复活后指令 =====
+    case "behavior:get":
+      return ok({
+        allowDig: !!inst.config?.settings?.allowDig,
+        respawnCommand: inst.config?.settings?.respawnCommand || "",
+      });
+    case "behavior:setDig": {
+      const allow = !!args.allow;
+      persistSettings(id, (s) => {
+        (s as any).allowDig = allow;
+      });
+      inst.applyMovements?.(); // 立即生效，无需重连
+      return ok({ allowDig: allow });
+    }
+    case "behavior:setRespawnCmd": {
+      const c = String(args.command || "").trim();
+      persistSettings(id, (s) => {
+        (s as any).respawnCommand = c || undefined;
+      });
+      return ok({ respawnCommand: c });
+    }
     case "scoreboard:get":
       return ok(inst.getScoreboard?.() ?? null);
     case "inventory:sync":
