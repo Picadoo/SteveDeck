@@ -26,6 +26,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     }
     return Array.from(map.entries()).map(([host, list]) => ({
       host,
+      label: list.find((b) => b.note)?.note || host,
       list,
       online: list.filter((b) => b.online).length,
     }));
@@ -71,7 +72,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     />
                     <Server className="h-3 w-3 shrink-0 text-accent/70" />
                     <span className="min-w-0 flex-1 truncate" title={g.host}>
-                      {g.host}
+                      {g.label}
                     </span>
                     <span className="shrink-0 tabular-nums">
                       {g.online}/{g.list.length}

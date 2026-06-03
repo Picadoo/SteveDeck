@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { RefreshCw, Package, Boxes } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { RefreshCw, Package, Boxes, Shirt, Hand, Trash2 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { Button, Input, Card } from "@/components/ui/primitives";
@@ -71,7 +71,7 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
                 </div>
                 <div className="space-y-1">
                   {groups[cat].map((it) => (
-                    <ItemRow key={it.slot} item={it} />
+                    <ItemRow key={it.slot} item={it} botId={bot.id} online={!!bot.online} />
                   ))}
                 </div>
               </div>
@@ -83,9 +83,14 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
   );
 }
 
-function ItemRow({ item }: { item: InventoryItem }) {
+function ItemRow({ item, botId, online }: { item: InventoryItem; botId: string; online: boolean }) {
+  const pushToast = useStore((s) => s.pushToast);
+  const act = async (action: "equip" | "use" | "drop") => {
+    const r = await cmd.moduleAction(botId, "inventory", action, { slot: item.slot });
+    if (!r.ok) pushToast(r.error || "操作失败", "error");
+  };
   return (
-    <div className="flex items-start gap-2 rounded-lg bg-surface-2/50 px-3 py-2">
+    <div className="group flex items-start gap-2 rounded-lg bg-surface-2/50 px-3 py-2">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm font-medium">{item.name}</span>
@@ -108,8 +113,41 @@ function ItemRow({ item }: { item: InventoryItem }) {
           </p>
         )}
       </div>
+      {online && (
+        <div className="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+          <SlotBtn title="装备 / 手持" onClick={() => act("equip")}>
+            <Shirt className="h-3.5 w-3.5" />
+          </SlotBtn>
+          <SlotBtn title="使用 / 右键" onClick={() => act("use")}>
+            <Hand className="h-3.5 w-3.5" />
+          </SlotBtn>
+          <SlotBtn title="丢弃整组" onClick={() => act("drop")}>
+            <Trash2 className="h-3.5 w-3.5 text-danger" />
+          </SlotBtn>
+        </div>
+      )}
       <span className="shrink-0 pt-0.5 text-[10px] text-muted/50 tabular-nums">#{item.slot}</span>
     </div>
+  );
+}
+
+function SlotBtn({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className="rounded p-1 text-muted hover:bg-surface hover:text-fg"
+    >
+      {children}
+    </button>
   );
 }
 

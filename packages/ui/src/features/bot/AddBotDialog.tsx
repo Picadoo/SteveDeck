@@ -5,7 +5,7 @@ import { Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 
-const EMPTY = { username: "", host: "", port: "25565", version: "1.20.1", loginPassword: "" };
+const EMPTY = { username: "", host: "", port: "25565", version: "1.20.1", loginPassword: "", note: "" };
 
 export interface EditInitial {
   username: string;
@@ -13,6 +13,7 @@ export interface EditInitial {
   port?: number;
   version?: string;
   loginPassword?: string;
+  note?: string;
 }
 
 export default function AddBotDialog({
@@ -41,6 +42,7 @@ export default function AddBotDialog({
         port: String(initial.port ?? 25565),
         version: initial.version || "1.20.1",
         loginPassword: initial.loginPassword || "",
+        note: initial.note || "",
       });
     } else {
       setForm({ ...EMPTY });
@@ -66,6 +68,7 @@ export default function AddBotDialog({
       port: Number(form.port) || 25565,
       version: form.version.trim() || undefined,
       loginPassword: form.loginPassword || undefined,
+      note: form.note.trim() || undefined,
     };
     const res = isEdit ? await cmd.updateBot(editId!, payload) : await cmd.addBot(payload);
     setBusy(false);
@@ -92,6 +95,9 @@ export default function AddBotDialog({
             <Input value={form.port} onChange={(e) => set("port", e.target.value)} placeholder="25565" inputMode="numeric" />
           </Field>
         </div>
+        <Field label="服务器备注（便于记忆，界面优先显示）">
+          <Input value={form.note} onChange={(e) => set("note", e.target.value)} placeholder="例如 花果山 RPG" />
+        </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="游戏版本">
             <Input value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="1.20.1" />

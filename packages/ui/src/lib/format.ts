@@ -22,3 +22,16 @@ export function healthBar(pct: number | null): string {
   if (pct > 30) return "bg-warning";
   return "bg-danger";
 }
+
+/** 秒 → 在线时长（如 2天3时 / 5时12分 / 8分30秒） */
+export function fmtUptime(sec: number | null | undefined): string {
+  if (sec == null || sec < 0) return "—";
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (d > 0) return `${d}天${h}时`;
+  if (h > 0) return `${h}时${m}分`;
+  if (m > 0) return `${m}分${s}秒`;
+  return `${s}秒`;
+}

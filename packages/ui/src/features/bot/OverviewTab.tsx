@@ -17,27 +17,14 @@ import {
   Crosshair,
   Trash2,
   FileCode2,
+  Clock,
 } from "lucide-react";
 import { Card, Button, Input, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
-import { healthBar, healthTone } from "@/lib/format";
+import { healthBar, healthTone, fmtUptime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import type { BotSummary, Observation } from "@mcbot/protocol";
-
-const DIM_CN: Record<string, string> = {
-  overworld: "主世界",
-  the_nether: "下界",
-  the_end: "末路之地",
-  nether: "下界",
-  end: "末路之地",
-};
-const MODE_CN: Record<string, string> = {
-  survival: "生存",
-  creative: "创造",
-  adventure: "冒险",
-  spectator: "旁观",
-};
 
 // 常见生物中文名（仅用于无自定义名牌时的友好回退）
 const MOB_CN: Record<string, string> = {
@@ -220,10 +207,9 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
           value={`${self?.xpLevel ?? bot.level ?? 0}`}
         />
         <StatTile
-          icon={<Globe2 className="h-4 w-4 text-success" />}
-          label="维度"
-          value={DIM_CN[self?.dimension ?? ""] ?? self?.dimension ?? "—"}
-          sub={MODE_CN[self?.gameMode ?? ""] ?? self?.gameMode ?? undefined}
+          icon={<Clock className="h-4 w-4 text-success" />}
+          label="在线时长"
+          value={fmtUptime(bot.uptime)}
         />
       </div>
 

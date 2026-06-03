@@ -173,10 +173,15 @@ export const cmd = {
   updateBot: (id: string, patch: Partial<BotConfigInput>) =>
     emitAck(ClientCommands.BOT_UPDATE, { id, patch }),
   getBotConfig: (id: string) =>
-    emitAck<{ username: string; host: string; port: number; version: string; loginPassword?: string; settings: any }>(
-      ClientCommands.BOT_CONFIG,
-      { id },
-    ),
+    emitAck<{
+      username: string;
+      host: string;
+      port: number;
+      version: string;
+      loginPassword?: string;
+      note?: string;
+      settings: any;
+    }>(ClientCommands.BOT_CONFIG, { id }),
   reconnect: (id: string) => emitAck(ClientCommands.BOT_RECONNECT, { id }),
   stop: (id: string) => emitAck(ClientCommands.BOT_STOP, { id }),
   chat: (id: string, message: string) => emitAck(ClientCommands.BOT_CHAT, { id, message }),

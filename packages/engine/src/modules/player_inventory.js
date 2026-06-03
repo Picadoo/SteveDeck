@@ -39,6 +39,37 @@ module.exports = (botInstance) => {
     // 挂载到实例上供外部调用
     botInstance.syncInventory = syncInventory;
 
+    // 背包交互：丢弃 / 装备 / 使用（按槽位）
+    const armorDest = (name) => {
+        if (/helmet/.test(name)) return 'head';
+        if (/chestplate|elytra/.test(name)) return 'torso';
+        if (/leggings/.test(name)) return 'legs';
+        if (/boots/.test(name)) return 'feet';
+        return null;
+    };
+    botInstance.dropSlot = async (slot) => {
+        const it = bot.inventory.slots[slot];
+        if (!it) throw new Error('该格为空');
+        await bot.tossStack(it);
+        syncInventory();
+    };
+    botInstance.equipSlot = async (slot) => {
+        const it = bot.inventory.slots[slot];
+        if (!it) throw new Error('该格为空');
+        await bot.equip(it, armorDest(it.name) || 'hand');
+        syncInventory();
+    };
+    botInstance.useSlot = async (slot) => {
+        const it = bot.inventory.slots[slot];
+        if (!it) throw new Error('该格为空');
+        await bot.equip(it, 'hand');
+        bot.activateItem();
+        setTimeout(() => {
+            try { bot.deactivateItem(); } catch (e) { /* ignore */ }
+            syncInventory();
+        }, 400);
+    };
+
     // 事件驱动同步加防抖：挖矿/战斗时槽位会连续变动，合并 150ms 内的多次事件为一次全量解析+推送
     let syncDebounceTimer = null;
     const scheduleSync = () => {

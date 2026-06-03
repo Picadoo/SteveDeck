@@ -33,6 +33,8 @@ export interface BotConfigInput {
   auth?: McAuth;
   /** 登录服需要的 /login 密码（可选） */
   loginPassword?: string;
+  /** 服务器备注/别名，界面优先显示它而非 IP（IP 容易忘） */
+  note?: string;
   settings?: BotSettings;
 }
 
@@ -43,6 +45,7 @@ export interface BotConfig extends Required<Pick<BotConfigInput, "username" | "h
   version: string;
   auth: McAuth;
   loginPassword?: string;
+  note?: string;
   settings: BotSettings;
 }
 
@@ -140,6 +143,10 @@ export interface BotSummary {
   id: BotId;
   username: string;
   host: string;
+  /** 服务器备注/别名（界面优先显示） */
+  note?: string | null;
+  /** 本次在线时长（秒）；离线为 null */
+  uptime?: number | null;
   online: boolean;
   health: number | null;
   /** 最大生命（RPG 服可能 >20）。用于把生命显示为百分比 */

@@ -142,6 +142,8 @@ class BotManager {
       id: cfg.id,
       username: cfg.username,
       host: cfg.host,
+      note: cfg.note ?? null,
+      uptime: online ? Math.floor((Date.now() - (inst.spawnedAt || Date.now())) / 1000) : null,
       online,
       health: online ? Math.round(bot.health) : null,
       maxHealth: online ? this.maxHealthOf(bot) : null,
@@ -235,6 +237,7 @@ class BotManager {
       version: input.version ?? "1.20.1",
       auth: input.auth ?? "offline",
       loginPassword: input.loginPassword,
+      note: input.note,
       settings: input.settings ?? { combat: false, fishing: false, reconnectDelay: 5, schedules: [] },
     };
     this.configs.push(cfg);
@@ -264,15 +267,24 @@ class BotManager {
   updateBot(id: string, patch: Partial<BotConfigInput>): boolean {
     const cfg = this.configs.find((c) => c.id === id);
     if (!cfg) return false;
-    if (patch.username !== undefined) cfg.username = patch.username;
-    if (patch.host !== undefined) cfg.host = patch.host;
-    if (patch.port !== undefined) cfg.port = patch.port;
-    if (patch.version !== undefined) cfg.version = patch.version;
-    if (patch.loginPassword !== undefined) cfg.loginPassword = patch.loginPassword;
+    let reconnect = false;
+    const chg = <K extends keyof BotConfig>(k: K, v: BotConfig[K]) => {
+      if (v !== undefined && v !== cfg[k]) {
+        cfg[k] = v;
+        reconnect = true;
+      }
+    };
+    chg("username", patch.username as any);
+    chg("host", patch.host as any);
+    chg("port", patch.port as any);
+    chg("version", patch.version as any);
+    chg("loginPassword", patch.loginPassword as any);
+    // 备注是纯展示字段，改它不必重连
+    if (patch.note !== undefined) cfg.note = patch.note;
     this.persist();
-    // 重建实例以套用新的连接参数
+    // 仅在连接参数变化时重建实例
     const had = this.bots.get(id);
-    if (had) {
+    if (had && reconnect) {
       try {
         had.stop();
       } catch {

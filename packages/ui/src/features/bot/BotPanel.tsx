@@ -82,7 +82,7 @@ export default function BotPanel() {
                   <Badge tone="neutral">离线</Badge>
                 )}
               </div>
-              <div className="text-xs text-muted">{bot.host}</div>
+              <div className="text-xs text-muted">{bot.note || bot.host}</div>
             </div>
           </div>
           <div className="flex items-center gap-2">

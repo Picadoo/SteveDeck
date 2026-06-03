@@ -90,6 +90,7 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
         port: cfg.port,
         version: cfg.version,
         loginPassword: cfg.loginPassword,
+        note: cfg.note,
         settings: cfg.settings,
       }),
     );

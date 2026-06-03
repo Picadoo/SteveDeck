@@ -95,6 +95,7 @@ class BotInstance {
             }
 
             this.bot.once('spawn', () => {
+                this.spawnedAt = Date.now(); // 本次在线起点（用于在线时长显示）
                 // 不立即清零：稳定在线 30 秒才认为连接健康，避免"登录即被踢"的抖动循环绕过重试上限
                 if (this.stableTimer) clearTimeout(this.stableTimer);
                 this.stableTimer = setTimeout(() => {

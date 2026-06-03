@@ -223,6 +223,21 @@ function dispatchAction(
     case "inventory:sync":
       inst.syncInventory?.();
       return ok();
+    case "inventory:drop":
+      return inst
+        .dropSlot(Number(args.slot))
+        .then(() => ok())
+        .catch((e: any) => fail(String(e?.message ?? e)));
+    case "inventory:equip":
+      return inst
+        .equipSlot(Number(args.slot))
+        .then(() => ok())
+        .catch((e: any) => fail(String(e?.message ?? e)));
+    case "inventory:use":
+      return inst
+        .useSlot(Number(args.slot))
+        .then(() => ok())
+        .catch((e: any) => fail(String(e?.message ?? e)));
     case "scheduler:add": {
       ensureSchedules(inst);
       inst.config.settings.schedules.push(args.schedule);
