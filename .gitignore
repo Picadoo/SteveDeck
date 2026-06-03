@@ -23,6 +23,9 @@ data/
 # 本地预览/调试配置
 .claude/
 
+# 桌面自带引擎打包产物（体积大，不入库）
+apps/desktop/engine-bundle/
+
 # 环境变量
 .env
 .env.*
