@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { RefreshCw, Package, Shirt, Hand, Trash2, MousePointerClick } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
@@ -26,8 +26,17 @@ const TEX_ALIAS: Record<string, string> = {
   cooked_fish: "fish_cod_cooked",
   cooked_salmon: "fish_salmon_cooked",
   redstone: "redstone_dust",
-  snowball: "snowball",
   bow: "bow_standby",
+  clock: "clock_00",
+  watch: "clock_00",
+  slime_ball: "slimeball",
+  tripwire_hook: "trip_wire_source",
+  fishing_rod: "fishing_rod_uncast",
+  carrot_on_a_stick: "carrot_on_a_stick",
+  filled_map: "map_filled",
+  map: "map_empty",
+  potion: "potion_bottle_drinkable",
+  lead: "lead",
 };
 
 function categorize(slot: number): Cat | null {
@@ -52,7 +61,7 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.id, bot.online]);
 
-  const { groups, count } = useMemo(() => {
+  const { groups, count, used } = useMemo(() => {
     const g: Record<Cat, InventoryItem[]> = { equip: [], hotbar: [], main: [] };
     let c = 0;
     for (const it of items) {
@@ -62,13 +71,17 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
       g[cat].push(it);
       c++;
     }
-    return { groups: g, count: c };
+    // 主背包格子 = 快捷栏(9) + 背包(27) = 36；装备槽单独算
+    return { groups: g, count: c, used: g.hotbar.length + g.main.length };
   }, [items]);
 
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <span className="text-xs text-muted">已占用 {count} 格</span>
+        <span className="text-xs text-muted">
+          背包 {used}/36
+          {groups.equip.length > 0 && <span className="ml-1.5">· 装备 {groups.equip.length}</span>}
+        </span>
         <div className="flex items-center gap-2">
           {/* 精简 / 完全 快速切换（与设置同步） */}
           <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-[11px]">
@@ -182,6 +195,8 @@ function ItemRow({
 }) {
   const pushToast = useStore((s) => s.pushToast);
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const [tipStyle, setTipStyle] = useState<CSSProperties>({ left: -9999, top: -9999 });
   const act = async (action: "equip" | "hold" | "use" | "drop") => {
     const r = await cmd.moduleAction(botId, "inventory", action, { slot: item.slot });
     if (!r.ok) pushToast(r.error || "操作失败", "error");
@@ -190,41 +205,58 @@ function ItemRow({
   const name = item.display || item.name || "";
   const hasTip = full && (!!item.lore || (item.enchants?.length ?? 0) > 0 || !!item.texture);
 
+  // 自适应定位：测真实尺寸，避免被底部聊天/命令框截断（放不下就上翻、再不行顶到顶部并裁切底部）
+  useLayoutEffect(() => {
+    if (!tip || !tipRef.current) return;
+    const el = tipRef.current;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const m = 10;
+    const safeBottom = window.innerHeight - 76; // 给底部输入框留位
+    let left = tip.x + 16;
+    if (left + w > window.innerWidth - m) left = Math.max(m, tip.x - w - 16);
+    let top = tip.y + 16;
+    if (top + h > safeBottom) top = tip.y - h - 12; // 翻到光标上方
+    if (top < m) top = m;
+    setTipStyle({ left, top, maxHeight: safeBottom - top });
+  }, [tip]);
+
   return (
-    <div
-      className="group flex items-start gap-2.5 rounded-lg bg-surface-2/50 px-3 py-2"
-      onMouseMove={hasTip ? (e) => setTip({ x: e.clientX, y: e.clientY }) : undefined}
-      onMouseLeave={hasTip ? () => setTip(null) : undefined}
-    >
-      {full && <ItemIcon texture={item.texture} base={texBase} size={32} />}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">
-            <McText text={name} />
-          </span>
-          {item.count && item.count > 1 && (
-            <span className="shrink-0 text-[11px] text-muted">×{item.count}</span>
+    <div className="group flex items-start gap-2.5 rounded-lg bg-surface-2/50 px-3 py-2">
+      {/* 悬浮触发区：仅贴图 / 名字 / 附魔，不含右侧功能按钮 */}
+      <div
+        className="flex min-w-0 flex-1 items-start gap-2.5"
+        onMouseMove={hasTip ? (e) => setTip({ x: e.clientX, y: e.clientY }) : undefined}
+        onMouseLeave={hasTip ? () => setTip(null) : undefined}
+      >
+        {full && <ItemIcon texture={item.texture} base={texBase} size={32} />}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-medium">
+              <McText text={name} />
+            </span>
+            {item.count && item.count > 1 && (
+              <span className="shrink-0 text-[11px] text-muted">×{item.count}</span>
+            )}
+          </div>
+          {item.enchants && item.enchants.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {item.enchants.map((e, i) => (
+                <span key={i} className="rounded bg-accent/12 px-1.5 py-px text-[10px] text-accent">
+                  {e}
+                </span>
+              ))}
+            </div>
           )}
         </div>
-        {item.enchants && item.enchants.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {item.enchants.map((e, i) => (
-              <span key={i} className="rounded bg-accent/12 px-1.5 py-px text-[10px] text-accent">
-                {e}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* 悬浮完整信息（仿 MC 物品提示）：完整名 + 附魔 + 完整 lore + 物品 id */}
+      {/* 悬浮完整信息（仿 MC 物品提示）：完整名 + 附魔 + 完整 lore + 物品 id；自适应不被截断 */}
       {tip && (
         <div
-          className="pointer-events-none fixed z-[100] max-w-[18rem] rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
-          style={{
-            left: Math.min(tip.x + 14, window.innerWidth - 300),
-            top: Math.min(tip.y + 14, window.innerHeight - 220),
-          }}
+          ref={tipRef}
+          className="pointer-events-none fixed z-[100] max-w-[18rem] overflow-hidden rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
+          style={tipStyle}
         >
           <div className="text-sm font-semibold leading-snug">
             <McText text={name} />

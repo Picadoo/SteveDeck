@@ -1,8 +1,8 @@
 diff --git a/lib/mineflayer.js b/lib/mineflayer.js
-index 06634bf6415ec41410e95ec816bebcc239726497..9c05bd7a077f57183f75c59abd7c7f69db6f78f5 100644
+index 06634bf6415ec41410e95ec816bebcc239726497..fb0c5fbcedeecb71b2ae6de2a06c9f59f8f20a19 100644
 --- a/lib/mineflayer.js
 +++ b/lib/mineflayer.js
-@@ -61,12 +61,24 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+@@ -61,12 +61,25 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
      }
  
      function botPosition () {
@@ -14,14 +14,15 @@ index 06634bf6415ec41410e95ec816bebcc239726497..9c05bd7a077f57183f75c59abd7c7f69
 +      } else {
 +        // [mc-bot-player 魔改] F5 跟随镜头：相机置于机器人身后上方、随朝向一起转；本体作为独立实体渲染在真实位置。
 +        // 原版第三人称只在首帧设一次相机目标、之后不跟随，机器人会走出画面——这里彻底替换为跟随。
-+        const dist = 4.2
-+        const lift = 1.6
++        const dist = 5
++        const lift = 0.9
 +        const sin = Math.sin(e.yaw)
 +        const cos = Math.cos(e.yaw)
 +        // 机器人水平视线方向 (-sin,-cos)，身后即相反方向 (+sin,+cos)
 +        const camPos = { x: e.position.x + sin * dist, y: e.position.y + lift, z: e.position.z + cos * dist }
-+        // 带 pitch 的位置包 → 客户端走第一人称分支：把相机摆到该处、按机器人朝向略俯视；不渲染本体网格
-+        socket.emit('position', { pos: camPos, yaw: e.yaw, pitch: 0.45, addMesh: false })
++        // 带 pitch 的位置包 → 客户端走第一人称分支：相机摆到机器人身后上方、略俯视。
++        // 注意：本渲染器 pitch 正值是抬头、负值是低头，所以俯视看机器人要用负值。
++        socket.emit('position', { pos: camPos, yaw: e.yaw, pitch: -0.3, addMesh: false })
 +        // 本体用实体通道画在真实位置（玩家模型 + 名牌）
 +        socket.emit('entity', { id: 'self', name: 'player', pos: e.position, width: 0.6, height: 1.8, yaw: e.yaw, username: bot.username })
        }
