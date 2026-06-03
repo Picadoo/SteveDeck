@@ -10,6 +10,21 @@ const COLORS: Record<string, string> = {
 type Style = { color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean };
 type Seg = Style & { text: string };
 
+// 深色背景下，把过暗的颜色（黑/深灰/深蓝等）提亮到可读，同时尽量保留色相
+function liftColor(hex?: string): string | undefined {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return hex;
+  let r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  let b = parseInt(hex.slice(5, 7), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  if (lum >= 0.4) return hex;
+  const t = ((0.4 - lum) / 0.4) * 0.7; // 越暗混得越多
+  r = Math.round(r + (210 - r) * t);
+  g = Math.round(g + (210 - g) * t);
+  b = Math.round(b + (210 - b) * t);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 function parse(input: string): Seg[] {
   const segs: Seg[] = [];
   let cur: Style = {};
@@ -63,7 +78,7 @@ function parse(input: string): Seg[] {
   return segs;
 }
 
-export default function McText({ text }: { text: string }) {
+export default function McText({ text, onDark }: { text: string; onDark?: boolean }) {
   if (!text || (!text.includes("§") && !text.includes("&"))) return <>{text}</>;
   const segs = parse(text);
   return (
@@ -72,7 +87,7 @@ export default function McText({ text }: { text: string }) {
         <span
           key={i}
           style={{
-            color: s.color,
+            color: onDark ? liftColor(s.color) : s.color,
             fontWeight: s.bold ? 700 : undefined,
             fontStyle: s.italic ? "italic" : undefined,
             textDecoration:

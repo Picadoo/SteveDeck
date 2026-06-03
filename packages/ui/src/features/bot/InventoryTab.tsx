@@ -259,7 +259,7 @@ function ItemRow({
           style={tipStyle}
         >
           <div className="text-sm font-semibold leading-snug">
-            <McText text={name} />
+            <McText text={name} onDark />
             {item.count && item.count > 1 ? (
               <span className="ml-1 text-[11px] font-normal text-white/50">×{item.count}</span>
             ) : null}
@@ -275,7 +275,7 @@ function ItemRow({
           )}
           {item.lore && (
             <div className="mt-1 whitespace-pre-line text-[11px] leading-snug text-white/75">
-              <McText text={item.lore} />
+              <McText text={item.lore} onDark />
             </div>
           )}
           {item.texture && (

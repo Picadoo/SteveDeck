@@ -1,5 +1,5 @@
 diff --git a/lib/mineflayer.js b/lib/mineflayer.js
-index 06634bf6415ec41410e95ec816bebcc239726497..fb0c5fbcedeecb71b2ae6de2a06c9f59f8f20a19 100644
+index 06634bf6415ec41410e95ec816bebcc239726497..bea355bdd8c6962546af5fef9c209e649bb1cde1 100644
 --- a/lib/mineflayer.js
 +++ b/lib/mineflayer.js
 @@ -61,12 +61,25 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
@@ -15,7 +15,7 @@ index 06634bf6415ec41410e95ec816bebcc239726497..fb0c5fbcedeecb71b2ae6de2a06c9f59
 +        // [mc-bot-player 魔改] F5 跟随镜头：相机置于机器人身后上方、随朝向一起转；本体作为独立实体渲染在真实位置。
 +        // 原版第三人称只在首帧设一次相机目标、之后不跟随，机器人会走出画面——这里彻底替换为跟随。
 +        const dist = 5
-+        const lift = 0.9
++        const lift = 1.5
 +        const sin = Math.sin(e.yaw)
 +        const cos = Math.cos(e.yaw)
 +        // 机器人水平视线方向 (-sin,-cos)，身后即相反方向 (+sin,+cos)

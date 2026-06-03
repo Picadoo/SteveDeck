@@ -29,6 +29,7 @@ export default function ViewerModal({
   const [controls, setControls] = useState(false);
   const [cmdText, setCmdText] = useState("");
   const lastStates = useRef("");
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -149,6 +150,26 @@ export default function ViewerModal({
               {bot.food ?? "-"}
             </span>
           </div>
+        )}
+
+        {/* 拖动转向层（操控模式）：在画面上拖动=转机器人朝向，相机随之转（解决"转向机械"） */}
+        {controls && (
+          <div
+            className="absolute inset-0 z-[5] cursor-grab touch-none select-none active:cursor-grabbing"
+            onPointerDown={(e) => {
+              dragRef.current = { x: e.clientX, y: e.clientY };
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              if (!dragRef.current) return;
+              const dx = e.clientX - dragRef.current.x;
+              if (Math.abs(dx) < 1) return;
+              dragRef.current = { x: e.clientX, y: e.clientY };
+              cmd.control.turn(bot.id, dx * 0.012, 0); // 水平拖动→转身体；F5 俯角固定，竖直忽略
+            }}
+            onPointerUp={() => (dragRef.current = null)}
+            onPointerCancel={() => (dragRef.current = null)}
+          />
         )}
 
         {/* 虚拟摇杆操控层（手机端式）：摇杆走动 + 跳 + 左右转 */}

@@ -34,11 +34,15 @@ module.exports = (botInstance) => {
             const nameRaw = nameMotd(src).trim();
             const name = nameRaw.replace(/§[0-9a-fk-orx]/gi, '').trim();
 
+            // 区分「真实在线玩家」与「NPC（多为伪装成玩家的 Citizens 实体）」
+            const realPlayer = entity.type === 'player' && !!(bot.players && bot.players[entity.username]);
+
             out.push({
                 id: entity.id,
                 type: typeName,
                 name: name || null,
                 nameRaw: nameRaw || null,
+                realPlayer,
                 distance: Math.round(dist * 10) / 10,
             });
         }
@@ -70,19 +74,21 @@ module.exports = (botInstance) => {
                 msg: `正在同步坐标并靠近...`
             });
 
-            await bot.pathfinder.goto(new goals.GoalFollow(target, 2)); // 稍微拉开距离防止挤压NPC
-            await bot.lookAt(target.position.offset(0, target.height * 0.8, 0), true);
+            // GoalNear 会结束（GoalFollow 是持续跟随、不收敛），靠近到约 2.5 格
+            await bot.pathfinder.goto(new goals.GoalNear(target.position.x, target.position.y, target.position.z, 2.5));
+            try { bot.pathfinder.setGoal(null); } catch (e) { /* 停下，别再推进 */ }
 
+            // 命中点取实体中心；模拟真实客户端右键：先 interact_at(mouse:2) 再 interact(mouse:0)
+            const at = target.position.offset(0, (target.height || 1.8) / 2, 0);
+            await bot.lookAt(at, true);
             bot.swingArm('right');
-            if (bot.activateEntityAt) {
-                await bot.activateEntityAt(target, new Vec3(0, 1, 0));
-            } else {
-                await bot.activateEntity(target);
-            }
+            try { await bot.activateEntityAt(target, at); } catch (e) { /* 部分服不支持 at，忽略 */ }
+            try { await bot.activateEntity(target); } catch (e) { /* 忽略 */ }
+
             botInstance.io.to(botInstance._room).to('admin').emit('log', {
                 user: bot.username,
                 ownerId: botInstance.config.ownerId,
-                msg: `交互指令已送达 (TargetID: ${target.id})`
+                msg: `已右键交互: ${nameMotd(target.customName).replace(/§[0-9a-fk-orx]/gi, '').trim() || target.username || target.name || target.id}`
             });
         } catch (err) {
             botInstance.io.to(botInstance._room).to('admin').emit('log', {

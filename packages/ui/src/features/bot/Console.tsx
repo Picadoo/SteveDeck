@@ -75,7 +75,7 @@ export default function Console({ botId }: { botId: string }) {
       {/* 固定深色「终端」底：MC 颜色码本就是为深色背景设计，浅色主题下白/灰字才不会看不清 */}
       <div
         ref={ref}
-        className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-zinc-900 p-3 font-mono text-xs leading-relaxed text-zinc-200"
+        className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-zinc-700 bg-[#0a0a0c] p-3 font-mono text-xs leading-relaxed text-zinc-200"
       >
         {shown.length === 0 ? (
           <div className="flex h-full items-center justify-center text-zinc-500">
@@ -92,7 +92,7 @@ export default function Console({ botId }: { botId: string }) {
               )}
             >
               <span className="mr-2 select-none text-zinc-500">{l.time}</span>
-              <McText text={l.text} />
+              <McText text={l.text} onDark />
             </div>
           ))
         )}

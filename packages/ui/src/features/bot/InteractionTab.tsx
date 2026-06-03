@@ -23,7 +23,14 @@ import { useStore } from "@/store/useStore";
 import SchedulerTab from "./SchedulerTab";
 import type { BotSummary } from "@mcbot/protocol";
 
-type Npc = { id: number; type: string; name: string | null; nameRaw?: string | null; distance: number };
+type Npc = {
+  id: number;
+  type: string;
+  name: string | null;
+  nameRaw?: string | null;
+  realPlayer?: boolean;
+  distance: number;
+};
 type Container = { x: number; y: number; z: number; name: string; distance: number };
 
 /** 交互中心：NPC / 容器 / 走动 / 计分板 / 定时。无界面也好用：扫描代替填坐标，结果就地显示。 */
@@ -122,12 +129,16 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
               npcs.slice(0, 14).map((n) => (
                 <div key={n.id} className="flex items-center justify-between rounded-lg bg-surface-2/50 px-2.5 py-1.5 text-sm">
                   <span className="flex min-w-0 items-center gap-1.5">
-                    {/* 名字为主（彩色），种类为辅（小标签） */}
+                    {/* 名字为主（彩色），种类/身份为辅（小标签） */}
                     <span className="truncate font-medium">
                       <McText text={n.nameRaw || n.name || n.type} />
                     </span>
-                    {n.name && (
-                      <span className="shrink-0 rounded bg-surface px-1 text-[10px] text-muted">{n.type}</span>
+                    {n.realPlayer ? (
+                      <span className="shrink-0 rounded bg-success/15 px-1 text-[10px] text-success">真人</span>
+                    ) : n.type === "player" ? (
+                      <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] text-warning">NPC</span>
+                    ) : (
+                      n.name && <span className="shrink-0 rounded bg-surface px-1 text-[10px] text-muted">{n.type}</span>
                     )}
                     <span className="shrink-0 text-[11px] text-muted">{n.distance}m</span>
                   </span>
@@ -289,10 +300,10 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
                 <McText text={sb.sidebarTitleRaw || sb.sidebarTitle} />
               </div>
             )}
-            {/* 侧边栏内容都在文本行里（分值多为排序号，故不展示） */}
+            {/* 侧边栏内容都在文本行里（分值多为排序号，故不展示）；像游戏内一样不加分隔线 */}
             {sbItems.map((it, i) => (
-              <div key={i} className="truncate border-b border-border/40 py-1 text-sm last:border-0">
-                <McText text={it.raw || it.name} />
+              <div key={i} className="truncate py-px text-sm leading-snug">
+                <McText text={it.raw || it.name} onDark />
               </div>
             ))}
           </div>
