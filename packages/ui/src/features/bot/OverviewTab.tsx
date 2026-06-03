@@ -40,6 +40,38 @@ const MODE_CN: Record<string, string> = {
   spectator: "旁观",
 };
 
+// 常见生物中文名（仅用于无自定义名牌时的友好回退）
+const MOB_CN: Record<string, string> = {
+  zombie: "僵尸",
+  skeleton: "骷髅",
+  creeper: "苦力怕",
+  spider: "蜘蛛",
+  cave_spider: "洞穴蜘蛛",
+  enderman: "末影人",
+  witch: "女巫",
+  slime: "史莱姆",
+  cow: "牛",
+  pig: "猪",
+  sheep: "羊",
+  chicken: "鸡",
+  villager: "村民",
+  squid: "鱿鱼",
+  bat: "蝙蝠",
+  horse: "马",
+  wolf: "狼",
+  zombie_villager: "僵尸村民",
+  husk: "尸壳",
+  stray: "流浪者",
+  drowned: "溺尸",
+  blaze: "烈焰人",
+  ghast: "恶魂",
+  magma_cube: "岩浆怪",
+  wither_skeleton: "凋灵骷髅",
+  phantom: "幻翼",
+  rabbit: "兔子",
+  iron_golem: "铁傀儡",
+};
+
 type EquipKey = "head" | "chest" | "legs" | "feet" | "mainHand" | "offHand";
 const EQUIP_SLOTS: { key: EquipKey; label: string }[] = [
   { key: "head", label: "头盔" },
@@ -241,6 +273,50 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
         <NearbyList obs={obs} />
       </Card>
 
+      {/* 服务器信息：Tab 头尾 / Boss 条（PAPI 渲染处，有才显示） */}
+      {obs?.serverText &&
+        (obs.serverText.tablistHeader ||
+          obs.serverText.tablistFooter ||
+          obs.serverText.bossBars.length > 0) && (
+          <Card className="p-4">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <Globe2 className="h-4 w-4 text-accent" /> 服务器信息
+            </h3>
+            {obs.serverText.bossBars.length > 0 && (
+              <div className="mb-2 space-y-1.5">
+                {obs.serverText.bossBars.map((b, i) => (
+                  <div key={i}>
+                    <div className="flex justify-between text-xs">
+                      <span className="truncate pr-2 font-medium">{b.title}</span>
+                      {b.progress != null && (
+                        <span className="text-muted">{Math.round(b.progress * 100)}%</span>
+                      )}
+                    </div>
+                    {b.progress != null && (
+                      <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
+                        <div
+                          className="h-full rounded-full bg-danger"
+                          style={{ width: `${Math.round(b.progress * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {obs.serverText.tablistHeader && (
+              <p className="whitespace-pre-line text-xs leading-relaxed text-muted">
+                {obs.serverText.tablistHeader}
+              </p>
+            )}
+            {obs.serverText.tablistFooter && (
+              <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted">
+                {obs.serverText.tablistFooter}
+              </p>
+            )}
+          </Card>
+        )}
+
       {/* 计分板 */}
       {sbItems.length > 0 && (
         <Card className="p-4">
@@ -386,7 +462,10 @@ function EquipRow({ label, item }: { label: string; item: EquipItem | null }) {
 
 function NearbyList({ obs }: { obs: Observation | null }) {
   const players = obs?.nearbyPlayers ?? [];
-  const ents = obs?.nearbyEntities ?? [];
+  // 命名生物（RPG Boss/宠物）排前面
+  const ents = [...(obs?.nearbyEntities ?? [])].sort(
+    (a, b) => Number(!!b.custom) - Number(!!a.custom) || a.distance - b.distance,
+  );
   if (players.length === 0 && ents.length === 0) {
     return <p className="text-sm text-muted">附近没有检测到玩家或生物</p>;
   }
@@ -394,19 +473,26 @@ function NearbyList({ obs }: { obs: Observation | null }) {
     <div className="space-y-1">
       {players.slice(0, 5).map((p, i) => (
         <div key={`p${i}`} className="flex items-center justify-between text-sm">
-          <span className="flex items-center gap-1.5">
+          <span className="flex min-w-0 items-center gap-1.5">
             <Badge tone="success">玩家</Badge>
-            <span className="font-medium">{p.name}</span>
+            <span className="truncate font-medium">{p.display || p.name}</span>
+            {p.display && <span className="shrink-0 text-[11px] text-muted">{p.name}</span>}
           </span>
-          <span className="text-xs text-muted tabular-nums">{p.distance}m</span>
+          <span className="shrink-0 text-xs text-muted tabular-nums">{p.distance}m</span>
         </div>
       ))}
-      {ents.slice(0, 6).map((e, i) => (
-        <div key={`e${i}`} className="flex items-center justify-between text-sm">
-          <span className="truncate pr-2 text-muted">{e.name}</span>
-          <span className="text-xs text-muted tabular-nums">{e.distance}m</span>
-        </div>
-      ))}
+      {ents.slice(0, 8).map((e, i) => {
+        const label = e.custom ? e.name : MOB_CN[e.name.toLowerCase()] || e.name;
+        return (
+          <div key={`e${i}`} className="flex items-center justify-between text-sm">
+            <span className="flex min-w-0 items-center gap-1.5">
+              {e.custom && <Badge tone="warning">命名</Badge>}
+              <span className={cn("truncate", e.custom ? "font-medium" : "text-muted")}>{label}</span>
+            </span>
+            <span className="shrink-0 text-xs text-muted tabular-nums">{e.distance}m</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

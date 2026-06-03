@@ -19,6 +19,27 @@ function maxHealthOf(bot: any): number {
   return 20;
 }
 
+/** 把 ChatMessage / 字符串安全转成去色码纯文本，空则 null */
+function txt(v: any): string | null {
+  if (v == null) return null;
+  try {
+    if (typeof v === "string") return v.replace(/§[0-9a-fk-orx]/gi, "").trim() || null;
+    if (typeof v.toString === "function") {
+      const s = v.toString();
+      if (typeof s === "string" && s !== "[object Object]")
+        return s.replace(/§[0-9a-fk-orx]/gi, "").trim() || null;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/** 取实体的自定义名牌（去色码），无则 null */
+function entityCustomName(e: any): string | null {
+  return txt(e?.customName) || (e && typeof e.displayName === "object" ? txt(e.displayName) : null);
+}
+
 /** 把机器人当前可感知的世界状态整理成 AI 友好的快照。 */
 export function buildObservation(id: string): any {
   const inst = botManager.getInstance(id);
@@ -94,14 +115,27 @@ export function buildObservation(id: string): any {
       if (!e || !e.position || e === bot.entity) continue;
       const d = e.position.distanceTo(pos);
       if (d > 48) continue;
+      const custom = entityCustomName(e);
       const item = {
         type: e.type,
-        name: e.name || e.username || e.displayName || e.kind || "unknown",
+        name:
+          custom ||
+          (typeof e.displayName === "string" ? e.displayName : null) ||
+          e.name ||
+          e.kind ||
+          "unknown",
+        custom: !!custom,
         distance: r1(d),
         pos: floorPos(e.position),
       };
       if (e.type === "player" && e.username && e.username !== bot.username) {
-        obs.nearbyPlayers.push({ name: e.username, distance: item.distance, pos: item.pos });
+        const pd = txt(e.displayName);
+        obs.nearbyPlayers.push({
+          name: e.username,
+          display: pd && pd !== e.username ? pd : undefined,
+          distance: item.distance,
+          pos: item.pos,
+        });
       } else if (e.type !== "object" && e.type !== "orb" && e.type !== "other") {
         others.push(item);
       }
@@ -116,6 +150,35 @@ export function buildObservation(id: string): any {
   try {
     const sb = inst.getScoreboard?.();
     if (sb && (sb.items?.length || sb.sidebar?.length)) obs.scoreboard = sb;
+  } catch {
+    /* ignore */
+  }
+
+  // 服务器渲染文本（PAPI 多输出到这些客户端可见处：Tab 头尾 / Boss 血条）
+  try {
+    const tl = bot.tablist || {};
+    const bars = Object.values(bot.bossBars || {})
+      .map((b: any) => ({
+        title: txt(b?.title),
+        progress: typeof b?.health === "number" ? b.health : typeof b?.progress === "number" ? b.progress : null,
+      }))
+      .filter((b: any) => b.title);
+    obs.serverText = {
+      world: bot.game?.dimension ?? null,
+      tablistHeader: txt(tl.header),
+      tablistFooter: txt(tl.footer),
+      bossBars: bars,
+    };
+  } catch {
+    /* ignore */
+  }
+
+  // 玩家 Tab 展示名（含 PAPI 前后缀，与原名不同才收录）
+  try {
+    obs.playersDisplay = Object.values(bot.players || {})
+      .map((p: any) => ({ name: p?.username, display: txt(p?.displayName) }))
+      .filter((p: any) => p.name && p.display && p.display !== p.name)
+      .slice(0, 12);
   } catch {
     /* ignore */
   }

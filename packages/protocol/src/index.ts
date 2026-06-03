@@ -330,13 +330,23 @@ export interface Observation {
     dimension: string | null;
     gameMode: string | null;
   } | null;
-  inventory: { name: string; count: number; displayName?: string }[];
-  nearbyPlayers: { name: string; distance: number; pos: Vec3Like }[];
-  nearbyEntities: { type: string; name: string; distance: number; pos: Vec3Like }[];
+  inventory: { name: string; count: number; displayName?: string; enchants?: string[] }[];
+  nearbyPlayers: { name: string; display?: string; distance: number; pos: Vec3Like }[];
+  /** name 优先为自定义名牌；custom 标记是否有名牌（RPG 命名生物/Boss） */
+  nearbyEntities: { type: string; name: string; custom?: boolean; distance: number; pos: Vec3Like }[];
   recentChat: string[];
   modules: Record<string, unknown>;
   savedLocations: SavedLocation[];
   scoreboard?: unknown;
+  /** 服务器渲染到客户端可见处的文本（PAPI 常输出于此） */
+  serverText?: {
+    world: string | null;
+    tablistHeader: string | null;
+    tablistFooter: string | null;
+    bossBars: { title: string | null; progress: number | null }[];
+  };
+  /** 玩家 Tab 展示名（含 PAPI 前后缀） */
+  playersDisplay?: { name: string; display: string }[];
 }
 
 // ==================== Socket.IO 握手鉴权 ====================
