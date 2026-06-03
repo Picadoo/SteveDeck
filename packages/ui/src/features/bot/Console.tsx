@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Trash2, Copy, ArrowDownToLine } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
 import type { LogLine } from "@mcbot/protocol";
@@ -8,35 +9,99 @@ const EMPTY_LOGS: LogLine[] = [];
 
 export default function Console({ botId }: { botId: string }) {
   const logs = useStore((s) => s.logs[botId]) ?? EMPTY_LOGS;
+  const clearLog = useStore((s) => s.clearLog);
+  const pushToast = useStore((s) => s.pushToast);
+  const [filter, setFilter] = useState("");
+  const [autoScroll, setAutoScroll] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
+  const shown = filter
+    ? logs.filter((l) => l.text.toLowerCase().includes(filter.toLowerCase()))
+    : logs;
+
   useEffect(() => {
+    if (!autoScroll) return;
     const el = ref.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [logs]);
+  }, [shown, autoScroll]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(logs.map((l) => `${l.time} ${l.text}`).join("\n"));
+      pushToast("日志已复制", "success");
+    } catch {
+      pushToast("复制失败", "error");
+    }
+  }
 
   return (
-    <div
-      ref={ref}
-      className="h-full overflow-y-auto rounded-xl border border-border bg-surface-2/40 p-3 font-mono text-xs leading-relaxed"
-    >
-      {logs.length === 0 ? (
-        <div className="flex h-full items-center justify-center text-muted">暂无日志</div>
-      ) : (
-        logs.map((l, i) => (
-          <div
-            key={i}
-            className={cn(
-              "whitespace-pre-wrap break-words",
-              l.level === "error" && "text-danger",
-              l.level === "warn" && "text-warning",
-            )}
-          >
-            <span className="mr-2 select-none text-muted">{l.time}</span>
-            {l.text}
+    <div className="flex h-full flex-col">
+      <div className="mb-2 flex shrink-0 items-center gap-2">
+        <input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="过滤日志…"
+          className="h-7 flex-1 rounded-lg border border-border bg-surface px-2 text-xs outline-none focus:ring-2 focus:ring-accent/50"
+        />
+        <ToolBtn active={autoScroll} title="自动滚动" onClick={() => setAutoScroll((a) => !a)}>
+          <ArrowDownToLine className="h-3.5 w-3.5" />
+        </ToolBtn>
+        <ToolBtn title="复制全部" onClick={copy}>
+          <Copy className="h-3.5 w-3.5" />
+        </ToolBtn>
+        <ToolBtn title="清空" onClick={() => clearLog(botId)}>
+          <Trash2 className="h-3.5 w-3.5" />
+        </ToolBtn>
+      </div>
+      <div
+        ref={ref}
+        className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-surface-2/40 p-3 font-mono text-xs leading-relaxed"
+      >
+        {shown.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-muted">
+            {filter ? "无匹配日志" : "暂无日志"}
           </div>
-        ))
-      )}
+        ) : (
+          shown.map((l, i) => (
+            <div
+              key={i}
+              className={cn(
+                "whitespace-pre-wrap break-words",
+                l.level === "error" && "text-danger",
+                l.level === "warn" && "text-warning",
+              )}
+            >
+              <span className="mr-2 select-none text-muted">{l.time}</span>
+              {l.text}
+            </div>
+          ))
+        )}
+      </div>
     </div>
+  );
+}
+
+function ToolBtn({
+  active,
+  title,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={cn(
+        "rounded-md p-1.5 transition-colors",
+        active ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface-2 hover:text-fg",
+      )}
+    >
+      {children}
+    </button>
   );
 }

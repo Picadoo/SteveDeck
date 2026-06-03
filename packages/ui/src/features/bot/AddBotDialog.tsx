@@ -3,10 +3,12 @@ import { Loader2 } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import { Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
+import { useStore } from "@/store/useStore";
 
 const EMPTY = { username: "", host: "", port: "25565", version: "1.20.1", loginPassword: "" };
 
 export default function AddBotDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const pushToast = useStore((s) => s.pushToast);
   const [form, setForm] = useState({ ...EMPTY });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -34,6 +36,7 @@ export default function AddBotDialog({ open, onClose }: { open: boolean; onClose
     if (res.ok) {
       setForm({ ...EMPTY });
       onClose();
+      pushToast("机器人已添加，正在连接…", "success");
     } else {
       setErr(res.error || "添加失败");
     }
