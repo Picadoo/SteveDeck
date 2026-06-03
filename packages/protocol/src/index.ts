@@ -115,9 +115,13 @@ export interface ModuleFlags {
 
 export interface InventoryItem {
   slot: number;
+  /** 去色码的纯文本名（用于逻辑/搜索） */
   name: string | null;
+  /** 原始展示名（保留 §/&颜色码，前端用 McText 渲染） */
+  display?: string | null;
   lore?: string;
   count?: number;
+  /** 原始物品 id（如 diamond_sword），用于贴图与「能否装备」判断 */
   texture?: string;
   /** 附魔摘要（如 ["锋利 V", "耐久 III"]），RPG 服常见 */
   enchants?: string[];
@@ -149,6 +153,8 @@ export interface BotSummary {
   id: BotId;
   username: string;
   host: string;
+  /** 游戏版本（如 1.12.2），前端用于拼贴图地址 */
+  version?: string;
   /** 服务器备注/别名（界面优先显示） */
   note?: string | null;
   /** 本次在线时长（秒）；离线为 null */

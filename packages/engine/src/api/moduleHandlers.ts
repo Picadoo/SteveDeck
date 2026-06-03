@@ -285,6 +285,11 @@ function dispatchAction(
         .equipSlot(Number(args.slot))
         .then(() => ok())
         .catch((e: any) => fail(String(e?.message ?? e)));
+    case "inventory:hold":
+      return inst
+        .holdSlot(Number(args.slot))
+        .then(() => ok())
+        .catch((e: any) => fail(String(e?.message ?? e)));
     case "inventory:use":
       return inst
         .useSlot(Number(args.slot))

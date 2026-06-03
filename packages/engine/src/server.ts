@@ -1,4 +1,5 @@
 import http from "http";
+import path from "path";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { Server as IOServer } from "socket.io";
@@ -72,6 +73,18 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
   app.get("/api/bots", requireToken, (_req: Request, res: Response): void => {
     res.json({ bots: botManager.buildSnapshot() });
   });
+
+  // 物品/方块贴图：复用 prismarine-viewer 自带的逐版本 PNG（如 /textures/1.12.2/items/diamond_sword.png）。
+  // 完整版引擎才有这些资源；精简版缺包则跳过挂载，前端 <img> 404 后回退到图标。无需鉴权（仅公开贴图）。
+  try {
+    const pvDir = path.dirname(require.resolve("prismarine-viewer/package.json"));
+    app.use(
+      "/textures",
+      express.static(path.join(pvDir, "public", "textures"), { maxAge: "7d", fallthrough: true }),
+    );
+  } catch {
+    /* 精简版无 prismarine-viewer，跳过贴图静态服务 */
+  }
 
   // ===== AI 接口：感知世界状态 + 提交脚本 =====
   app.get("/api/observe/:id", requireToken, (req: Request, res: Response): void => {

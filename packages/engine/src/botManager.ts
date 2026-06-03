@@ -142,6 +142,7 @@ class BotManager {
       id: cfg.id,
       username: cfg.username,
       host: cfg.host,
+      version: cfg.version,
       note: cfg.note ?? null,
       uptime: online ? Math.floor((Date.now() - (inst.spawnedAt || Date.now())) / 1000) : null,
       online,

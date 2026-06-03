@@ -42,21 +42,23 @@ module.exports = (botInstance) => {
         const items = bot.inventory.slots.map((item, index) => {
             if (!item) return { slot: index, name: null };
 
-            // 深度解析 NBT 获取 Lore 和名字
-            let customName = item.displayName;
+            // 深度解析 NBT 获取 Lore 和名字（RPG 服常带 §颜色码，保留供前端彩色渲染）
+            let rawName = item.displayName;
             let loreLines = [];
             if (item.nbt && item.nbt.value && item.nbt.value.display) {
                 const display = item.nbt.value.display.value;
-                if (display.Name) customName = display.Name.value;
+                if (display.Name) rawName = display.Name.value;
                 if (display.Lore) loreLines = display.Lore.value.value;
             }
+            rawName = String(rawName);
 
             return {
                 slot: index,
-                name: customName.replace(/§[0-9a-fk-orx]/gi, ''),
-                lore: loreLines.map(l => l.replace(/§[0-9a-fk-orx]/gi, '')).join('\n'),
+                name: rawName.replace(/§[0-9a-fk-orx]/gi, ''), // 纯文本（逻辑/搜索）
+                display: rawName, // 原始（含 §颜色码）
+                lore: loreLines.map((l) => String(l)).join('\n'), // 保留颜色码
                 count: item.count,
-                texture: item.name, // 原始物品 id
+                texture: item.name, // 原始物品 id（贴图/能否装备）
                 enchants: enchantNames(item)
             };
         });
@@ -87,10 +89,18 @@ module.exports = (botInstance) => {
         await bot.tossStack(it);
         syncInventory();
     };
+    // 穿戴：仅护甲到对应护甲槽（非护甲回退到手）
     botInstance.equipSlot = async (slot) => {
         const it = bot.inventory.slots[slot];
         if (!it) throw new Error('该格为空');
         await bot.equip(it, armorDest(it.name) || 'hand');
+        syncInventory();
+    };
+    // 手持：永远拿到主手，不自动穿到护甲槽（想拿在手上时用这个）
+    botInstance.holdSlot = async (slot) => {
+        const it = bot.inventory.slots[slot];
+        if (!it) throw new Error('该格为空');
+        await bot.equip(it, 'hand');
         syncInventory();
     };
     botInstance.useSlot = async (slot) => {

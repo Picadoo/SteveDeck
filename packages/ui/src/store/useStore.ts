@@ -23,6 +23,8 @@ const MAX_LOG_LINES = 500;
 
 interface AppState {
   theme: "light" | "dark";
+  /** 背包显示模式：lite 精简（纯文本）/ full 完全（贴图+彩色名+描述） */
+  invMode: "lite" | "full";
   conn: ConnState;
   bots: BotSummary[];
   logs: Record<string, LogLine[]>;
@@ -38,6 +40,7 @@ interface AppState {
   toasts: Toast[];
 
   setTheme: (t: "light" | "dark") => void;
+  setInvMode: (m: "lite" | "full") => void;
   setModuleConfig: (botId: string, module: string, config: Record<string, unknown>) => void;
   setInventory: (user: string, items: InventoryItem[]) => void;
   setWindow: (user: string, win: WindowState | null) => void;
@@ -74,6 +77,16 @@ function initialTheme(): "light" | "dark" {
   return "dark";
 }
 
+function initialInvMode(): "lite" | "full" {
+  try {
+    const saved = localStorage.getItem("mcbot.invmode");
+    if (saved === "lite" || saved === "full") return saved;
+  } catch {
+    /* ignore */
+  }
+  return "full";
+}
+
 const CMD_KEY = "mcbot.cmdhistory";
 function loadCmdHistory(): string[] {
   try {
@@ -87,6 +100,7 @@ function loadCmdHistory(): string[] {
 
 export const useStore = create<AppState>((set, get) => ({
   theme: initialTheme(),
+  invMode: initialInvMode(),
   conn: { status: "disconnected", url: "", token: "" },
   bots: [],
   logs: {},
@@ -126,6 +140,14 @@ export const useStore = create<AppState>((set, get) => ({
   setTheme: (t) => {
     applyTheme(t);
     set({ theme: t });
+  },
+  setInvMode: (m) => {
+    try {
+      localStorage.setItem("mcbot.invmode", m);
+    } catch {
+      /* ignore */
+    }
+    set({ invMode: m });
   },
   toggleTheme: () => {
     const next = get().theme === "dark" ? "light" : "dark";

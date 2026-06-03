@@ -3,6 +3,7 @@ import { LogOut, Copy } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { useStore } from "@/store/useStore";
+import { cn } from "@/lib/cn";
 import { fetchConnectionInfo, disconnect, forgetConn } from "@/lib/engine";
 
 interface ConnInfo {
@@ -16,6 +17,8 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
   const conn = useStore((s) => s.conn);
   const theme = useStore((s) => s.theme);
   const toggleTheme = useStore((s) => s.toggleTheme);
+  const invMode = useStore((s) => s.invMode);
+  const setInvMode = useStore((s) => s.setInvMode);
   const pushToast = useStore((s) => s.pushToast);
   const [info, setInfo] = useState<ConnInfo | null>(null);
 
@@ -71,6 +74,26 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
             <Button size="sm" variant="secondary" onClick={toggleTheme}>
               {theme === "dark" ? "深色" : "浅色"}
             </Button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm">背包显示</div>
+              <div className="text-[11px] text-muted">完全版带贴图/彩色名/描述；精简版纯文本更轻</div>
+            </div>
+            <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-xs">
+              {(["lite", "full"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setInvMode(m)}
+                  className={cn(
+                    "px-2.5 py-1 transition-colors",
+                    invMode === m ? "bg-accent/15 text-accent" : "text-muted hover:text-fg",
+                  )}
+                >
+                  {m === "lite" ? "精简" : "完全"}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm">切换 / 断开引擎</span>
