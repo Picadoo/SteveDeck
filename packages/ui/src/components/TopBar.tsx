@@ -1,17 +1,15 @@
 import { useState } from "react";
-import { Wifi, WifiOff, Loader2, Moon, Sun, PanelLeft, PanelLeftClose, Plus, Settings } from "lucide-react";
+import { Wifi, WifiOff, Loader2, Moon, Sun, PanelLeft, PanelLeftClose, Settings } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { IconButton, Button, Badge, StatusDot } from "@/components/ui/primitives";
+import { IconButton, Badge, StatusDot } from "@/components/ui/primitives";
 import SettingsDialog from "./SettingsDialog";
 
 export default function TopBar({
   navOpen,
   onToggleNav,
-  onAddBot,
 }: {
   navOpen: boolean;
   onToggleNav: () => void;
-  onAddBot: () => void;
 }) {
   const conn = useStore((s) => s.conn);
   const theme = useStore((s) => s.theme);
@@ -26,9 +24,6 @@ export default function TopBar({
           <IconButton onClick={onToggleNav} title={navOpen ? "收起侧栏" : "展开侧栏"}>
             {navOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
           </IconButton>
-          <Button size="sm" variant="secondary" onClick={onAddBot} title="添加机器人">
-            <Plus className="h-4 w-4" /> 添加
-          </Button>
           {selected ? (
             <>
               <StatusDot online={selected.online} />

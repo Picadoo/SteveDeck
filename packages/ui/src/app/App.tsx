@@ -6,7 +6,6 @@ import ConnectScreen from "@/features/connect/ConnectScreen";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import BotPanel from "@/features/bot/BotPanel";
-import AddBotDialog from "@/features/bot/AddBotDialog";
 import Toaster from "@/components/ui/Toaster";
 
 const NAV_KEY = "mcbot.nav";
@@ -25,7 +24,6 @@ export default function App() {
     }
     return isDesktop();
   });
-  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -74,7 +72,6 @@ export default function App() {
           onNavigate={() => {
             if (!isDesktop()) setNavOpen(false); // 仅移动端选号后自动收抽屉
           }}
-          onAddBot={() => setAddOpen(true)}
         />
       </div>
       {navOpen && (
@@ -82,18 +79,17 @@ export default function App() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar navOpen={navOpen} onToggleNav={toggleNav} onAddBot={() => setAddOpen(true)} />
+        <TopBar navOpen={navOpen} onToggleNav={toggleNav} />
         {status === "connecting" && (
           <div className="shrink-0 bg-warning/15 px-4 py-1.5 text-center text-xs text-warning">
             正在连接引擎…
           </div>
         )}
         <main className="min-h-0 flex-1 overflow-hidden">
-          <BotPanel onAddBot={() => setAddOpen(true)} />
+          <BotPanel />
         </main>
       </div>
 
-      <AddBotDialog open={addOpen} onClose={() => setAddOpen(false)} />
       <Toaster />
     </div>
   );
