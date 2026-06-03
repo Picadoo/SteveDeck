@@ -60,23 +60,25 @@ module.exports = (botInstance) => {
     botInstance.timers = botInstance.timers || [];
     botInstance.timers.push(attackInterval);
 
-    // 防击退
-    const onVelocity = () => {
+    // 防击退：mineflayer 4.x 不再发 'velocity' 事件（旧实现是死代码，从不触发）。
+    // 正确做法：直接拦截服务器对「机器人自身实体」下发的 entity_velocity 包，开启时清掉水平击退
+    // （保留竖直分量，避免影响跳跃/坠落）。本监听器注册晚于 mineflayer 内置处理，能在其更新速度后清零。
+    const onEntityVelocity = (packet) => {
         try {
-            if (botInstance.combatConfig.antiKb && bot.entity) {
-                bot.entity.velocity.set(0, bot.entity.velocity.y, 0);
-            }
+            if (!botInstance.combatConfig.antiKb || !bot.entity) return;
+            if (packet.entityId !== bot.entity.id) return;
+            bot.entity.velocity.x = 0;
+            bot.entity.velocity.z = 0;
         } catch (err) {
             // 忽略
         }
     };
-
-    bot.on('velocity', onVelocity);
+    if (bot._client) bot._client.on('entity_velocity', onEntityVelocity);
 
     // 清理钩子
     botInstance.cleanupHooks = botInstance.cleanupHooks || [];
     botInstance.cleanupHooks.push(() => {
         clearInterval(attackInterval);
-        bot.removeListener('velocity', onVelocity);
+        if (bot._client) bot._client.removeListener('entity_velocity', onEntityVelocity);
     });
 };

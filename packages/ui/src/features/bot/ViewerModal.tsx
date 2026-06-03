@@ -24,7 +24,8 @@ export default function ViewerModal({
   const pushToast = useStore((s) => s.pushToast);
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [firstPerson, setFirstPerson] = useState(false);
+  // 默认第一人称：镜头锁定机器人、以它为中心、跟随最稳；切第三人称才能自由观察
+  const [firstPerson, setFirstPerson] = useState(true);
   const [controls, setControls] = useState(false);
   const [cmdText, setCmdText] = useState("");
   const lastStates = useRef("");
@@ -228,7 +229,7 @@ export default function ViewerModal({
         </Button>
       </form>
       <p className="mt-1 text-[11px] leading-relaxed text-muted">
-        操控：摇杆走动（推到底=疾跑）、跳、左右转；第三人称可点地面寻路过去，第一人称镜头跟随最稳。关闭即停。
+        默认<span className="text-fg">第一人称</span>：镜头锁定机器人、以它为中心、跟随最稳；切<span className="text-fg">第三人称</span>可自由看周围、点地面寻路过去。操控：摇杆走动（推到底=疾跑）、跳、左右转。关闭即停。
       </p>
     </Modal>
   );

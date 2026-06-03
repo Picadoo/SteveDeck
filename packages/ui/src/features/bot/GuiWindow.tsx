@@ -8,21 +8,21 @@ import type { BotSummary, WindowSlot } from "@mcbot/protocol";
 
 /** 服务器打开的窗口/GUI（箱子、菜单）——点击槽位即操作 */
 export default function GuiWindow({ bot }: { bot: BotSummary }) {
-  const win = useStore((s) => s.windows[bot.username]);
+  const win = useStore((s) => s.windows[bot.id]);
   if (!win) return null;
 
   const setWin = useStore.getState().setWindow;
   const close = () => {
     cmd.window.close(bot.id);
-    setWin(bot.username, null);
+    setWin(bot.id, null);
   };
   const click = async (slot: number, button = 0) => {
     const r = await cmd.window.click(bot.id, slot, button, 0);
-    if (r.ok) setWin(bot.username, r.data ?? null);
+    if (r.ok) setWin(bot.id, r.data ?? null);
   };
   const refresh = async () => {
     const r = await cmd.window.get(bot.id);
-    if (r.ok) setWin(bot.username, r.data ?? null);
+    if (r.ok) setWin(bot.id, r.data ?? null);
   };
 
   const total = win.slotCount;

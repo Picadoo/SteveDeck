@@ -40,7 +40,7 @@ function categorize(slot: number): Cat | null {
 const isArmor = (texture?: string) => /(_helmet|_chestplate|_leggings|_boots)$|^elytra$/.test(texture || "");
 
 export default function InventoryTab({ bot }: { bot: BotSummary }) {
-  const items = useStore((s) => s.inventory[bot.username]) ?? EMPTY_ITEMS;
+  const items = useStore((s) => s.inventory[bot.id]) ?? EMPTY_ITEMS;
   const invMode = useStore((s) => s.invMode);
   const setInvMode = useStore((s) => s.setInvMode);
   const connUrl = useStore((s) => s.conn.url);
@@ -181,15 +181,21 @@ function ItemRow({
   texBase: string;
 }) {
   const pushToast = useStore((s) => s.pushToast);
+  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
   const act = async (action: "equip" | "hold" | "use" | "drop") => {
     const r = await cmd.moduleAction(botId, "inventory", action, { slot: item.slot });
     if (!r.ok) pushToast(r.error || "操作失败", "error");
   };
   const armor = isArmor(item.texture);
   const name = item.display || item.name || "";
+  const hasTip = full && (!!item.lore || (item.enchants?.length ?? 0) > 0 || !!item.texture);
 
   return (
-    <div className="group flex items-start gap-2.5 rounded-lg bg-surface-2/50 px-3 py-2">
+    <div
+      className="group flex items-start gap-2.5 rounded-lg bg-surface-2/50 px-3 py-2"
+      onMouseMove={hasTip ? (e) => setTip({ x: e.clientX, y: e.clientY }) : undefined}
+      onMouseLeave={hasTip ? () => setTip(null) : undefined}
+    >
       {full && <ItemIcon texture={item.texture} base={texBase} size={32} />}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
@@ -209,12 +215,42 @@ function ItemRow({
             ))}
           </div>
         )}
-        {full && item.lore && (
-          <p className="mt-1 whitespace-pre-line text-[11px] leading-snug line-clamp-5">
-            <McText text={item.lore} />
-          </p>
-        )}
       </div>
+
+      {/* 悬浮完整信息（仿 MC 物品提示）：完整名 + 附魔 + 完整 lore + 物品 id */}
+      {tip && (
+        <div
+          className="pointer-events-none fixed z-[100] max-w-[18rem] rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
+          style={{
+            left: Math.min(tip.x + 14, window.innerWidth - 300),
+            top: Math.min(tip.y + 14, window.innerHeight - 220),
+          }}
+        >
+          <div className="text-sm font-semibold leading-snug">
+            <McText text={name} />
+            {item.count && item.count > 1 ? (
+              <span className="ml-1 text-[11px] font-normal text-white/50">×{item.count}</span>
+            ) : null}
+          </div>
+          {item.enchants && item.enchants.length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {item.enchants.map((e, i) => (
+                <div key={i} className="text-[11px] text-[#9d8bff]">
+                  {e}
+                </div>
+              ))}
+            </div>
+          )}
+          {item.lore && (
+            <div className="mt-1 whitespace-pre-line text-[11px] leading-snug text-white/75">
+              <McText text={item.lore} />
+            </div>
+          )}
+          {item.texture && (
+            <div className="mt-1.5 text-[10px] text-white/30">minecraft:{item.texture}</div>
+          )}
+        </div>
+      )}
       {online && (
         <div className="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
           {armor && (

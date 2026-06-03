@@ -83,7 +83,7 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
   async function openContainer(c: Container) {
     pushToast("正在走过去并打开…", "info");
     const r = await cmd.window.openAt(bot.id, c.x, c.y, c.z);
-    if (r.ok && r.data) setWindow(bot.username, r.data);
+    if (r.ok && r.data) setWindow(bot.id, r.data);
     else pushToast(r.error || "打开失败", "error");
   }
   async function goto() {

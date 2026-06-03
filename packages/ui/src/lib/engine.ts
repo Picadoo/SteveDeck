@@ -132,14 +132,18 @@ export function connect(url: string, token: string): void {
   socket.on(ServerEvents.BOT_ERROR, (p: { id: string; error: string }) => {
     if (p.id) useStore.getState().appendLog(p.id, { time: now(), text: p.error, level: "error" });
   });
-  socket.on(ServerEvents.INVENTORY, (p: { user: string; items: InventoryItem[] }) => {
-    if (p.user) useStore.getState().setInventory(p.user, p.items || []);
+  // 按实例 ID(_bid) 归档，避免同名机器人（不同服务器）串台；老引擎无 _bid 时回退用户名
+  socket.on(ServerEvents.INVENTORY, (p: { user: string; _bid?: string; items: InventoryItem[] }) => {
+    const key = p._bid || p.user;
+    if (key) useStore.getState().setInventory(key, p.items || []);
   });
-  socket.on(ServerEvents.WINDOW_OPEN, (p: { user: string; window: WindowState }) => {
-    if (p.user) useStore.getState().setWindow(p.user, p.window);
+  socket.on(ServerEvents.WINDOW_OPEN, (p: { user: string; _bid?: string; window: WindowState }) => {
+    const key = p._bid || p.user;
+    if (key) useStore.getState().setWindow(key, p.window);
   });
-  socket.on(ServerEvents.WINDOW_CLOSE, (p: { user: string }) => {
-    if (p.user) useStore.getState().setWindow(p.user, null);
+  socket.on(ServerEvents.WINDOW_CLOSE, (p: { user: string; _bid?: string }) => {
+    const key = p._bid || p.user;
+    if (key) useStore.getState().setWindow(key, null);
   });
 }
 
