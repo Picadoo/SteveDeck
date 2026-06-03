@@ -6,30 +6,48 @@ import type { BotSummary } from "@mcbot/protocol";
 
 export default function LocationsTab({ bot }: { bot: BotSummary }) {
   const [name, setName] = useState("");
+  const [command, setCommand] = useState("");
   const locs = bot.savedLocations ?? [];
 
   async function save(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    const r = await cmd.moduleAction(bot.id, "location", "save", { name: name.trim() });
-    if (r.ok) setName("");
+    const r = await cmd.moduleAction(bot.id, "location", "save", {
+      name: name.trim(),
+      command: command.trim() || undefined,
+    });
+    if (r.ok) {
+      setName("");
+      setCommand("");
+    }
   }
 
   return (
     <div className="space-y-4">
       <Card className="p-4">
         <h3 className="mb-3 text-sm font-semibold">保存当前位置（最多 5 个）</h3>
-        <form onSubmit={save} className="flex gap-2">
+        <form onSubmit={save} className="space-y-2">
+          <div className="flex gap-2">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="例如：主世界的家"
+              disabled={!bot.online}
+            />
+            <Button type="submit" variant="primary" disabled={!bot.online || !name.trim()}>
+              <Plus className="h-4 w-4" /> 保存
+            </Button>
+          </div>
           <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="例如：主世界的家"
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            placeholder="可选·前置指令（多世界切图，如 /warp 主城）"
             disabled={!bot.online}
           />
-          <Button type="submit" variant="primary" disabled={!bot.online || !name.trim()}>
-            <Plus className="h-4 w-4" /> 保存
-          </Button>
         </form>
+        <p className="mt-2 text-[11px] text-muted">
+          多世界服需先切到对应地图：填了前置指令，「前往」时会先发指令、再寻路。
+        </p>
       </Card>
 
       <div className="space-y-2">
@@ -45,6 +63,7 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
                   <div className="text-[11px] text-muted">
                     {l.x}, {l.y}, {l.z}
                   </div>
+                  {l.command && <div className="text-[11px] text-accent">前置：{l.command}</div>}
                 </div>
               </div>
               <div className="flex gap-1.5">

@@ -10,6 +10,7 @@ import {
   Send,
   Bot as BotIcon,
   Pencil,
+  Eye,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Button, Input, Badge, StatusDot } from "@/components/ui/primitives";
@@ -19,6 +20,7 @@ import { healthPct } from "@/lib/format";
 import AddBotDialog, { type EditInitial } from "./AddBotDialog";
 import Console from "./Console";
 import GuiWindow from "./GuiWindow";
+import ViewerModal from "./ViewerModal";
 import OverviewTab from "./OverviewTab";
 import ModulesTab from "./ModulesTab";
 import InteractionTab from "./InteractionTab";
@@ -37,6 +39,7 @@ export default function BotPanel() {
   const [chat, setChat] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const [edit, setEdit] = useState<{ open: boolean; initial?: EditInitial }>({ open: false });
+  const [viewer, setViewer] = useState(false);
 
   if (!bot) {
     return (
@@ -92,6 +95,11 @@ export default function BotPanel() {
             <Button size="sm" variant="secondary" onClick={() => cmd.stop(bot.id)}>
               <Square className="h-3.5 w-3.5" /> 停止
             </Button>
+            {bot.online && (
+              <Button size="sm" variant="ghost" onClick={() => setViewer(true)} title="实时视角">
+                <Eye className="h-3.5 w-3.5" />
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={openEdit} title="编辑">
               <Pencil className="h-3.5 w-3.5" />
             </Button>
@@ -188,6 +196,9 @@ export default function BotPanel() {
 
       {/* 服务器打开的窗口/GUI（箱子/菜单），自动弹出可操作 */}
       <GuiWindow bot={bot} />
+
+      {/* 机器人实时视角 */}
+      <ViewerModal bot={bot} open={viewer} onClose={() => setViewer(false)} />
     </div>
   );
 }

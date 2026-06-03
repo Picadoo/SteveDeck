@@ -122,6 +122,7 @@ class BotInstance {
                 require('./modules/fishing_hotspot')(this);
                 require('./modules/window_gui')(this);
                 require('./modules/custom_js')(this);
+                require('./modules/bot_viewer')(this);
 
                 // 3. 配置恢复：统一恢复各模块上次的激活状态（含自动挖矿断线续挖）
                 const settings = this.config.settings || {};
@@ -413,7 +414,7 @@ class BotInstance {
     }
 
     // 地点管理功能
-    saveLocation(name) {
+    saveLocation(name, command) {
         if (!this.bot?.entity) {
             return { success: false, error: '机器人未在线' };
         }
@@ -426,6 +427,7 @@ class BotInstance {
         const location = {
             id: Date.now().toString(),
             name: name,
+            command: command || undefined,
             x: Math.floor(pos.x),
             y: Math.floor(pos.y),
             z: Math.floor(pos.z),
@@ -470,7 +472,21 @@ class BotInstance {
             return { success: false, error: '地点不存在' };
         }
 
-        this.move(location.x, location.y, location.z);
+        // 多世界：若配置了前置指令，先发指令切图，延迟后再寻路
+        if (location.command) {
+            this.bot.chat(location.command);
+            this.io.to(this._room).to('admin').emit('log', {
+                user: this.config.username,
+                ownerId: this.config.ownerId,
+                msg: `🌀 切图指令: ${location.command}，2.5秒后寻路`,
+                time: new Date().toLocaleTimeString()
+            });
+            setTimeout(() => {
+                if (this.bot?.entity) this.move(location.x, location.y, location.z);
+            }, 2500);
+        } else {
+            this.move(location.x, location.y, location.z);
+        }
         return { success: true, location };
     }
 }

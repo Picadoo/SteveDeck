@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Play, Square, Save, Trash2, FileCode2, AlertTriangle } from "lucide-react";
+import { Play, Square, Save, Trash2, FileCode2, AlertTriangle, Pin } from "lucide-react";
 import { Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
+import { cn } from "@/lib/cn";
 import type { BotSummary } from "@mcbot/protocol";
 
 const SAMPLE = `// 可用：api, bot, log, sleep, chat, Vec3, require
@@ -19,7 +20,7 @@ log("完成");`;
 
 export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
-  const [list, setList] = useState<{ name: string; updatedAt: number | null }[]>([]);
+  const [list, setList] = useState<{ name: string; pinned: boolean; updatedAt: number | null }[]>([]);
   const [name, setName] = useState("");
   const [code, setCode] = useState(SAMPLE);
 
@@ -62,6 +63,13 @@ export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
     if (n === name) setName("");
     refresh();
   }
+  async function togglePin(n: string, pinned: boolean) {
+    const r = await cmd.js.pin(bot.id, n, pinned);
+    if (r.ok) {
+      refresh();
+      pushToast(pinned ? "已置顶到模块页" : "已取消置顶", "success");
+    } else pushToast(r.error || "操作失败", "error");
+  }
 
   return (
     <div className="space-y-3">
@@ -79,6 +87,9 @@ export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
             >
               <button onClick={() => load(s.name)} className="flex items-center gap-1 hover:text-accent">
                 <FileCode2 className="h-3 w-3" /> {s.name}
+              </button>
+              <button onClick={() => togglePin(s.name, !s.pinned)} title={s.pinned ? "取消置顶" : "置顶到模块页一键开关"}>
+                <Pin className={cn("h-3 w-3", s.pinned ? "fill-accent text-accent" : "text-muted opacity-50 hover:opacity-100")} />
               </button>
               <button onClick={() => del(s.name)} title="删除">
                 <Trash2 className="h-3 w-3 text-danger opacity-50 hover:opacity-100" />

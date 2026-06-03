@@ -86,6 +86,8 @@ export interface SavedLocation {
   x: number;
   y: number;
   z: number;
+  /** 可选·前往前先执行的指令（多世界切图，如 /warp 主城） */
+  command?: string;
   createdAt: number;
 }
 

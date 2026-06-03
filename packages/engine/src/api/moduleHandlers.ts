@@ -130,6 +130,7 @@ function dispatchAction(
       return ok(
         Object.values(botManager.loadCustomScripts()).map((s: any) => ({
           name: s.name,
+          pinned: !!s.pinned,
           updatedAt: s.updatedAt || s.createdAt || null,
         })),
       );
@@ -143,9 +144,18 @@ function dispatchAction(
       lib[name] = {
         name,
         code: String(args.code || ""),
+        pinned: !!lib[name]?.pinned,
         createdAt: lib[name]?.createdAt || now,
         updatedAt: now,
       };
+      botManager.saveCustomScripts(lib);
+      return ok();
+    }
+    case "js:pin": {
+      const lib = botManager.loadCustomScripts();
+      const s = lib[String(args.name)];
+      if (!s) return fail("脚本不存在");
+      s.pinned = !!args.pinned;
       botManager.saveCustomScripts(lib);
       return ok();
     }
@@ -169,6 +179,12 @@ function dispatchAction(
     }
     case "js:stop":
       return ok({ stopped: inst.stopCustomJs?.() ?? false });
+
+    // ===== 机器人视角（prismarine-viewer web） =====
+    case "viewer:start":
+      return ok(inst.startViewer());
+    case "viewer:stop":
+      return ok({ stopped: inst.stopViewer?.() ?? false });
     case "auto_farm:scan":
       inst.scanFarmland?.();
       return ok();
@@ -193,7 +209,10 @@ function dispatchAction(
       inst.returnToHuntArea?.();
       return ok();
     case "location:save": {
-      const res = inst.saveLocation?.(String(args.name || ""));
+      const res = inst.saveLocation?.(
+        String(args.name || ""),
+        args.command ? String(args.command) : undefined,
+      );
       if (res?.success) {
         persistLocations(id, inst);
         return ok(res.location);

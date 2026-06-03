@@ -222,7 +222,7 @@ export const cmd = {
   },
   js: {
     list: (id: string) =>
-      emitAck<{ name: string; updatedAt: number | null }[]>(ClientCommands.MODULE_ACTION, {
+      emitAck<{ name: string; pinned: boolean; updatedAt: number | null }[]>(ClientCommands.MODULE_ACTION, {
         id,
         module: "js",
         action: "list",
@@ -241,5 +241,17 @@ export const cmd = {
     run: (id: string, name: string, code?: string) =>
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "js", action: "run", args: { name, code } }),
     stop: (id: string) => emitAck(ClientCommands.MODULE_ACTION, { id, module: "js", action: "stop" }),
+    pin: (id: string, name: string, pinned: boolean) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "js", action: "pin", args: { name, pinned } }),
+  },
+  viewer: {
+    start: (id: string) =>
+      emitAck<{ port: number; reused?: boolean }>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "viewer",
+        action: "start",
+      }),
+    stop: (id: string) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "viewer", action: "stop" }),
   },
 };

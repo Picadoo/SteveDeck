@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings2 } from "lucide-react";
+import { Settings2, FileCode2 } from "lucide-react";
 import { Card, Switch, Button } from "@/components/ui/primitives";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
@@ -39,6 +39,7 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
   const [editing, setEditing] = useState<ModuleDef | null>(null);
   const [stats, setStats] = useState<Record<string, any>>({});
   const [engineSettings, setEngineSettings] = useState<any>(null);
+  const [pinned, setPinned] = useState<{ name: string }[]>([]);
 
   // 拉取引擎里持久化的真实配置，用于配置对话框预填
   useEffect(() => {
@@ -46,6 +47,14 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
       if (r.ok && r.data) setEngineSettings(r.data.settings || {});
     });
   }, [bot.id]);
+
+  // 置顶的自定义 JS 脚本：在模块页作为一键开关
+  useEffect(() => {
+    cmd.js.list(bot.id).then((r) => {
+      if (r.ok && Array.isArray(r.data))
+        setPinned(r.data.filter((s) => s.pinned).map((s) => ({ name: s.name })));
+    });
+  }, [bot.id, bot.modules.script]);
 
   const isActive = (def: ModuleDef) => !!bot.modules[def.activeFlag];
 
@@ -131,6 +140,30 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
                 <Settings2 className="h-3.5 w-3.5" /> 配置
               </Button>
             )}
+          </Card>
+        );
+      })}
+
+      {pinned.map((s) => {
+        const running = bot.modules.script === `JS:${s.name}`;
+        return (
+          <Card key={`js:${s.name}`} className="p-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/12 text-accent">
+                  <FileCode2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium">{s.name}</div>
+                  <div className="text-[11px] text-muted">自定义脚本</div>
+                </div>
+              </div>
+              <Switch
+                checked={running}
+                onChange={(v) => (v ? cmd.js.run(bot.id, s.name) : cmd.js.stop(bot.id))}
+                disabled={!bot.online}
+              />
+            </div>
           </Card>
         );
       })}
