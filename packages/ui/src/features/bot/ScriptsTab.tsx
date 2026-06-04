@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Play, Square, Plus, Pencil, Trash2, ScrollText, Repeat } from "lucide-react";
+import { Play, Square, Plus, Pencil, Trash2, ScrollText, Repeat, AlertCircle, Activity } from "lucide-react";
 import { Card, Button, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
@@ -16,6 +16,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
     open: false,
     initial: null,
   });
+  const runtime = useStore((s) => s.scriptRuntime[bot.id]);
 
   async function refresh() {
     const r = await cmd.script.list(bot.id);
@@ -59,6 +60,58 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
 
   return (
     <div className="space-y-3">
+      {/* 脚本运行状态：当前步骤 / 循环轮次 / 变量 / 报错（来自引擎实时反馈，之前是黑盒） */}
+      {runtime &&
+        (runtime.status === "running" ||
+          runtime.error ||
+          (runtime.vars && Object.keys(runtime.vars).length > 0)) && (
+          <Card className="space-y-1 p-3 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-medium">
+                {runtime.status === "running" ? (
+                  <>
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
+                    运行中{runtime.name ? `：${runtime.name}` : ""}
+                  </>
+                ) : (
+                  <>
+                    <Activity className="h-3.5 w-3.5 text-muted" />
+                    运行状态{runtime.name ? `：${runtime.name}` : ""}
+                  </>
+                )}
+              </span>
+              {typeof runtime.loopIter === "number" && runtime.loopIter > 0 && (
+                <span className="text-muted">第 {runtime.loopIter} 轮</span>
+              )}
+            </div>
+            {runtime.action && (
+              <div className="text-muted">
+                当前：<span className="text-fg">{runtime.action}</span>
+                {runtime.path ? <span className="text-muted/60"> @ {runtime.path}</span> : null}
+              </div>
+            )}
+            {runtime.error && (
+              <div className="flex items-start gap-1 rounded bg-danger/10 px-2 py-1 text-danger">
+                <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                <span>
+                  {runtime.error.action && runtime.error.action !== "-" ? `[${runtime.error.action}] ` : ""}
+                  {runtime.error.message}
+                  <span className="ml-1 text-danger/60">{runtime.error.time}</span>
+                </span>
+              </div>
+            )}
+            {runtime.vars && Object.keys(runtime.vars).length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-0.5">
+                {Object.entries(runtime.vars).map(([k, v]) => (
+                  <span key={k} className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px]">
+                    {k}=<span className="text-accent">{String(v)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
+
       <div className="flex gap-1 rounded-lg bg-surface-2 p-1 text-sm">
         <button
           onClick={() => setMode("visual")}

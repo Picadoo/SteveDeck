@@ -150,6 +150,44 @@ export function connect(url: string, token: string): void {
     const key = p._bid || p.user;
     if (key) useStore.getState().setWindow(key, p.window);
   });
+
+  // 脚本运行时反馈（进度/状态/报错/变量）——以前完全没订阅，脚本对用户是黑盒
+  socket.on(
+    "script_status",
+    (p: { _bid?: string; user?: string; name?: string; status?: string; detail?: string }) => {
+      const key = p._bid || p.user;
+      if (!key) return;
+      const patch: Record<string, unknown> = { name: p.name, status: p.status, detail: p.detail };
+      // 新一轮开始：清掉上次的报错与进度
+      if (p.status === "running") {
+        patch.error = null;
+        patch.action = undefined;
+        patch.path = undefined;
+      }
+      useStore.getState().mergeScriptRuntime(key, patch);
+    },
+  );
+  socket.on(
+    "script_progress",
+    (p: { _bid?: string; user?: string; path?: string; action?: string; loopIter?: number }) => {
+      const key = p._bid || p.user;
+      if (key) useStore.getState().mergeScriptRuntime(key, { path: p.path, action: p.action, loopIter: p.loopIter });
+    },
+  );
+  socket.on(
+    "script_error",
+    (p: { _bid?: string; user?: string; path?: string; action?: string; message?: string }) => {
+      const key = p._bid || p.user;
+      if (!key) return;
+      const message = p.message || "未知错误";
+      useStore.getState().mergeScriptRuntime(key, { error: { path: p.path, action: p.action, message, time: now() } });
+      useStore.getState().pushToast(`脚本错误：${message}`, "error");
+    },
+  );
+  socket.on("script_vars", (p: { _bid?: string; user?: string; vars?: Record<string, unknown> }) => {
+    const key = p._bid || p.user;
+    if (key) useStore.getState().mergeScriptRuntime(key, { vars: p.vars || {} });
+  });
 }
 
 export function disconnect(): void {

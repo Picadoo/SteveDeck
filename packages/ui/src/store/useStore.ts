@@ -21,6 +21,18 @@ let toastSeq = 0;
 
 const MAX_LOG_LINES = 500;
 
+/** 脚本运行时反馈（来自引擎 script_status/progress/error/vars），按机器人 id 键 */
+export interface ScriptRuntime {
+  name?: string;
+  status?: string; // running / stopped / rejected
+  detail?: string;
+  path?: string;
+  action?: string;
+  loopIter?: number;
+  error?: { path?: string; action?: string; message: string; time: string } | null;
+  vars?: Record<string, unknown>;
+}
+
 interface AppState {
   theme: "light" | "dark";
   /** 背包显示模式：lite 精简（纯文本）/ full 完全（贴图+彩色名+描述） */
@@ -35,6 +47,8 @@ interface AppState {
   inventory: Record<string, InventoryItem[]>;
   /** 当前打开的窗口/GUI，按机器人用户名键（null 表示无） */
   windows: Record<string, WindowState | null>;
+  /** 脚本运行时反馈，按机器人 id 键 */
+  scriptRuntime: Record<string, ScriptRuntime>;
   /** 最近发送的聊天/命令（全局，持久化，去重） */
   chatHistory: string[];
   toasts: Toast[];
@@ -44,6 +58,7 @@ interface AppState {
   setModuleConfig: (botId: string, module: string, config: Record<string, unknown>) => void;
   setInventory: (user: string, items: InventoryItem[]) => void;
   setWindow: (user: string, win: WindowState | null) => void;
+  mergeScriptRuntime: (id: string, patch: Partial<ScriptRuntime>) => void;
   pushCmd: (c: string) => void;
   pushToast: (message: string, tone?: ToastTone) => void;
   dismissToast: (id: number) => void;
@@ -108,6 +123,7 @@ export const useStore = create<AppState>((set, get) => ({
   moduleConfigs: {},
   inventory: {},
   windows: {},
+  scriptRuntime: {},
   chatHistory: loadCmdHistory(),
   toasts: [],
 
@@ -125,6 +141,8 @@ export const useStore = create<AppState>((set, get) => ({
   setInventory: (user, items) =>
     set((s) => ({ inventory: { ...s.inventory, [user]: items } })),
   setWindow: (user, win) => set((s) => ({ windows: { ...s.windows, [user]: win } })),
+  mergeScriptRuntime: (id, patch) =>
+    set((s) => ({ scriptRuntime: { ...s.scriptRuntime, [id]: { ...s.scriptRuntime[id], ...patch } } })),
   pushCmd: (c) =>
     set((s) => {
       const cmd = c.trim();
