@@ -169,8 +169,10 @@ function dispatchAction(
       return ok();
     }
     case "js:run": {
-      if (process.env.ENGINE_ALLOW_JS === "0")
-        return fail("引擎已禁用自定义 JS（设 ENGINE_ALLOW_JS=1 开启）");
+      // 默认关闭：自定义 JS 等于在引擎主机上执行任意代码（可读 bots.json 明文密码、跑系统命令），
+      // 而移动端是带令牌的局域网配对——默认开放≈持令牌即可 RCE。需显式 ENGINE_ALLOW_JS=1 开启。
+      if (process.env.ENGINE_ALLOW_JS !== "1")
+        return fail("引擎已禁用自定义 JS（有主机代码执行风险）。需在引擎 .env 设 ENGINE_ALLOW_JS=1 开启");
       const code =
         args.code != null
           ? String(args.code)

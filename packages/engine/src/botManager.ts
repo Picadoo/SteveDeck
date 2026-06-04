@@ -320,7 +320,12 @@ class BotManager {
   private spawn(cfg: BotConfig): void {
     if (this.bots.has(cfg.id)) return;
     try {
-      const inst = new BotInstance(this.toInstanceConfig(cfg), this.makeBroadcaster(cfg.id), () => this.persist());
+      const inst = new BotInstance(
+        this.toInstanceConfig(cfg),
+        this.makeBroadcaster(cfg.id),
+        () => this.persist(),
+        () => this.loadScripts(), // 冷启动预载全局脚本库（修复重启后定时脚本/触发器不续跑）
+      );
       this.bots.set(cfg.id, inst);
       logger.info(`[BotManager] ${cfg.username}@${cfg.host} 已创建`);
     } catch (e: any) {

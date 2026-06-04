@@ -7,11 +7,13 @@ const logger = require('./utils/logger');
 const { isFatalKick, extractText } = require('./utils/reconnectPolicy');
 
 class BotInstance {
-    constructor(config, io, saveCallback) {
+    constructor(config, io, saveCallback, loadGlobalScripts) {
         this.config = config;
         this.io = io;
         this.bot = null;
         this.saveCallback = saveCallback;
+        // 冷启动脚本预载用：全局脚本库加载器（由 botManager 注入）；缺省则回退旧路径
+        this.loadGlobalScripts = typeof loadGlobalScripts === 'function' ? loadGlobalScripts : null;
 
         // ownerId 对应的 room 名，用于定向发送消息
         this._room = `user:${config.ownerId}`;
@@ -95,6 +97,7 @@ class BotInstance {
             }
 
             this.bot.once('spawn', () => {
+              try {
                 this.spawnedAt = Date.now(); // 本次在线起点（用于在线时长显示）
                 // 不立即清零：稳定在线 30 秒才认为连接健康，避免"登录即被踢"的抖动循环绕过重试上限
                 if (this.stableTimer) clearTimeout(this.stableTimer);
@@ -106,44 +109,51 @@ class BotInstance {
 
                 logger.info(`[${this.config.username}] 登录成功，正在挂载功能模块...`);
 
-                // 2. 模块挂载
-                require('./modules/combat')(this);
-                require('./modules/fishing')(this);
-                require('./modules/scheduler')(this);
-                require('./modules/inventory')(this);
-                require('./modules/player_inventory')(this);
-                require('./modules/interact')(this);
-                require('./modules/automine')(this);
-                require('./modules/trash_cleaner')(this);
-                require('./modules/auto_farm')(this);
-                require('./modules/mob_hunter')(this);
-                require('./modules/scoreboard')(this);
-                require('./modules/script_engine')(this);
-                require('./modules/fishing_hotspot')(this);
-                require('./modules/window_gui')(this);
-                require('./modules/custom_js')(this);
-                require('./modules/bot_viewer')(this);
+                // 2. 模块挂载：逐个 try/catch 隔离——单个模块构造抛错不再连累后续模块与状态推送
+                const MODULE_NAMES = [
+                    'combat', 'fishing', 'scheduler', 'inventory', 'player_inventory',
+                    'interact', 'automine', 'trash_cleaner', 'auto_farm', 'mob_hunter',
+                    'scoreboard', 'script_engine', 'fishing_hotspot', 'window_gui',
+                    'custom_js', 'bot_viewer',
+                ];
+                for (const name of MODULE_NAMES) {
+                    try {
+                        require(`./modules/${name}`)(this);
+                    } catch (err) {
+                        logger.error(`[${this.config.username}] 模块[${name}]挂载失败:`, err?.message || err);
+                    }
+                }
 
                 // 3. 配置恢复：统一恢复各模块上次的激活状态（含自动挖矿断线续挖）
-                const settings = this.config.settings || {};
-                this.restoreModules(settings);
+                try {
+                    this.restoreModules(this.config.settings || {});
+                } catch (err) {
+                    logger.error(`[${this.config.username}] 模块状态恢复失败:`, err?.message || err);
+                }
 
                 // 4. 自动登录：如果配置了密码，延迟2秒后自动发送 /login 命令
                 if (this.config.password) {
                     setTimeout(() => {
-                        if (this.bot) {
-                            this.bot.chat(`/login ${this.config.password}`);
-                            logger.info(`[${this.config.username}] 已自动发送登录命令`);
+                        try {
+                            if (this.bot) {
+                                this.bot.chat(`/login ${this.config.password}`);
+                                logger.info(`[${this.config.username}] 已自动发送登录命令`);
+                            }
+                        } catch (err) {
+                            logger.error(`[${this.config.username}] 自动登录失败:`, err?.message || err);
                         }
                     }, 2000); // 延迟2秒，给服务器加载时间
                 }
 
                 // 应用寻路策略（默认无破坏模式，适配受保护地图）
                 this.applyMovements();
-
-                // 启动状态同步
+              } catch (err) {
+                logger.error(`[${this.config.username}] spawn 处理异常:`, err?.message || err);
+              } finally {
+                // 状态同步必须启动（即便上面出错），否则前端会一直显示离线
                 if (this.statusTimer) clearInterval(this.statusTimer);
                 this.statusTimer = setInterval(() => this.updateStatus(), 2000);
+              }
             });
 
             this.setupEvents();
@@ -161,8 +171,13 @@ class BotInstance {
         // 立即恢复（仅纯配置/脚本库，不会移动 bot，登录前执行无副作用）
         try {
             if (settings.combatConfig) this.combatConfig = { ...this.combatConfig, ...settings.combatConfig };
-            const userScripts = this.loadUserScriptsFromDisk();
-            const scriptsToLoad = Object.keys(userScripts).length > 0 ? userScripts : (settings.scripts || {});
+            // 脚本库：冷启动优先从全局 scripts.json 预载；旧的 user_scripts / settings.scripts 仅作回退。
+            let scriptsToLoad = {};
+            try { if (this.loadGlobalScripts) scriptsToLoad = this.loadGlobalScripts() || {}; } catch (e) { /* 回退 */ }
+            if (!scriptsToLoad || Object.keys(scriptsToLoad).length === 0) {
+                const userScripts = this.loadUserScriptsFromDisk();
+                scriptsToLoad = Object.keys(userScripts).length > 0 ? userScripts : (settings.scripts || {});
+            }
             if (this.preloadScripts && scriptsToLoad && typeof scriptsToLoad === 'object') {
                 this.preloadScripts(scriptsToLoad);
                 logger.info(`[${this.config.username}] 已恢复 ${Object.keys(scriptsToLoad).length} 个脚本`);
