@@ -65,6 +65,16 @@ function txt(v: any): string | null {
       if (typeof s === "string" && s !== "[object Object]")
         return s.replace(/§[0-9a-fk-orx]/gi, "").trim() || null;
     }
+    // JSON 聊天组件 {text, extra}
+    if (typeof v.text === "string" || Array.isArray(v.extra)) {
+      const flat =
+        (v.text || "") +
+        (Array.isArray(v.extra)
+          ? v.extra.map((e: any) => (typeof e === "string" ? e : (e && e.text) || "")).join("")
+          : "");
+      const cleaned = flat.replace(/§[0-9a-fk-orx]/gi, "").trim();
+      if (cleaned) return cleaned;
+    }
   } catch {
     /* ignore */
   }
@@ -73,7 +83,11 @@ function txt(v: any): string | null {
 
 /** 取实体的自定义名牌（去色码），无则 null */
 function entityCustomName(e: any): string | null {
-  return txt(e?.customName) || (e && typeof e.displayName === "object" ? txt(e.displayName) : null);
+  // 名牌：1.12.2 在 metadata[2]（mineflayer 不一定填 customName），其次 customName，最后 displayName 对象
+  let src = e?.customName;
+  if (src == null && e?.metadata) src = e.metadata[2];
+  if (src == null && typeof e?.displayName === "object") src = e.displayName;
+  return txt(src);
 }
 
 /** 视线水平朝向 → 方位+坐标轴（用 mineflayer 自身公式，确保与实际移动一致） */

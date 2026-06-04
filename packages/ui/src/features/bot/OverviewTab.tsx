@@ -25,7 +25,8 @@ import {
 import { Card, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import McText from "@/components/McText";
-import { healthBar, healthTone, fmtUptime } from "@/lib/format";
+import { normMob, cnMob } from "@/lib/mobNames";
+import { healthBar, healthTone, fmtUptime, fmtBig } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import type { BotSummary, Observation } from "@mcbot/protocol";
 
@@ -37,40 +38,7 @@ const HOSTILE = new Set([
   "evoker", "illusioner", "ravager", "pillager", "phantom", "zombified_piglin", "zombie_pigman",
   "piglin", "hoglin", "zoglin", "wither", "ender_dragon", "giant", "warden",
 ]);
-const norm = (s: string) => String(s || "").toLowerCase().replace(/ /g, "_");
-const isHostileEnt = (e: { name: string; hostile?: boolean }) => !!e.hostile || HOSTILE.has(norm(e.name));
-
-// 常见生物中文名（仅用于无自定义名牌时的友好回退）
-const MOB_CN: Record<string, string> = {
-  zombie: "僵尸",
-  skeleton: "骷髅",
-  creeper: "苦力怕",
-  spider: "蜘蛛",
-  cave_spider: "洞穴蜘蛛",
-  enderman: "末影人",
-  witch: "女巫",
-  slime: "史莱姆",
-  cow: "牛",
-  pig: "猪",
-  sheep: "羊",
-  chicken: "鸡",
-  villager: "村民",
-  squid: "鱿鱼",
-  bat: "蝙蝠",
-  horse: "马",
-  wolf: "狼",
-  zombie_villager: "僵尸村民",
-  husk: "尸壳",
-  stray: "流浪者",
-  drowned: "溺尸",
-  blaze: "烈焰人",
-  ghast: "恶魂",
-  magma_cube: "岩浆怪",
-  wither_skeleton: "凋灵骷髅",
-  phantom: "幻翼",
-  rabbit: "兔子",
-  iron_golem: "铁傀儡",
-};
+const isHostileEnt = (e: { name: string; hostile?: boolean }) => !!e.hostile || HOSTILE.has(normMob(e.name));
 
 // 活动进度文案（取自各模块 stats）
 const fmtMine = (s: any) => (s ? `已挖 ${s.total ?? 0}${s.rate != null ? ` · ${s.rate}/分` : ""}` : "搜索矿物中…");
@@ -414,11 +382,11 @@ function NearbyRow({
       </span>
       <span className="flex shrink-0 items-center gap-2 text-xs tabular-nums">
         {typeof health === "number" && (
-          <span className="flex items-center gap-0.5 text-rose-400" title="血量">
+          <span className="flex items-center gap-0.5 text-rose-400" title={`血量 ${health}${typeof maxHealth === "number" ? "/" + maxHealth : ""}`}>
             <Heart className="h-3 w-3 fill-current" />
-            {health}
+            {fmtBig(health)}
             {typeof maxHealth === "number" && maxHealth !== health && (
-              <span className="text-muted">/{maxHealth}</span>
+              <span className="text-muted">/{fmtBig(maxHealth)}</span>
             )}
           </span>
         )}
@@ -462,7 +430,7 @@ function NearbyList({ obs }: { obs: Observation | null }) {
       })}
       {ents.slice(0, 8).map((e, i) => {
         const hostile = isHostileEnt(e);
-        const label = e.custom ? e.name : MOB_CN[norm(e.name)] || e.name;
+        const label = e.custom ? e.name : cnMob(e.name);
         const Icon = hostile ? Skull : e.custom ? Sparkles : Circle;
         return (
           <NearbyRow

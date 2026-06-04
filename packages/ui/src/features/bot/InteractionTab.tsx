@@ -18,6 +18,7 @@ import {
 import { Card, Button, Input, Badge, Switch } from "@/components/ui/primitives";
 import { HoldButton } from "@/components/Joystick";
 import McText from "@/components/McText";
+import { cnMob } from "@/lib/mobNames";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import SchedulerTab from "./SchedulerTab";
@@ -131,14 +132,14 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
                   <span className="flex min-w-0 items-center gap-1.5">
                     {/* 名字为主（彩色），种类/身份为辅（小标签） */}
                     <span className="truncate font-medium">
-                      <McText text={n.nameRaw || n.name || n.type} />
+                      <McText text={n.nameRaw || n.name || cnMob(n.type)} />
                     </span>
                     {n.realPlayer ? (
                       <span className="shrink-0 rounded bg-success/15 px-1 text-[10px] text-success">真人</span>
                     ) : n.type === "player" ? (
                       <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] text-warning">NPC</span>
                     ) : (
-                      n.name && <span className="shrink-0 rounded bg-surface px-1 text-[10px] text-muted">{n.type}</span>
+                      n.name && <span className="shrink-0 rounded bg-surface px-1 text-[10px] text-muted">{cnMob(n.type)}</span>
                     )}
                     <span className="shrink-0 text-[11px] text-muted">{n.distance}m</span>
                   </span>

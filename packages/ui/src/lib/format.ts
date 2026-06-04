@@ -23,6 +23,21 @@ export function healthBar(pct: number | null): string {
   return "bg-danger";
 }
 
+/** 大数 → 中文单位（1500000→150万 · 1.62e10→162亿 · 1.2e12→1.2万亿）。小于 1万原样显示。 */
+export function fmtBig(n: number | null | undefined): string {
+  if (n == null || !isFinite(n)) return "—";
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  const unit = (v: number, u: string) => {
+    const s = v >= 100 ? Math.round(v).toString() : v.toFixed(v >= 10 ? 1 : 2).replace(/\.?0+$/, "");
+    return sign + s + u;
+  };
+  if (abs < 1e4) return sign + Math.round(abs).toString();
+  if (abs < 1e8) return unit(abs / 1e4, "万");
+  if (abs < 1e12) return unit(abs / 1e8, "亿");
+  return unit(abs / 1e12, "万亿");
+}
+
 /** 秒 → 在线时长（如 2天3时 / 5时12分 / 8分30秒） */
 export function fmtUptime(sec: number | null | undefined): string {
   if (sec == null || sec < 0) return "—";

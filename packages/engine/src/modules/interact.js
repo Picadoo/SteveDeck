@@ -10,6 +10,12 @@ module.exports = (botInstance) => {
         if (typeof v === 'object') {
             try { if (typeof v.toMotd === 'function') return v.toMotd(); } catch (e) { /* ignore */ }
             try { const s = v.toString(); if (s && s !== '[object Object]') return s; } catch (e) { /* ignore */ }
+            // JSON 聊天组件 {text, extra}
+            if (typeof v.text === 'string' || Array.isArray(v.extra)) {
+                const flat = (v.text || '') +
+                    (Array.isArray(v.extra) ? v.extra.map(e => (typeof e === 'string' ? e : (e && e.text) || '')).join('') : '');
+                if (flat) return flat;
+            }
             return '';
         }
         return String(v);
@@ -29,9 +35,11 @@ module.exports = (botInstance) => {
 
             let typeName = entity.name || entity.type;
             if (!isNaN(typeName)) typeName = mcData.entities[typeName]?.name || `id_${typeName}`;
-            // 自定义名牌/玩家名：保留颜色码（nameRaw）供前端彩色渲染，name 为去色纯文本
-            const src = entity.customName || entity.username || "";
-            const nameRaw = nameMotd(src).trim();
+            // 自定义名牌：1.12.2 名牌在 metadata[2]（mineflayer 不一定填 customName），其次 customName，最后玩家名。
+            // 保留颜色码（nameRaw）供前端彩色渲染，name 为去色纯文本。
+            let src = entity.customName;
+            if (src == null && entity.metadata) src = entity.metadata[2];
+            const nameRaw = (src != null ? nameMotd(src) : (entity.username || "")).trim();
             const name = nameRaw.replace(/§[0-9a-fk-orx]/gi, '').trim();
 
             // 区分「真实在线玩家」与「NPC（多为伪装成玩家的 Citizens 实体）」
