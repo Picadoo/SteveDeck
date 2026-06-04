@@ -18,7 +18,8 @@ export const MONITOR_PRESETS: MonitorPreset[] = [
       { label: "击杀金币", enabled: true, pattern: "被你击杀，你获得了\\s*([\\d,\\.]+)\\s*金币", numberMode: true, agg: "sum" },
       { label: "经验收入", enabled: true, pattern: "你获得了\\s*([\\d,\\.]+)[^点]*点经验", numberMode: true, agg: "sum" },
       { label: "灵魂空间(当前)", enabled: true, pattern: "灵魂空间[\\s\\S]*?当前\\s*([\\d,]+)\\s*个", numberMode: true, agg: "last" },
-      { label: "灵魂存入数", enabled: true, pattern: "灵魂空间[\\s\\S]*?[Xx](\\d+)", numberMode: true, agg: "sum" },
+      // 同时有「物品名 + 数量」：keyGroup=1(物品名) 按物品分组累计存入数
+      { label: "灵魂存入(按物品)", enabled: true, pattern: "已存入\\s*(.+?)[Xx](\\d+)", keyGroup: 1, valueGroup: 2, numberMode: true, agg: "sum" },
       { label: "峰值暴击", enabled: true, pattern: "伤害为[:：]\\s*([\\d,\\.]+\\s*[万亿兆]?)", numberMode: true, agg: "max" },
       { label: "击杀数", enabled: true, pattern: "被你击杀", numberMode: false, agg: "count" },
     ],

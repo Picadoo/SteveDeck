@@ -57,6 +57,20 @@ module.exports = (botInstance) => {
     return botInstance._monitorStats[id];
   };
 
+  // 把一次匹配的值累计到某个统计桶（总桶，或某个分类键的桶）
+  const applyVal = (bucket, rule, rawVal, val) => {
+    bucket.count += 1;
+    if (rule.numberMode) {
+      if (val != null) {
+        bucket.total += val;
+        bucket.last = val;
+        if (bucket.max == null || val > bucket.max) bucket.max = val;
+      }
+    } else if (rawVal != null) {
+      bucket.last = rawVal;
+    }
+  };
+
   let dirty = false;
   const onMessage = (jsonMsg) => {
     let text;
@@ -77,19 +91,20 @@ module.exports = (botInstance) => {
       }
       if (!m) continue;
       const st = ensureStat(rule.id);
-      st.count += 1;
       st.lastAt = now;
       if (st.firstAt == null) st.firstAt = now;
       const rawVal = m[rule.valueGroup || 1];
-      if (rule.numberMode) {
-        const val = parseNum(rawVal);
-        if (val != null) {
-          st.total += val;
-          st.last = val;
-          if (st.max == null || val > st.max) st.max = val;
+      const val = rule.numberMode ? parseNum(rawVal) : null;
+      applyVal(st, rule, rawVal, val);
+      // 按分类键(如物品名)细分：keyGroup 指定的捕获组作为键，各键各自累计
+      if (rule.keyGroup) {
+        const keyRaw = m[rule.keyGroup];
+        const key = keyRaw != null ? String(keyRaw).trim() : null;
+        if (key) {
+          st.byKey = st.byKey || {};
+          const b = st.byKey[key] || (st.byKey[key] = { count: 0, total: 0, last: null, max: null });
+          applyVal(b, rule, rawVal, val);
         }
-      } else if (rawVal != null) {
-        st.last = rawVal; // 非数字模式：last 存匹配到的文本
       }
       dirty = true;
     }
@@ -106,13 +121,22 @@ module.exports = (botInstance) => {
         continue;
       }
       const mins = st.firstAt ? Math.max(1 / 60, (now - st.firstAt) / 60000) : 0;
-      out[rule.id] = {
+      const payload = {
         count: st.count,
         total: st.total,
         last: st.last,
         max: st.max,
         perMin: mins > 0 ? (rule.agg === "count" ? st.count / mins : st.total / mins) : 0,
       };
+      if (st.byKey) {
+        // 按 total(数字模式)/count 降序，取前 30 键，控制推送体积
+        const entries = Object.entries(st.byKey).sort(
+          (a, b) => b[1].total - a[1].total || b[1].count - a[1].count,
+        );
+        payload.byKey = {};
+        for (const [k, v] of entries.slice(0, 30)) payload.byKey[k] = v;
+      }
+      out[rule.id] = payload;
     }
     return out;
   };

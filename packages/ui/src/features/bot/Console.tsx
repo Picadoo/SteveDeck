@@ -3,6 +3,7 @@ import { Trash2, Copy, ArrowDownToLine } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
 import McText from "@/components/McText";
+import MonitorPanel from "./MonitorPanel";
 import type { LogLine } from "@mcbot/protocol";
 
 // 模块级稳定空数组：避免 zustand v5 选择器返回新引用导致无限重渲染
@@ -41,6 +42,8 @@ export default function Console({ botId }: { botId: string }) {
 
   return (
     <div className="flex h-full flex-col">
+      {/* 监听统计：紧凑面板，齿轮进配置弹窗（并入日志页，不再单独成栏） */}
+      <MonitorPanel botId={botId} />
       <div className="mb-2 flex shrink-0 items-center gap-2">
         <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-[11px]">
           {(["all", "chat", "op"] as const).map((v) => (

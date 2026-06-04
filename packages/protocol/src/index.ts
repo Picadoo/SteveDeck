@@ -91,14 +91,24 @@ export interface MonitorRule {
   id: string;
   label: string;
   enabled: boolean;
-  /** 正则（对去色码后的纯文本匹配），含一个捕获组作为「值」 */
+  /** 正则（对去色码后的纯文本匹配），含捕获组 */
   pattern: string;
+  /** 取第几个捕获组作为「分类键」（如物品名）；设了就按键分组统计（各键各自累计） */
+  keyGroup?: number;
   /** 取第几个捕获组作为值（默认 1） */
   valueGroup?: number;
   /** 是否把捕获值解析为数字（支持 万/亿/兆/万亿 + 逗号） */
   numberMode: boolean;
   /** 聚合方式：sum 累加 / count 计次 / last 取最新 / max 峰值 / rate 速率 */
   agg: "sum" | "count" | "last" | "max" | "rate";
+}
+
+/** 按分类键细分的一项统计 */
+export interface MonitorKeyStat {
+  count: number;
+  total: number;
+  last: number | string | null;
+  max: number | null;
 }
 
 /** 某条监听规则的实时统计 */
@@ -108,6 +118,8 @@ export interface MonitorStat {
   last: number | string | null;
   max: number | null;
   perMin: number;
+  /** 按分类键(keyGroup)细分（如各物品名各自的数量）；无 keyGroup 时不含 */
+  byKey?: Record<string, MonitorKeyStat>;
 }
 
 export interface SavedLocation {
