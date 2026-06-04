@@ -20,11 +20,13 @@ module.exports = (botInstance) => {
 
         schedules.forEach(s => {
             if (s.time === currentTime) {
-                bot.chat(s.cmd);
+                const command = s.command || s.cmd; // UI 发 command；兼容旧数据 cmd
+                if (!command) return;
+                bot.chat(command);
                 botInstance.io.to(botInstance._room).to('admin').emit('log', {
                     user: botInstance.config.username,
                     ownerId: botInstance.config.ownerId,
-                    msg: `[定时任务] 触发指令: ${s.cmd}`,
+                    msg: `[定时任务] 触发指令: ${command}`,
                     time: now.toLocaleTimeString()
                 });
             }

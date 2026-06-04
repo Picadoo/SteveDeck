@@ -45,10 +45,13 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
             inst.toggleMobHunter?.(active, config || {});
             persistSettings(id, (s) => (s.mobHunter = { active, config: config || {} }));
             break;
-          case "trash_cleaner":
-            inst.toggleTrashCleaner?.(active, (config && config.items) || config || []);
-            persistSettings(id, (s) => ((s as any).trash_cleaner = active));
+          case "trash_cleaner": {
+            const items = (config && config.items) || config || [];
+            inst.toggleTrashCleaner?.(active, items);
+            // 存 {active, items}：之前只存了布尔值，重连后丢失黑名单
+            persistSettings(id, (s) => ((s as any).trash_cleaner = { active, items }));
             break;
+          }
           default:
             return ack?.(fail(`未知模块 ${module}`));
         }

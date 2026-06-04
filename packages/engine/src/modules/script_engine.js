@@ -499,7 +499,7 @@ module.exports = (botInstance) => {
             }
 
             case 'attack': {
-                const targetName = step.target;
+                const targetName = step.target || step.entity; // 积木字段名为 entity
                 const count = Math.max(1, Number(step.count) || 1);
                 const interval = (Number(step.interval) || 0.6) * 1000;
                 const findTarget = () => {
@@ -896,15 +896,17 @@ module.exports = (botInstance) => {
             case 'schedule': {
                 const now = new Date();
                 const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-                if (time !== trigger.time) return false;
+                const want = trigger.time || trigger.value; // 可视化编辑器存 value，旧数据存 time
+                if (!want || time !== want) return false;
                 const today = now.toDateString();
-                if (botInstance._scheduleFired[trigger.time] === today) return false;
-                botInstance._scheduleFired[trigger.time] = today;
+                if (botInstance._scheduleFired[want] === today) return false;
+                botInstance._scheduleFired[want] = today;
                 return true;
             }
             case 'chat_match': {
+                const pat = trigger.pattern || trigger.value; // 可视化编辑器存 value
                 const flag = botInstance._lastChatTrigger;
-                if (flag && flag.pattern === trigger.pattern && Date.now() - flag.time < 3000) {
+                if (flag && pat && flag.pattern === pat && Date.now() - flag.time < 3000) {
                     botInstance._lastChatTrigger = null;
                     return true;
                 }
@@ -925,7 +927,7 @@ module.exports = (botInstance) => {
             case 'interval': {
                 const key = `_triggerLast_${trigger.type}_${name}`;
                 const now = Date.now();
-                const interval = (Number(trigger.seconds) || 60) * 1000;
+                const interval = (Number(trigger.seconds ?? trigger.value) || 60) * 1000; // 编辑器存 value
                 if (!botInstance[key] || now - botInstance[key] >= interval) {
                     botInstance[key] = now;
                     return true;
@@ -940,9 +942,10 @@ module.exports = (botInstance) => {
         try {
             const raw = jsonMsg.toString().replace(/§[0-9a-fk-orx]/gi, '');
             for (const [name, script] of Object.entries(botInstance._scripts)) {
-                if (script.trigger?.type === 'chat_match' && script.trigger.pattern) {
-                    if (raw.includes(script.trigger.pattern)) {
-                        botInstance._lastChatTrigger = { pattern: script.trigger.pattern, time: Date.now() };
+                const pat = script.trigger?.pattern || script.trigger?.value; // 编辑器存 value
+                if (script.trigger?.type === 'chat_match' && pat) {
+                    if (raw.includes(pat)) {
+                        botInstance._lastChatTrigger = { pattern: pat, time: Date.now() };
                     }
                 }
             }

@@ -187,6 +187,12 @@ class BotInstance {
                 if (settings.autoMine && settings.autoMine.active && this.toggleAutoMine) {
                     this.toggleAutoMine(true, settings.autoMine.config || {});
                 }
+                if (settings.trash_cleaner && this.toggleTrashCleaner) {
+                    const tc = settings.trash_cleaner;
+                    const active = typeof tc === 'object' ? !!tc.active : !!tc;
+                    const items = (typeof tc === 'object' && Array.isArray(tc.items)) ? tc.items : [];
+                    if (active) this.toggleTrashCleaner(true, items);
+                }
                 const activeScript = settings.activeScript;
                 if (activeScript && this._scripts && this._scripts[activeScript] && this._runningScript == null) {
                     logger.info(`[${this.config.username}] 断线恢复脚本: ${activeScript}`);

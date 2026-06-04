@@ -99,7 +99,7 @@ module.exports = (botInstance) => {
             if (entity.metadata && entity.metadata[2]) {
                 const customName = entity.metadata[2];
                 if (typeof customName === 'string' && customName.length > 0) {
-                    return customName.replace(/§[0-9a-fk-or]/gi, '').replace(/[{}"]/g, '').trim();
+                    return customName.replace(/§[0-9a-fk-orx]/gi, '').replace(/[{}"]/g, '').trim();
                 }
                 if (customName && typeof customName === 'object') {
                     if (customName.text) return customName.text;
