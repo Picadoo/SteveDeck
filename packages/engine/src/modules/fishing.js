@@ -1,5 +1,7 @@
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
+    let loopTimer = null;   // 下一轮 fishingLoop 的定时器句柄
+    let fishTimeout = null; // 本轮 60s 超时定时器句柄
 
     const emitLog = (msg) => {
         botInstance.io.to(botInstance._room).to('admin').emit('log', {
@@ -57,21 +59,25 @@ module.exports = (botInstance) => {
         try {
             await bot.equip(rod, 'hand');
 
-            // 超时保护：60秒无鱼上钩自动重试
+            // 超时保护：60秒无鱼上钩自动重试。成功/失败都 clearTimeout，避免每轮遗留一个 60s 计时器
             const fishPromise = bot.fish();
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('钓鱼超时(60s)')), 60000)
-            );
-            await Promise.race([fishPromise, timeoutPromise]);
+            const timeoutPromise = new Promise((_, reject) => {
+                fishTimeout = setTimeout(() => reject(new Error('钓鱼超时(60s)')), 60000);
+            });
+            try {
+                await Promise.race([fishPromise, timeoutPromise]);
+            } finally {
+                if (fishTimeout) { clearTimeout(fishTimeout); fishTimeout = null; }
+            }
 
-            if (botInstance.fishingActive) setTimeout(fishingLoop, 100);
+            if (botInstance.fishingActive) loopTimer = setTimeout(fishingLoop, 100);
         } catch (err) {
             if (!botInstance.fishingActive) return;
             // 超时不刷屏，只在非超时错误时打日志
             if (!err.message.includes('超时')) {
                 emitLog(`钓鱼出错: ${err.message}`);
             }
-            if (botInstance.fishingActive) setTimeout(fishingLoop, 2000);
+            if (botInstance.fishingActive) loopTimer = setTimeout(fishingLoop, 2000);
         }
     }
 
@@ -83,6 +89,15 @@ module.exports = (botInstance) => {
             fishingLoop();
         } else if (!state && prevState) {
             try { bot.activateItem(); } catch (e) {}
+            if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
         }
     };
+
+    // 清理：断线/停止时关闭钓鱼并清掉悬挂定时器（此前本模块完全没有清理）
+    botInstance.cleanupHooks = botInstance.cleanupHooks || [];
+    botInstance.cleanupHooks.push(() => {
+        botInstance.fishingActive = false;
+        if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
+        if (fishTimeout) { clearTimeout(fishTimeout); fishTimeout = null; }
+    });
 };

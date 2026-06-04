@@ -108,7 +108,7 @@ module.exports = (botInstance) => {
   // 扫描附近容器（箱子/木桶/潜影盒等），返回坐标+距离，省去手填 XYZ
   botInstance.scanContainers = () => {
     if (!bot.entity) return [];
-    const mcData = require("minecraft-data")(bot.version);
+    const mcData = botInstance.getMcData();
     const names = [
       "chest", "trapped_chest", "ender_chest", "barrel", "hopper", "dispenser", "dropper",
       "shulker_box", "white_shulker_box", "orange_shulker_box", "magenta_shulker_box",

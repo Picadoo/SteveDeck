@@ -345,11 +345,21 @@ class BotInstance {
         });
     }
 
+    // minecraft-data 单例缓存（按版本）：避免各模块各自重复 require/实例化（重活，尤其高频调用处）。
+    getMcData() {
+        const v = this.bot?.version;
+        if (!this._mcData || this._mcDataVersion !== v) {
+            this._mcData = require('minecraft-data')(v);
+            this._mcDataVersion = v;
+        }
+        return this._mcData;
+    }
+
     // 构建寻路移动策略。
     // 默认「无破坏模式」：不挖方块、不搭脚手架、不搭柱子——多数服务器地图受保护，
     // 挖/搭都会失败并让寻路反复卡死。设 settings.allowDig=true 可恢复破坏式寻路（自建/创造服适用）。
     makeMovements() {
-        const mcData = require('minecraft-data')(this.bot.version);
+        const mcData = this.getMcData();
         const m = new Movements(this.bot, mcData);
         const allowDig = !!this.config.settings?.allowDig;
         m.canDig = allowDig;

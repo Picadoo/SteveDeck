@@ -5,14 +5,13 @@ module.exports = (botInstance) => {
     const { goals, Movements } = require('mineflayer-pathfinder');
 
     // 缓存 mcData，兼容 1.12.2（无 bot.registry）和 1.13+
-    let mcData = null;
-    const getMcData = () => {
-        if (!mcData) mcData = require('minecraft-data')(bot.version);
-        return mcData;
-    };
+    const getMcData = () => botInstance.getMcData(); // 复用实例级单例缓存
 
-    // 安全创建 Movements（兼容所有版本）
+    // 创建 Movements：优先用实例统一的「无破坏模式」策略（受保护服不挖不搭，避免追怪寻路卡死）
     const createMovements = () => {
+        try {
+            if (typeof botInstance.makeMovements === 'function') return botInstance.makeMovements();
+        } catch (e) { /* 回退到默认构造 */ }
         try {
             return new Movements(bot, bot.registry || getMcData());
         } catch (e) {

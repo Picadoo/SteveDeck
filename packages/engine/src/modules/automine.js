@@ -25,8 +25,7 @@ function normalizeConfig(arg, direction) {
 
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
-    let mcData = null;
-    const getMcData = () => (mcData || (mcData = require('minecraft-data')(bot.version)));
+    const getMcData = () => botInstance.getMcData(); // 复用实例级单例缓存
 
     const task = botInstance.autoMineTask = {
         active: false, state: 'IDLE', config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
@@ -42,9 +41,9 @@ module.exports = (botInstance) => {
     const schedule = (ms) => {
         if (task._tickTimer) clearTimeout(task._tickTimer);
         if (task._manualTick) return; // 测试手动驱动模式：状态照常转移，但不自动调度，避免与手动 tick 重入
+        // 滚动定时器：不再登记进 botInstance.timers（每 tick push 会让数组无限膨胀）；
+        // 由 schedule 自身先 clear 上一个 + cleanupHook 统一 clear task._tickTimer 兜底。
         task._tickTimer = setTimeout(() => { tick().catch(e => emitLog(`tick异常: ${e.message}`)); }, ms);
-        botInstance.timers = botInstance.timers || [];
-        botInstance.timers.push(task._tickTimer);
     };
 
     function setState(s) { task.state = s; }
@@ -269,7 +268,8 @@ module.exports = (botInstance) => {
 
             // 保守 Movements：不开极限跑酷，更像玩家（best-effort，失败不影响）
             try {
-                const m = new Movements(bot, getMcData());
+                // 统一「无破坏模式」策略（受保护服不挖不搭，避免寻路卡死）；再关掉极限跑酷
+                const m = botInstance.makeMovements();
                 m.allowParkour = false;
                 if (bot.pathfinder && bot.pathfinder.setMovements) bot.pathfinder.setMovements(m);
             } catch (e) {}

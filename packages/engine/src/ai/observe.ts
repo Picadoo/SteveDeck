@@ -94,11 +94,10 @@ function dayPhase(t: number): string {
 }
 
 /** 当前状态效果（药水 buff/debuff）：名称 + 等级 + 剩余秒 + 是否负面 */
-function effectsOf(bot: any): any[] {
+function effectsOf(bot: any, mcData: any): any[] {
   try {
     const eff = bot?.entity?.effects;
     if (!eff) return [];
-    const mcData = require("minecraft-data")(bot.version);
     return Object.values(eff)
       .map((e: any) => {
         const info = mcData?.effects?.[e?.id];
@@ -180,7 +179,7 @@ export function buildObservation(id: string): any {
       legs: itemBrief(slots[7]),
       feet: itemBrief(slots[8]),
     },
-    effects: effectsOf(bot),
+    effects: effectsOf(bot, inst?.getMcData?.() ?? null),
     facing: facingOf(bot.entity.yaw ?? 0),
     yaw: r1(bot.entity.yaw ?? 0),
     pitch: r1(bot.entity.pitch ?? 0),

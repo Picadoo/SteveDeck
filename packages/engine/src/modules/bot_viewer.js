@@ -1,7 +1,7 @@
 // 机器人视角：用 prismarine-viewer 的 web 模式（浏览器端 three.js 渲染，无原生依赖）
 // 按需启动一个轻量 web 服务，前端用 iframe 嵌入即可看到第一人称画面。
 
-let nextPort = 3007;
+const BASE_PORT = 3007;
 const usedPorts = new Set();
 
 module.exports = (botInstance) => {
@@ -22,9 +22,9 @@ module.exports = (botInstance) => {
         return { port: botInstance._viewerPort, reused: true, firstPerson };
       botInstance.stopViewer(); // 切换人称需重启
     }
-    let port = nextPort;
+    // 从基础端口扫描最小可用端口（stopViewer 会从 usedPorts 删除，端口可回收复用）
+    let port = BASE_PORT;
     while (usedPorts.has(port)) port++;
-    nextPort = port + 1;
     usedPorts.add(port);
     try {
       const { mineflayer: mineflayerViewer } = require('prismarine-viewer');

@@ -45,7 +45,7 @@ module.exports = (botInstance) => {
             const mv =
               typeof botInstance.makeMovements === "function"
                 ? botInstance.makeMovements()
-                : new Movements(bot, require("minecraft-data")(bot.version));
+                : new Movements(bot, botInstance.getMcData());
             bot.pathfinder.setMovements(mv);
             bot.pathfinder.setGoal(new goals.GoalNear(x, y, z, range));
             const done = () => {

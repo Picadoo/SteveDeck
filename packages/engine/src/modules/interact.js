@@ -18,7 +18,7 @@ module.exports = (botInstance) => {
     // 返回附近实体数组（供交互页内联显示，不再刷日志）
     botInstance.scanNearbyNPCs = () => {
         if (!bot || !bot.entities || !bot.entity) return [];
-        if (!mcData) mcData = require('minecraft-data')(bot.version);
+        if (!mcData) mcData = botInstance.getMcData();
 
         const out = [];
         for (const entity of Object.values(bot.entities)) {

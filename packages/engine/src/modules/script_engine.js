@@ -473,7 +473,7 @@ module.exports = (botInstance) => {
                 const items = bot.inventory.items().filter(i => /sword|axe/.test(i.name));
                 if (items.length === 0) { emitLog('背包无武器'); break; }
                 try {
-                    const mc = require('minecraft-data')(bot.version);
+                    const mc = botInstance.getMcData();
                     items.sort((a, b) => {
                         const aDmg = mc.items[a.type]?.attackDamage || (a.name.includes('sword') ? 5 : 3);
                         const bDmg = mc.items[b.type]?.attackDamage || (b.name.includes('sword') ? 5 : 3);
