@@ -67,6 +67,8 @@ export interface BotSettings {
   schedules?: Schedule[];
   savedLocations?: SavedLocation[];
   activeScript?: string | null;
+  /** 通用消息监听规则（每服务器可定制的聊天正则统计） */
+  monitorRules?: MonitorRule[];
   [key: string]: unknown;
 }
 
@@ -82,6 +84,30 @@ export interface CombatConfig {
 export interface Schedule {
   time: string; // "HH:MM"
   command: string;
+}
+
+/** 通用消息监听：一条正则统计规则 */
+export interface MonitorRule {
+  id: string;
+  label: string;
+  enabled: boolean;
+  /** 正则（对去色码后的纯文本匹配），含一个捕获组作为「值」 */
+  pattern: string;
+  /** 取第几个捕获组作为值（默认 1） */
+  valueGroup?: number;
+  /** 是否把捕获值解析为数字（支持 万/亿/兆/万亿 + 逗号） */
+  numberMode: boolean;
+  /** 聚合方式：sum 累加 / count 计次 / last 取最新 / max 峰值 / rate 速率 */
+  agg: "sum" | "count" | "last" | "max" | "rate";
+}
+
+/** 某条监听规则的实时统计 */
+export interface MonitorStat {
+  count: number;
+  total: number;
+  last: number | string | null;
+  max: number | null;
+  perMin: number;
 }
 
 export interface SavedLocation {

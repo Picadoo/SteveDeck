@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { BotStatus, BotSummary, LogLine, InventoryItem, WindowState } from "@mcbot/protocol";
+import type { BotStatus, BotSummary, LogLine, InventoryItem, WindowState, MonitorStat } from "@mcbot/protocol";
 
 export type ConnStatus = "disconnected" | "connecting" | "online" | "error";
 
@@ -49,6 +49,8 @@ interface AppState {
   windows: Record<string, WindowState | null>;
   /** 脚本运行时反馈，按机器人 id 键 */
   scriptRuntime: Record<string, ScriptRuntime>;
+  /** 消息监听统计，按机器人 id 键 → ruleId → 统计 */
+  monitorStats: Record<string, Record<string, MonitorStat>>;
   /** 最近发送的聊天/命令（全局，持久化，去重） */
   chatHistory: string[];
   toasts: Toast[];
@@ -59,6 +61,7 @@ interface AppState {
   setInventory: (user: string, items: InventoryItem[]) => void;
   setWindow: (user: string, win: WindowState | null) => void;
   mergeScriptRuntime: (id: string, patch: Partial<ScriptRuntime>) => void;
+  setMonitorStats: (id: string, stats: Record<string, MonitorStat>) => void;
   pushCmd: (c: string) => void;
   pushToast: (message: string, tone?: ToastTone) => void;
   dismissToast: (id: number) => void;
@@ -124,6 +127,7 @@ export const useStore = create<AppState>((set, get) => ({
   inventory: {},
   windows: {},
   scriptRuntime: {},
+  monitorStats: {},
   chatHistory: loadCmdHistory(),
   toasts: [],
 
@@ -143,6 +147,8 @@ export const useStore = create<AppState>((set, get) => ({
   setWindow: (user, win) => set((s) => ({ windows: { ...s.windows, [user]: win } })),
   mergeScriptRuntime: (id, patch) =>
     set((s) => ({ scriptRuntime: { ...s.scriptRuntime, [id]: { ...s.scriptRuntime[id], ...patch } } })),
+  setMonitorStats: (id, stats) =>
+    set((s) => ({ monitorStats: { ...s.monitorStats, [id]: stats } })),
   pushCmd: (c) =>
     set((s) => {
       const cmd = c.trim();

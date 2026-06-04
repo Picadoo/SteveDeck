@@ -114,7 +114,7 @@ class BotInstance {
                     'combat', 'fishing', 'scheduler', 'inventory', 'player_inventory',
                     'interact', 'automine', 'trash_cleaner', 'auto_farm', 'mob_hunter',
                     'scoreboard', 'script_engine', 'fishing_hotspot', 'window_gui',
-                    'custom_js', 'bot_viewer',
+                    'custom_js', 'bot_viewer', 'message_monitor',
                 ];
                 for (const name of MODULE_NAMES) {
                     try {

@@ -13,6 +13,8 @@ import {
   type InventoryItem,
   type Observation,
   type WindowState,
+  type MonitorRule,
+  type MonitorStat,
 } from "@mcbot/protocol";
 import { useStore } from "@/store/useStore";
 
@@ -188,6 +190,14 @@ export function connect(url: string, token: string): void {
     const key = p._bid || p.user;
     if (key) useStore.getState().mergeScriptRuntime(key, { vars: p.vars || {} });
   });
+  // 通用消息监听统计
+  socket.on(
+    "monitor_stats",
+    (p: { _bid?: string; user?: string; stats?: Record<string, MonitorStat> }) => {
+      const key = p._bid || p.user;
+      if (key) useStore.getState().setMonitorStats(key, p.stats || {});
+    },
+  );
 }
 
 export function disconnect(): void {
@@ -337,5 +347,27 @@ export const cmd = {
         action: "setRespawnCmd",
         args: { command },
       }),
+  },
+  monitor: {
+    get: (id: string) =>
+      emitAck<{ rules: MonitorRule[]; stats: Record<string, MonitorStat> }>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "monitor",
+        action: "get",
+      }),
+    setRules: (id: string, rules: MonitorRule[]) =>
+      emitAck<{ rules: MonitorRule[]; stats: Record<string, MonitorStat> }>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "monitor",
+        action: "setRules",
+        args: { rules },
+      }),
+    reset: (id: string) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "monitor", action: "reset" }),
+    test: (id: string, pattern: string, valueGroup: number, numberMode: boolean, sample: string) =>
+      emitAck<{ ok: boolean; matched?: boolean; group?: string | null; value?: number | null; error?: string }>(
+        ClientCommands.MODULE_ACTION,
+        { id, module: "monitor", action: "test", args: { pattern, valueGroup, numberMode, sample } },
+      ),
   },
 };

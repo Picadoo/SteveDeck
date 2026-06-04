@@ -314,6 +314,19 @@ function dispatchAction(
       });
       return ok({ respawnCommand: c });
     }
+    // ===== 通用消息监听统计 =====
+    case "monitor:get":
+      return ok(inst.getMonitor?.() ?? { rules: [], stats: {} });
+    case "monitor:setRules":
+      return ok(inst.setMonitorRules?.(args.rules || []) ?? { rules: [], stats: {} });
+    case "monitor:reset":
+      return ok(inst.resetMonitorStats?.() ?? { rules: [], stats: {} });
+    case "monitor:test":
+      return ok(
+        inst.testMonitorRule?.(args.pattern, args.valueGroup, !!args.numberMode, args.sample) ?? {
+          ok: false,
+        },
+      );
     case "scoreboard:get":
       return ok(inst.getScoreboard?.() ?? null);
     case "inventory:sync":
