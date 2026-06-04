@@ -1,22 +1,51 @@
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { RefreshCw } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import Modal from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
+import McText from "@/components/McText";
+import { ItemIcon } from "@/components/ItemIcon";
 import { cn } from "@/lib/cn";
 import type { BotSummary, WindowSlot } from "@mcbot/protocol";
 
-/** 服务器打开的窗口/GUI（箱子、菜单）——点击槽位即操作 */
+type Hover = { it: WindowSlot; x: number; y: number };
+
+// 数字描边（仿原版数量角标）
+const NUM_SHADOW = "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000";
+
+/** 服务器打开的窗口/GUI（箱子、菜单）——贴图网格、悬浮看完整信息、点击即操作 */
 export default function GuiWindow({ bot }: { bot: BotSummary }) {
   const win = useStore((s) => s.windows[bot.id]);
+  const connUrl = useStore((s) => s.conn.url);
+  const [hover, setHover] = useState<Hover | null>(null);
+
+  // 刷新/切换账号后自动恢复：若服务端此刻有打开的窗口，拉回来重新弹出
+  // （预览是静态构建包，刷新会丢失前端窗口状态；服务端的窗口仍在）
+  useEffect(() => {
+    if (!bot.online) return;
+    let cancelled = false;
+    (async () => {
+      if (useStore.getState().windows[bot.id]) return; // 已有则不覆盖
+      const r = await cmd.window.get(bot.id);
+      if (!cancelled && r.ok && r.data) useStore.getState().setWindow(bot.id, r.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bot.id, bot.online]);
+
   if (!win) return null;
 
+  const texBase = `${connUrl.replace(/\/+$/, "")}/textures/${bot.version || "1.12.2"}`;
   const setWin = useStore.getState().setWindow;
   const close = () => {
     cmd.window.close(bot.id);
     setWin(bot.id, null);
   };
   const click = async (slot: number, button = 0) => {
+    setHover(null);
     const r = await cmd.window.click(bot.id, slot, button, 0);
     if (r.ok) setWin(bot.id, r.data ?? null);
   };
@@ -38,6 +67,7 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
       open
       onClose={close}
       title={win.title}
+      size="lg"
       footer={
         <>
           <Button variant="ghost" onClick={refresh}>
@@ -49,14 +79,17 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
         </>
       }
     >
-      <p className="mb-2 text-[11px] text-muted">左键点击操作 · 右键 = 右键点击（菜单按钮直接点即可）</p>
-      <SlotGrid slots={container} onClick={click} />
+      <p className="mb-2.5 text-[11px] text-muted">
+        左键点击操作 · 右键 = 右键点击 · 悬浮查看完整信息（菜单按钮直接点即可）
+      </p>
+      <SlotGrid slots={container} texBase={texBase} onClick={click} onHover={setHover} />
       {split < total && backpack.length > 0 && (
         <>
-          <div className="my-2 text-[11px] font-medium text-muted">你的背包</div>
-          <SlotGrid slots={backpack} base={split} onClick={click} />
+          <div className="mb-1.5 mt-3 text-[11px] font-medium text-muted">你的背包</div>
+          <SlotGrid slots={backpack} base={split} texBase={texBase} onClick={click} onHover={setHover} />
         </>
       )}
+      {hover && <ItemTip hover={hover} />}
     </Modal>
   );
 }
@@ -64,22 +97,23 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
 function SlotGrid({
   slots,
   base = 0,
+  texBase,
   onClick,
+  onHover,
 }: {
   slots: (WindowSlot | null)[];
   base?: number;
+  texBase: string;
   onClick: (slot: number, button?: number) => void;
+  onHover: (h: Hover | null) => void;
 }) {
   return (
     <div className="grid grid-cols-9 gap-1">
       {slots.map((it, i) => {
         const slotIdx = base + i;
+        // 菜单里常见的玻璃板/有色玻璃只是装饰边框，弱化显示、不参与悬浮
         const filler = !!it && /glass_pane|stained_glass/i.test(it.id || "");
-        const tip = it
-          ? `${it.name}${it.count > 1 ? ` ×${it.count}` : ""}` +
-            (it.enchants && it.enchants.length ? "\n" + it.enchants.join("、") : "") +
-            (it.lore ? "\n" + it.lore : "")
-          : undefined;
+        const active = !!it && !filler;
         return (
           <button
             key={slotIdx}
@@ -88,26 +122,83 @@ function SlotGrid({
               e.preventDefault();
               onClick(slotIdx, 1);
             }}
+            onMouseMove={active ? (e) => onHover({ it: it!, x: e.clientX, y: e.clientY }) : undefined}
+            onMouseLeave={active ? () => onHover(null) : undefined}
             disabled={!it}
-            title={tip}
             className={cn(
-              "relative flex aspect-square items-center justify-center rounded border p-0.5 text-center transition-colors",
+              "relative flex aspect-square items-center justify-center rounded border p-0.5 transition-colors",
               !it
-                ? "cursor-default border-border/40 bg-surface-2/30"
+                ? "cursor-default border-border/30 bg-surface-2/20"
                 : filler
-                  ? "border-border/30 bg-surface-2/40 opacity-40 hover:opacity-80"
-                  : "border-border bg-surface-2 hover:border-accent hover:bg-accent/10",
+                  ? "cursor-default border-border/20 bg-surface-2/30 opacity-30"
+                  : "border-border bg-surface-2/70 hover:border-accent hover:bg-accent/10",
             )}
           >
-            {it && !filler && (
-              <span className="line-clamp-2 break-all text-[8px] leading-tight text-fg">{it.name}</span>
-            )}
+            {active && <ItemIcon texture={it!.id} base={texBase} size={30} />}
             {it && it.count > 1 && (
-              <span className="absolute bottom-0 right-0.5 text-[9px] font-bold text-fg">{it.count}</span>
+              <span
+                className="pointer-events-none absolute -bottom-px right-0.5 text-[10px] font-bold tabular-nums text-white"
+                style={{ textShadow: NUM_SHADOW }}
+              >
+                {it.count}
+              </span>
             )}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/** MC 风格悬浮看板：彩色名 + 附魔 + 完整 Lore + 物品 id；跟随光标、自适应不被截断 */
+function ItemTip({ hover }: { hover: Hover }) {
+  const { it } = hover;
+  const ref = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<CSSProperties>({ left: -9999, top: -9999 });
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const m = 12;
+    const safeBottom = window.innerHeight - m;
+    let left = hover.x + 16;
+    if (left + w > window.innerWidth - m) left = Math.max(m, hover.x - w - 16);
+    let top = hover.y + 16;
+    if (top + h > safeBottom) top = hover.y - h - 12;
+    if (top < m) top = m;
+    setStyle({ left, top, maxHeight: safeBottom - top });
+  }, [hover.x, hover.y, it]);
+
+  const name = it.display || it.name || "";
+  return (
+    <div
+      ref={ref}
+      className="pointer-events-none fixed z-[100] max-w-[18rem] overflow-hidden rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
+      style={style}
+    >
+      <div className="text-sm font-semibold leading-snug">
+        <McText text={name} onDark />
+        {it.count > 1 ? (
+          <span className="ml-1 text-[11px] font-normal text-white/50">×{it.count}</span>
+        ) : null}
+      </div>
+      {it.enchants && it.enchants.length > 0 && (
+        <div className="mt-1 space-y-0.5">
+          {it.enchants.map((e, i) => (
+            <div key={i} className="text-[11px] text-[#9d8bff]">
+              {e}
+            </div>
+          ))}
+        </div>
+      )}
+      {it.lore && (
+        <div className="mt-1 whitespace-pre-line text-[11px] leading-snug text-white/75">
+          <McText text={it.lore} onDark />
+        </div>
+      )}
+      {it.id && <div className="mt-1.5 text-[10px] text-white/30">minecraft:{it.id}</div>}
     </div>
   );
 }

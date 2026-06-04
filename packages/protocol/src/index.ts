@@ -130,9 +130,14 @@ export interface InventoryItem {
 /** 窗口/GUI 中的单个槽位 */
 export interface WindowSlot {
   slot: number;
+  /** 纯文本名（去 § 颜色码，用于搜索/回退） */
   name: string;
+  /** 原始名（含 § 颜色码，供前端彩色渲染） */
+  display?: string;
+  /** 物品 id（贴图来源） */
   id: string;
   count: number;
+  /** Lore（含 § 颜色码，多行 \n） */
   lore?: string;
   enchants?: string[];
 }
@@ -222,6 +227,8 @@ export const ServerEvents = {
   WINDOW_OPEN: "window_open",
   /** 窗口/GUI 已关闭 */
   WINDOW_CLOSE: "window_close",
+  /** 窗口/GUI 原地刷新（点击/翻页后服务端更新了槽位，未重开窗口） */
+  WINDOW_UPDATE: "window_update",
   /** 机器人错误（致命断开等） */
   BOT_ERROR: "bot:error",
   /** 脚本列表 */
@@ -241,6 +248,7 @@ export interface ServerToClientPayloads {
   [ServerEvents.INVENTORY]: { user: string; items: InventoryItem[] };
   [ServerEvents.WINDOW_OPEN]: { user: string; window: WindowState };
   [ServerEvents.WINDOW_CLOSE]: { user: string };
+  [ServerEvents.WINDOW_UPDATE]: { user: string; window: WindowState };
   [ServerEvents.BOT_ERROR]: { id: BotId; error: string };
   [ServerEvents.SCRIPT_LIST]: { scripts: ScriptSummary[] };
   [ServerEvents.SCRIPT_DETAIL]: { name: string; script: BotScript | null };
@@ -399,14 +407,25 @@ export interface Observation {
     gameMode: string | null;
   } | null;
   inventory: { name: string; count: number; displayName?: string; enchants?: string[] }[];
-  nearbyPlayers: { name: string; display?: string; distance: number; pos: Vec3Like }[];
-  /** name 优先为自定义名牌；custom 标记是否有名牌；hostile/category 来自 minecraft-data 分类 */
+  /** realPlayer: 真实玩家（在线列表里有）；否则多为玩家型 NPC（Citizens 等）。health/maxHealth 服务器下发才有 */
+  nearbyPlayers: {
+    name: string;
+    display?: string;
+    realPlayer?: boolean;
+    health?: number | null;
+    maxHealth?: number | null;
+    distance: number;
+    pos: Vec3Like;
+  }[];
+  /** name 优先为自定义名牌；custom 标记是否有名牌；hostile/category 来自 minecraft-data 分类；health/maxHealth 服务器下发才有 */
   nearbyEntities: {
     type: string;
     name: string;
     custom?: boolean;
     category?: string | null;
     hostile?: boolean;
+    health?: number | null;
+    maxHealth?: number | null;
     distance: number;
     pos: Vec3Like;
   }[];

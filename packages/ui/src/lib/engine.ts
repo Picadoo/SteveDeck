@@ -145,6 +145,11 @@ export function connect(url: string, token: string): void {
     const key = p._bid || p.user;
     if (key) useStore.getState().setWindow(key, null);
   });
+  // 原地刷新：菜单点击/翻页后服务端更新了槽位但未重开窗口
+  socket.on(ServerEvents.WINDOW_UPDATE, (p: { user: string; _bid?: string; window: WindowState }) => {
+    const key = p._bid || p.user;
+    if (key) useStore.getState().setWindow(key, p.window);
+  });
 }
 
 export function disconnect(): void {

@@ -16,12 +16,29 @@ import {
   Trash2,
   FileCode2,
   Clock,
+  User,
+  Bot,
+  Skull,
+  Sparkles,
+  Circle,
 } from "lucide-react";
 import { Card, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
+import McText from "@/components/McText";
 import { healthBar, healthTone, fmtUptime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import type { BotSummary, Observation } from "@mcbot/protocol";
+
+// 已知敌对生物（兜底：引擎 hostile 标记缺失时仍能红色标记）
+const HOSTILE = new Set([
+  "zombie", "husk", "drowned", "zombie_villager", "skeleton", "stray", "wither_skeleton",
+  "creeper", "spider", "cave_spider", "enderman", "endermite", "silverfish", "witch", "slime",
+  "magma_cube", "blaze", "ghast", "guardian", "elder_guardian", "shulker", "vex", "vindicator",
+  "evoker", "illusioner", "ravager", "pillager", "phantom", "zombified_piglin", "zombie_pigman",
+  "piglin", "hoglin", "zoglin", "wither", "ender_dragon", "giant", "warden",
+]);
+const norm = (s: string) => String(s || "").toLowerCase().replace(/ /g, "_");
+const isHostileEnt = (e: { name: string; hostile?: boolean }) => !!e.hostile || HOSTILE.has(norm(e.name));
 
 // 常见生物中文名（仅用于无自定义名牌时的友好回退）
 const MOB_CN: Record<string, string> = {
@@ -134,6 +151,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
     .filter(Boolean)
     .slice(-8)
     .reverse();
+  const hostileCount = (obs?.nearbyEntities ?? []).filter(isHostileEnt).length;
 
   return (
     <div className="space-y-4">
@@ -227,6 +245,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
           <Users className="h-4 w-4 text-accent" /> 附近
           <span className="ml-1 text-xs font-normal text-muted">
             {obs?.nearbyPlayers?.length ?? 0} 玩家 · {obs?.nearbyEntities?.length ?? 0} 生物
+            {hostileCount > 0 && <span className="ml-1 text-danger">· {hostileCount} 敌对</span>}
           </span>
         </h3>
         <NearbyList obs={obs} />
@@ -276,15 +295,16 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
           </Card>
         )}
 
-      {/* 计分板 */}
+      {/* 计分板（彩色还原；不强行分行/截断；分值为 0 的隐藏，避免噪声） */}
       {sbItems.length > 0 && (
         <Card className="p-4">
-          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">{sb?.title || "计分板"}</h3>
-          <div className="space-y-1">
+          <h3 className="mb-2 text-sm font-semibold">
+            <McText text={sb?.sidebarTitleRaw || sb?.sidebarTitle || "计分板"} />
+          </h3>
+          <div className="space-y-0.5">
             {sbItems.map((it, i) => (
-              <div key={i} className="flex justify-between border-b border-border/40 py-1 text-sm last:border-0">
-                <span className="truncate pr-2 text-muted">{it.name}</span>
-                <span className="font-medium tabular-nums">{it.value}</span>
+              <div key={i} className="break-words text-[13px] leading-relaxed">
+                <McText text={(it as any).raw || it.name || ""} />
               </div>
             ))}
           </div>
@@ -359,37 +379,105 @@ function StatTile({
   );
 }
 
+function NearbyRow({
+  icon: Icon,
+  iconClass,
+  tag,
+  tagTone,
+  name,
+  sub,
+  distance,
+  strong,
+  nameClass,
+  health,
+  maxHealth,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  iconClass: string;
+  tag?: string;
+  tagTone?: "success" | "warning" | "danger" | "neutral";
+  name: ReactNode;
+  sub?: string;
+  distance: number;
+  strong?: boolean;
+  nameClass?: string;
+  health?: number | null;
+  maxHealth?: number | null;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-surface-2/40">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <Icon className={cn("h-3.5 w-3.5 shrink-0", iconClass)} />
+        {tag && <Badge tone={tagTone}>{tag}</Badge>}
+        <span className={cn("truncate", nameClass || (strong ? "font-medium" : "text-muted"))}>{name}</span>
+        {sub && <span className="shrink-0 text-[11px] text-muted">{sub}</span>}
+      </span>
+      <span className="flex shrink-0 items-center gap-2 text-xs tabular-nums">
+        {typeof health === "number" && (
+          <span className="flex items-center gap-0.5 text-rose-400" title="血量">
+            <Heart className="h-3 w-3 fill-current" />
+            {health}
+            {typeof maxHealth === "number" && maxHealth !== health && (
+              <span className="text-muted">/{maxHealth}</span>
+            )}
+          </span>
+        )}
+        <span className="text-muted">{distance}m</span>
+      </span>
+    </div>
+  );
+}
+
 function NearbyList({ obs }: { obs: Observation | null }) {
   const players = obs?.nearbyPlayers ?? [];
-  // 命名生物（RPG Boss/宠物）排前面
+  // 排序：命名(Boss/宠物) > 敌对 > 距离近
   const ents = [...(obs?.nearbyEntities ?? [])].sort(
-    (a, b) => Number(!!b.custom) - Number(!!a.custom) || a.distance - b.distance,
+    (a, b) =>
+      Number(!!b.custom) - Number(!!a.custom) ||
+      Number(isHostileEnt(b)) - Number(isHostileEnt(a)) ||
+      a.distance - b.distance,
   );
   if (players.length === 0 && ents.length === 0) {
     return <p className="text-sm text-muted">附近没有检测到玩家或生物</p>;
   }
   return (
-    <div className="space-y-1">
-      {players.slice(0, 5).map((p, i) => (
-        <div key={`p${i}`} className="flex items-center justify-between text-sm">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <Badge tone="success">玩家</Badge>
-            <span className="truncate font-medium">{p.display || p.name}</span>
-            {p.display && <span className="shrink-0 text-[11px] text-muted">{p.name}</span>}
-          </span>
-          <span className="shrink-0 text-xs text-muted tabular-nums">{p.distance}m</span>
-        </div>
-      ))}
-      {ents.slice(0, 8).map((e, i) => {
-        const label = e.custom ? e.name : MOB_CN[e.name.toLowerCase()] || e.name;
+    <div className="space-y-0.5">
+      {players.slice(0, 6).map((p, i) => {
+        const real = !!(p as { realPlayer?: boolean }).realPlayer;
         return (
-          <div key={`e${i}`} className="flex items-center justify-between text-sm">
-            <span className="flex min-w-0 items-center gap-1.5">
-              {e.custom && <Badge tone="warning">命名</Badge>}
-              <span className={cn("truncate", e.custom ? "font-medium" : "text-muted")}>{label}</span>
-            </span>
-            <span className="shrink-0 text-xs text-muted tabular-nums">{e.distance}m</span>
-          </div>
+          <NearbyRow
+            key={`p${i}`}
+            icon={real ? User : Bot}
+            iconClass={real ? "text-emerald-500" : "text-slate-400"}
+            tag={real ? "玩家" : "NPC"}
+            tagTone={real ? "success" : "neutral"}
+            name={<McText text={p.display || p.name} />}
+            sub={p.display && !p.display.includes("§") ? p.name : undefined}
+            health={p.health}
+            maxHealth={p.maxHealth}
+            distance={p.distance}
+            strong
+          />
+        );
+      })}
+      {ents.slice(0, 8).map((e, i) => {
+        const hostile = isHostileEnt(e);
+        const label = e.custom ? e.name : MOB_CN[norm(e.name)] || e.name;
+        const Icon = hostile ? Skull : e.custom ? Sparkles : Circle;
+        return (
+          <NearbyRow
+            key={`e${i}`}
+            icon={Icon}
+            iconClass={hostile ? "text-danger" : e.custom ? "text-amber-500" : "text-muted/50"}
+            tag={e.custom ? "命名" : undefined}
+            tagTone="warning"
+            name={<McText text={label} />}
+            health={e.health}
+            maxHealth={e.maxHealth}
+            distance={e.distance}
+            strong={e.custom}
+            nameClass={hostile ? "font-medium text-danger" : undefined}
+          />
         );
       })}
     </div>

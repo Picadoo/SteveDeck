@@ -2,7 +2,7 @@
 // 适配大量 RPG 服的「箱子菜单」(DeluxeMenus 等) 与普通箱子。
 
 const vec3 = require("vec3");
-const { customName, enchantNames, lore, parseChat, flattenChat } = require("../utils/items");
+const { enchantNames, parseChat, flattenChat } = require("../utils/items");
 
 function mkVec(x, y, z) {
   try {
@@ -38,18 +38,27 @@ function txt(v) {
 function serialize(win) {
   if (!win) return null;
   const raw = win.slots || [];
-  const slots = raw.map((it, i) =>
-    it
-      ? {
-          slot: i,
-          name: customName(it),
-          id: it.name,
-          count: it.count,
-          lore: lore(it),
-          enchants: enchantNames(it),
-        }
-      : null,
-  );
+  const slots = raw.map((it, i) => {
+    if (!it) return null;
+    // 深度解析 NBT：RPG 服菜单物品名/Lore 常带 §颜色码，保留原文供前端彩色渲染（McText）。
+    let rawName = it.displayName;
+    let loreLines = [];
+    if (it.nbt && it.nbt.value && it.nbt.value.display) {
+      const d = it.nbt.value.display.value;
+      if (d.Name) rawName = d.Name.value;
+      if (d.Lore && d.Lore.value && d.Lore.value.value) loreLines = d.Lore.value.value;
+    }
+    rawName = String(parseChat(rawName));
+    return {
+      slot: i,
+      name: rawName.replace(/§[0-9a-fk-orx]/gi, ""), // 纯文本（搜索/标题回退）
+      display: rawName, // 原始（含 §颜色码）
+      id: it.name, // 物品 id（贴图来源）
+      count: it.count,
+      lore: loreLines.map((l) => String(parseChat(l))).join("\n"), // 保留颜色码
+      enchants: enchantNames(it),
+    };
+  });
   return {
     id: typeof win.id === "number" ? win.id : 0,
     type: String(win.type ?? ""),
@@ -77,7 +86,9 @@ module.exports = (botInstance) => {
     const win = bot.currentWindow;
     if (!win) throw new Error("当前没有打开的窗口");
     await bot.clickWindow(slot, button, mode);
-    // 点击后服务器可能替换为子菜单，返回最新窗口
+    // 等服务端回包（set_slot/window_items 原地刷新，或换成子菜单）后再快照，返回刷新后的窗口；
+    // 同时下面挂的 updateSlot 监听会主动推 window_update 兜底。
+    await new Promise((r) => setTimeout(r, 150));
     return serialize(bot.currentWindow);
   };
 
@@ -140,7 +151,29 @@ module.exports = (botInstance) => {
     return serialize(win);
   };
 
+  // —— 自动刷新 —— 服务端原地更新槽位（菜单翻页/按钮切换，不重开窗口）时，前端跟着刷新。
+  let boundWin = null;
+  let updateTimer = null;
+  let closeTimer = null;
+
+  const pushUpdate = () => {
+    updateTimer = null;
+    if (bot.currentWindow) emit("window_update", { window: serialize(bot.currentWindow) });
+  };
+  const scheduleUpdate = () => {
+    if (updateTimer) return; // 合并连续 set_slot 为一次推送
+    updateTimer = setTimeout(pushUpdate, 120);
+  };
+  const bindWindow = (win) => {
+    if (boundWin === win) return;
+    if (boundWin) boundWin.removeListener("updateSlot", scheduleUpdate);
+    boundWin = win || null;
+    if (boundWin) boundWin.on("updateSlot", scheduleUpdate);
+  };
+
   const onOpen = (win) => {
+    if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; } // 取消即将发出的关闭：换子菜单不闪烁
+    bindWindow(win);
     emit("window_open", { window: serialize(win) });
     botInstance.io.to(botInstance._room).to("admin").emit("log", {
       user: bot.username,
@@ -149,7 +182,13 @@ module.exports = (botInstance) => {
       time: new Date().toLocaleTimeString(),
     });
   };
-  const onClose = () => emit("window_close", {});
+  const onClose = () => {
+    bindWindow(null);
+    if (updateTimer) { clearTimeout(updateTimer); updateTimer = null; }
+    // 延迟发关闭：若紧接着触发 windowOpen（换子菜单）则被取消，避免弹窗闪一下
+    if (closeTimer) clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => { closeTimer = null; emit("window_close", {}); }, 180);
+  };
   bot.on("windowOpen", onOpen);
   bot.on("windowClose", onClose);
 
@@ -157,5 +196,8 @@ module.exports = (botInstance) => {
   botInstance.cleanupHooks.push(() => {
     bot.removeListener("windowOpen", onOpen);
     bot.removeListener("windowClose", onClose);
+    bindWindow(null);
+    if (updateTimer) { clearTimeout(updateTimer); updateTimer = null; }
+    if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
   });
 };

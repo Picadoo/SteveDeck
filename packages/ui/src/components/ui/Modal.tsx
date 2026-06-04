@@ -1,5 +1,13 @@
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
+import { cn } from "@/lib/cn";
+
+const SIZES = {
+  sm: "max-w-sm",
+  md: "max-w-md",
+  lg: "max-w-lg",
+  xl: "max-w-2xl",
+} as const;
 
 export default function Modal({
   open,
@@ -7,12 +15,14 @@ export default function Modal({
   title,
   children,
   footer,
+  size = "md",
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  size?: keyof typeof SIZES;
 }) {
   if (!open) return null;
   return (
@@ -22,16 +32,21 @@ export default function Modal({
         onClick={onClose}
         aria-hidden
       />
-      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+      <div
+        className={cn(
+          "relative z-10 flex max-h-[88vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl",
+          SIZES[size],
+        )}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
           <h2 className="text-sm font-semibold">{title}</h2>
           <button onClick={onClose} className="text-muted transition-colors hover:text-fg">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
         {footer && (
-          <div className="flex justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>
+          <div className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>
         )}
       </div>
     </div>

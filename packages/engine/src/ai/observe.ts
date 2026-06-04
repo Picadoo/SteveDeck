@@ -19,6 +19,42 @@ function maxHealthOf(bot: any): number {
   return 20;
 }
 
+/** 其他实体（怪/NPC/Boss）当前血量：优先 entity.health，否则按注册表/下标从元数据取。取不到返回 null */
+function entityHealth(bot: any, e: any): number | null {
+  if (typeof e?.health === "number") return e.health;
+  const md = e?.metadata;
+  if (md && typeof md === "object") {
+    try {
+      const keys = bot?.registry?.entitiesByName?.[e?.name]?.metadataKeys;
+      if (Array.isArray(keys)) {
+        const idx = keys.indexOf("health");
+        if (idx >= 0 && typeof md[idx] === "number") return md[idx];
+      }
+    } catch {
+      /* ignore */
+    }
+    if (typeof md[7] === "number") return md[7]; // 1.12.2 生物血量常在下标 7
+    if (typeof md[6] === "number") return md[6];
+  }
+  return null;
+}
+
+/** 实体最大血量（服务器若下发了属性）；取不到返回 null */
+function entityMaxHealth(e: any): number | null {
+  try {
+    const a = e?.attributes;
+    if (a) {
+      const x =
+        a["minecraft:generic.max_health"] || a["generic.maxHealth"] || a["generic.max_health"];
+      const v = x?.value;
+      if (typeof v === "number" && v > 0) return v;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /** 把 ChatMessage / 字符串安全转成去色码纯文本，空则 null */
 function txt(v: any): string | null {
   if (v == null) return null;
@@ -175,6 +211,8 @@ export function buildObservation(id: string): any {
       const d = e.position.distanceTo(pos);
       if (d > 48) continue;
       const custom = entityCustomName(e);
+      const hp = entityHealth(bot, e);
+      const maxHp2 = entityMaxHealth(e);
       const item = {
         type: e.type,
         name:
@@ -186,18 +224,29 @@ export function buildObservation(id: string): any {
         custom: !!custom,
         category: e.kind || null,
         hostile: isHostile(e.kind),
+        health: hp != null ? Math.round(hp) : null,
+        maxHealth: maxHp2 != null ? Math.round(maxHp2) : null,
         distance: r1(d),
         pos: floorPos(e.position),
       };
       if (e.type === "player" && e.username && e.username !== bot.username) {
+        // 真人 = 在线列表(tablist)里有该名字；玩家型 NPC(Citizens 等)通常不在
+        const realPlayer = !!(bot.players && bot.players[e.username]);
+        const cleanU = String(e.username).replace(/§[0-9a-fk-orx]/gi, "");
         const pd = txt(e.displayName);
         obs.nearbyPlayers.push({
-          name: e.username,
-          display: pd && pd !== e.username ? pd : undefined,
+          name: cleanU || e.username, // 纯文本名（NPC 的彩色名去码）
+          // NPC 名常带 §颜色码，原文留给前端上色；否则用 PAPI 展示名（与原名不同才收）
+          display: e.username !== cleanU ? e.username : pd && pd !== cleanU ? pd : undefined,
+          realPlayer,
+          health: item.health,
+          maxHealth: item.maxHealth,
           distance: item.distance,
           pos: item.pos,
         });
       } else if (e.type !== "object" && e.type !== "orb" && e.type !== "other") {
+        // 跳过无名牌的装饰盔甲架（服务器常用来做全息文字/NPC 底座，噪声大）
+        if (!custom && (e.name === "armor_stand" || /armor.?stand/i.test(item.name))) continue;
         others.push(item);
       }
     }
