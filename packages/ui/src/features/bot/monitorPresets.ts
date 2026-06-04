@@ -17,9 +17,10 @@ export const MONITOR_PRESETS: MonitorPreset[] = [
       { label: "金币收入", enabled: true, pattern: "你增加了\\s*([\\d,\\.]+)\\s*金币", numberMode: true, agg: "sum" },
       { label: "击杀金币", enabled: true, pattern: "被你击杀，你获得了\\s*([\\d,\\.]+)\\s*金币", numberMode: true, agg: "sum" },
       { label: "经验收入", enabled: true, pattern: "你获得了\\s*([\\d,\\.]+)[^点]*点经验", numberMode: true, agg: "sum" },
-      { label: "灵魂空间(当前)", enabled: true, pattern: "灵魂空间[\\s\\S]*?当前\\s*([\\d,]+)\\s*个", numberMode: true, agg: "last" },
-      // 同时有「物品名 + 数量」：keyGroup=1(物品名) 按物品分组累计存入数
-      { label: "灵魂存入(按物品)", enabled: true, pattern: "已存入\\s*(.+?)[Xx](\\d+)", keyGroup: 1, valueGroup: 2, numberMode: true, agg: "sum" },
+      // 灵魂空间 = 资源库存：按「材料名」分组。消息形如「已存入 梦魇营长残障X3, 当前 8706 个」
+      // ·当前：各材料现有数量（取最新 8706）  ·本场：各材料本次会话累计获得（X3 累加）
+      { label: "灵魂材料·当前", enabled: true, pattern: "已存入\\s*(.+?)[Xx]\\d+,\\s*当前\\s*([\\d,]+)", keyGroup: 1, valueGroup: 2, numberMode: true, agg: "last" },
+      { label: "灵魂材料·本场获得", enabled: true, pattern: "已存入\\s*(.+?)[Xx](\\d+)", keyGroup: 1, valueGroup: 2, numberMode: true, agg: "sum" },
       { label: "峰值暴击", enabled: true, pattern: "伤害为[:：]\\s*([\\d,\\.]+\\s*[万亿兆]?)", numberMode: true, agg: "max" },
       { label: "击杀数", enabled: true, pattern: "被你击杀", numberMode: false, agg: "count" },
     ],

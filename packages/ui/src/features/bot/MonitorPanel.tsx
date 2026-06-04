@@ -24,6 +24,7 @@ const fmtVal = (v: number | string | null | undefined): string =>
 /** 一条规则的主数（按聚合方式） */
 function mainValue(rule: MonitorRule, st?: MonitorStat): string {
   if (!st || st.count === 0) return "—";
+  if (rule.keyGroup && st.byKey) return `${Object.keys(st.byKey).length} 种`; // 分组规则：主数=种类数，细分在下方
   switch (rule.agg) {
     case "count":
       return fmtBig(st.count);
@@ -55,8 +56,22 @@ function subText(rule: MonitorRule, st?: MonitorStat): string {
   const rate = st.perMin >= 0.1 && (rule.agg === "sum" || rule.agg === "count") ? ` · ${fmtBig(Math.round(st.perMin))}/分` : "";
   return `命中 ${st.count} 次${rate}`;
 }
-const keyRows = (st?: MonitorStat): [string, MonitorKeyStat][] =>
-  st?.byKey ? Object.entries(st.byKey) : [];
+function keyRows(rule: MonitorRule, st?: MonitorStat): [string, MonitorKeyStat][] {
+  if (!st?.byKey) return [];
+  const num = (k: MonitorKeyStat): number => {
+    switch (rule.agg) {
+      case "count":
+        return k.count;
+      case "last":
+        return typeof k.last === "number" ? k.last : 0;
+      case "max":
+        return k.max ?? 0;
+      default:
+        return k.total;
+    }
+  };
+  return Object.entries(st.byKey).sort((a, b) => num(b[1]) - num(a[1]));
+}
 
 export default function MonitorPanel({ botId }: { botId: string }) {
   const stats = useStore((s) => s.monitorStats[botId]) ?? {};
@@ -141,7 +156,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
           ) : (
             rules.map((rule) => {
               const st = stats[rule.id];
-              const krows = keyRows(st);
+              const krows = keyRows(rule, st);
               return (
                 <div key={rule.id} className={cn("rounded-md bg-surface-2/50 px-2.5 py-1.5", !rule.enabled && "opacity-40")}>
                   <div className="flex items-baseline justify-between gap-2">
