@@ -1,8 +1,33 @@
 diff --git a/lib/mineflayer.js b/lib/mineflayer.js
-index 06634bf6415ec41410e95ec816bebcc239726497..bea355bdd8c6962546af5fef9c209e649bb1cde1 100644
+index 06634bf6415ec41410e95ec816bebcc239726497..05b537e6a4b2c6758b7137ab7692d197577958de 100644
 --- a/lib/mineflayer.js
 +++ b/lib/mineflayer.js
-@@ -61,12 +61,25 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+@@ -49,6 +49,24 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+     socket.emit('version', bot.version)
+     sockets.push(socket)
+ 
++    // [mc-bot-player 魔改] 过滤盔甲架：RPG 服大量用隐形盔甲架做全息字/NPC 牌子，
++    // prismarine-viewer 只认原版模型会把它们画乱。实体 spawn 包带 name(类型)，moved/gone 只有 id ——
++    // 丢掉 armor_stand 的 spawn 并记住其 id，连带丢后续 moved/gone（保留真实怪物/玩家）。
++    {
++      const _emit = socket.emit.bind(socket)
++      const hiddenEntityIds = new Set()
++      socket.emit = (ev, data, ...rest) => {
++        if (ev === 'entity' && data && data.id !== 'self') {
++          if (data.name === 'armor_stand') { hiddenEntityIds.add(data.id); return socket }
++          if (hiddenEntityIds.has(data.id)) {
++            if (data.delete) hiddenEntityIds.delete(data.id)
++            return socket
++          }
++        }
++        return _emit(ev, data, ...rest)
++      }
++    }
++
+     const worldView = new WorldView(bot.world, viewDistance, bot.entity.position, socket)
+     worldView.init(bot.entity.position)
+ 
+@@ -61,12 +79,25 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
      }
  
      function botPosition () {
