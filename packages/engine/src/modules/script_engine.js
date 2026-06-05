@@ -1023,6 +1023,8 @@ module.exports = (botInstance) => {
             name,
             trigger: script.trigger || { type: 'manual' },
             loop: !!script.loop,
+            server: script.server,
+            category: script.category,
             stepCount: (script.steps || []).length,
             running: botInstance._runningScript?.name === name
         }));

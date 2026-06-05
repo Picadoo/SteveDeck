@@ -14,6 +14,7 @@ export function registerScriptHandlers(socket: Socket): void {
       trigger: s.trigger || { type: "manual" },
       loop: !!s.loop,
       server: s.server,
+      category: s.category,
       stepCount: Array.isArray(s.steps) ? s.steps.length : 0,
       running: running === name,
     }));

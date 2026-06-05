@@ -1,5 +1,6 @@
 import http from "http";
 import path from "path";
+import fs from "fs";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { Server as IOServer } from "socket.io";
@@ -78,10 +79,160 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
   // 完整版引擎才有这些资源；精简版缺包则跳过挂载，前端 <img> 404 后回退到图标。无需鉴权（仅公开贴图）。
   try {
     const pvDir = path.dirname(require.resolve("prismarine-viewer/package.json"));
-    app.use(
-      "/textures",
-      express.static(path.join(pvDir, "public", "textures"), { maxAge: "7d", fallthrough: true }),
-    );
+    const texRoot = path.join(pvDir, "public", "textures");
+
+    // 智能图标解析：按「真实贴图文件清单 + minecraft-data 物品/方块名」把 id 映射到存在的 PNG，
+    // 处理 动画帧(_00) / 物品贴图在 blocks 下 / 命名不符(别名)。按版本缓存。
+    // 实体渲染类(箱子/床/旗帜/头颅)本就没平面贴图 → 404 → 前端回退到图标。
+    // 命名不符（1.12.2 扁平化前 id≠贴图名）。动画物品(clock/compass…)由 _00 自动处理，无需列。
+    const ICON_ALIAS: Record<string, string> = {
+      totem_of_undying: "totem",
+      golden_apple: "apple_golden",
+      golden_carrot: "carrot_golden",
+      cooked_beef: "beef_cooked",
+      cooked_porkchop: "porkchop_cooked",
+      cooked_chicken: "chicken_cooked",
+      cooked_mutton: "mutton_cooked",
+      cooked_rabbit: "rabbit_cooked",
+      cooked_fish: "fish_cod_cooked",
+      cooked_salmon: "fish_salmon_cooked",
+      redstone: "redstone_dust",
+      bow: "bow_standby",
+      slime_ball: "slimeball",
+      tripwire_hook: "trip_wire_source",
+      fishing_rod: "fishing_rod_uncast",
+      filled_map: "map_filled",
+      map: "map_empty",
+      potion: "potion_bottle_drinkable",
+      splash_potion: "potion_bottle_splash",
+      lingering_potion: "potion_bottle_lingering",
+      experience_bottle: "experience_bottle",
+      melon: "melon_speckled",
+      speckled_melon: "melon_speckled",
+      cocoa_beans: "dye_powder_brown",
+      // 方块类物品：无同名整图，映射到代表性贴图
+      red_flower: "flower_rose", // 红花(默认罂粟)
+      yellow_flower: "flower_dandelion",
+      double_plant: "double_plant_sunflower_front",
+      chest: "planks_oak", // 箱子是实体渲染、无平面图，用木板近似
+      trapped_chest: "planks_oak",
+      tallgrass: "tallgrass",
+      waterlily: "waterlily",
+      deadbush: "deadbush",
+      // 玻璃板/有色玻璃(菜单边框常用)：无 id 整图、且无 metadata 分色 → 统一用透明玻璃近似
+      stained_glass_pane: "glass",
+      glass_pane: "glass",
+      thin_glass: "glass",
+      stained_glass: "glass",
+      // 楼梯：用对应方块面近似（别名指向不存在的贴图会被 resolve 跳过，无害）
+      quartz_stairs: "quartz_block_side",
+      stone_stairs: "stone",
+      cobblestone_stairs: "cobblestone",
+      stone_brick_stairs: "stonebrick",
+      brick_stairs: "brick",
+      sandstone_stairs: "sandstone_normal",
+      red_sandstone_stairs: "red_sandstone_normal",
+      nether_brick_stairs: "nether_brick",
+      purpur_stairs: "purpur_block",
+      oak_stairs: "planks_oak",
+      spruce_stairs: "planks_spruce",
+      birch_stairs: "planks_birch",
+      jungle_stairs: "planks_jungle",
+      acacia_stairs: "planks_acacia",
+      dark_oak_stairs: "planks_big_oak",
+      // 旧版不规则命名
+      book: "book_normal",
+      written_book: "book_written",
+      writable_book: "book_writable",
+      enchanted_book: "book_enchanted",
+      chicken: "chicken_raw",
+      planks: "planks_oak",
+      log: "log_oak",
+      log2: "log_acacia",
+      leaves: "leaves_oak",
+      leaves2: "leaves_acacia",
+      snow_layer: "snow",
+      ender_chest: "obsidian",
+      stone_button: "stone",
+      wooden_button: "planks_oak",
+    };
+    const iconMapCache: Record<string, Record<string, string>> = {};
+    const getIconMap = (version: string): Record<string, string> => {
+      if (iconMapCache[version]) return iconMapCache[version];
+      const dir = path.join(texRoot, version);
+      const listing = (sub: string): Set<string> => {
+        try {
+          return new Set(
+            fs.readdirSync(path.join(dir, sub)).filter((f) => f.endsWith(".png")).map((f) => f.slice(0, -4)),
+          );
+        } catch {
+          return new Set<string>();
+        }
+      };
+      const items = listing("items");
+      const blocks = listing("blocks");
+      const resolve = (name: string): string | null => {
+        if (items.has(name)) return `items/${name}`;
+        if (blocks.has(name)) return `blocks/${name}`;
+        if (items.has(`${name}_00`)) return `items/${name}_00`; // 动画物品取首帧
+        if (blocks.has(`${name}_00`)) return `blocks/${name}_00`;
+        const a = ICON_ALIAS[name];
+        if (a) {
+          if (items.has(a)) return `items/${a}`;
+          if (blocks.has(a)) return `blocks/${a}`;
+        }
+        // 1.12.2 命名差异：wooden_X→wood_X、golden_X→gold_X（工具/盔甲整族）
+        const ren = name.replace(/^wooden_/, "wood_").replace(/^golden_/, "gold_");
+        if (ren !== name) {
+          if (items.has(ren)) return `items/${ren}`;
+          if (blocks.has(ren)) return `blocks/${ren}`;
+        }
+        // 上釉陶瓦：<color>_glazed_terracotta → glazed_terracotta_<color>
+        const gt = name.match(/^(.+)_glazed_terracotta$/);
+        if (gt && blocks.has(`glazed_terracotta_${gt[1]}`)) return `blocks/glazed_terracotta_${gt[1]}`;
+        // 多面方块(熔炉/工作台/活板门等)：无同名整图，取一个代表面
+        for (const suf of ["_front_off", "_front", "_top", "_side", "_inventory", "_0"]) {
+          if (blocks.has(`${name}${suf}`)) return `blocks/${name}${suf}`;
+        }
+        return null;
+      };
+      const map: Record<string, string> = {};
+      try {
+        const mcData = require("minecraft-data")(version);
+        for (const it of mcData.itemsArray || []) {
+          const p = resolve(it.name);
+          if (p) map[it.name] = p;
+        }
+        for (const bl of mcData.blocksArray || []) {
+          if (map[bl.name]) continue;
+          const p = resolve(bl.name);
+          if (p) map[bl.name] = p;
+        }
+      } catch {
+        /* 该版本无 minecraft-data：退化为只认存在的文件名 */
+      }
+      for (const n of items) if (!map[n]) map[n] = `items/${n}`;
+      for (const n of blocks) if (!map[n]) map[n] = `blocks/${n}`;
+      iconMapCache[version] = map;
+      return map;
+    };
+
+    // 解析端点：/textures/1.12.2/_icon/totem_of_undying.png → 实际 items/totem.png（命中即 200 image/png）
+    app.get("/textures/:version/_icon/:name", (req: Request, res: Response): void => {
+      const version = String(req.params.version);
+      const name = String(req.params.name).replace(/\.png$/i, "").toLowerCase();
+      const rel = getIconMap(version)[name];
+      if (!rel) {
+        res.set("Cache-Control", "no-store"); // 404 不缓存：新增别名/换版本后立即生效，不被旧 404 卡住
+        res.status(404).end();
+        return;
+      }
+      // 重定向到已验证可用的静态贴图（绕开 express5 sendFile 对绝对路径的怪异 NotFound；静态层负责 MIME/缓存）
+      res.set("Cache-Control", "public, max-age=604800");
+      res.redirect(302, `/textures/${version}/${rel}.png`);
+    });
+
+    app.use("/textures", express.static(texRoot, { maxAge: "7d", fallthrough: true }));
   } catch {
     /* 精简版无 prismarine-viewer，跳过贴图静态服务 */
   }
