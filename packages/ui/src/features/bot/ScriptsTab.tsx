@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Play, Square, Plus, Pencil, Trash2, ScrollText, Repeat, AlertCircle, Activity } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Play, Square, Plus, Pencil, Trash2, ScrollText, Repeat, AlertCircle, Activity, Folder, ChevronDown } from "lucide-react";
 import { Card, Button, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
@@ -61,6 +61,74 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
 
   // 按服务器过滤：通用(无 server) + 本服(server===本机 host)；「全部」显示所有
   const shown = showAll ? list : list.filter((sc) => !sc.server || sc.server === bot.host);
+
+  // 分类分组（地点传送/领取奖励…）：有分类时按分类折叠分组，否则平铺
+  const allCats = useMemo(
+    () => [...new Set(list.map((s) => s.category).filter((c): c is string => !!c && !!c.trim()))],
+    [list],
+  );
+  const grouped = shown.some((s) => s.category && s.category.trim());
+  const groups = useMemo(() => {
+    const m = new Map<string, ScriptSummary[]>();
+    for (const sc of shown) {
+      const c = sc.category?.trim() || "未分类";
+      const arr = m.get(c);
+      if (arr) arr.push(sc);
+      else m.set(c, [sc]);
+    }
+    return [...m.entries()].sort((a, b) =>
+      a[0] === "未分类" ? 1 : b[0] === "未分类" ? -1 : a[0].localeCompare(b[0], "zh"),
+    );
+  }, [shown]);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleCat = (c: string) =>
+    setCollapsed((prev) => {
+      const n = new Set(prev);
+      if (n.has(c)) n.delete(c);
+      else n.add(c);
+      return n;
+    });
+
+  const renderCard = (s: ScriptSummary) => (
+    <Card key={s.name} className="flex items-center justify-between p-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium">{s.name}</span>
+          {s.loop && (
+            <Badge tone="neutral">
+              <Repeat className="h-3 w-3" /> 循环
+            </Badge>
+          )}
+          {s.running && <Badge tone="success">运行中</Badge>}
+          {!s.server ? (
+            <Badge tone="neutral">通用</Badge>
+          ) : s.server !== bot.host ? (
+            <Badge tone="warning">{s.server}</Badge>
+          ) : null}
+        </div>
+        <div className="text-[11px] text-muted">
+          触发：{s.trigger?.type ?? "manual"} · {s.stepCount} 步
+        </div>
+      </div>
+      <div className="flex shrink-0 gap-1.5">
+        {s.running ? (
+          <Button size="sm" variant="secondary" onClick={stop}>
+            <Square className="h-3.5 w-3.5" /> 停止
+          </Button>
+        ) : (
+          <Button size="sm" variant="secondary" disabled={!bot.online} onClick={() => run(s.name)}>
+            <Play className="h-3.5 w-3.5" /> 运行
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={() => openEdit(s.name)} title="编辑">
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => remove(s.name)} title="删除">
+          <Trash2 className="h-3.5 w-3.5 text-danger" />
+        </Button>
+      </div>
+    </Card>
+  );
 
   return (
     <div className="space-y-3">
@@ -171,55 +239,35 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
             </button>
           )}
         </div>
-      ) : (
-        <div className="space-y-2">
-          {shown.map((s) => (
-            <Card key={s.name} className="flex items-center justify-between p-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium">{s.name}</span>
-                  {s.loop && (
-                    <Badge tone="neutral">
-                      <Repeat className="h-3 w-3" /> 循环
-                    </Badge>
-                  )}
-                  {s.running && <Badge tone="success">运行中</Badge>}
-                  {!s.server ? (
-                    <Badge tone="neutral">通用</Badge>
-                  ) : s.server !== bot.host ? (
-                    <Badge tone="warning">{s.server}</Badge>
-                  ) : null}
-                </div>
-                <div className="text-[11px] text-muted">
-                  触发：{s.trigger?.type ?? "manual"} · {s.stepCount} 步
-                </div>
+      ) : grouped ? (
+        <div className="space-y-2.5">
+          {groups.map(([cat, items]) => {
+            const isCol = collapsed.has(cat);
+            return (
+              <div key={cat}>
+                <button
+                  onClick={() => toggleCat(cat)}
+                  className="flex w-full items-center gap-1.5 px-1 py-1 text-xs font-semibold text-muted hover:text-fg"
+                >
+                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isCol && "-rotate-90")} />
+                  <Folder className="h-3.5 w-3.5 text-accent" />
+                  {cat}
+                  <span className="font-normal text-muted/60">{items.length}</span>
+                </button>
+                {!isCol && <div className="mt-1 space-y-2">{items.map(renderCard)}</div>}
               </div>
-              <div className="flex shrink-0 gap-1.5">
-                {s.running ? (
-                  <Button size="sm" variant="secondary" onClick={stop}>
-                    <Square className="h-3.5 w-3.5" /> 停止
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="secondary" disabled={!bot.online} onClick={() => run(s.name)}>
-                    <Play className="h-3.5 w-3.5" /> 运行
-                  </Button>
-                )}
-                <Button size="sm" variant="ghost" onClick={() => openEdit(s.name)} title="编辑">
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => remove(s.name)} title="删除">
-                  <Trash2 className="h-3.5 w-3.5 text-danger" />
-                </Button>
-              </div>
-            </Card>
-          ))}
+            );
+          })}
         </div>
+      ) : (
+        <div className="space-y-2">{shown.map(renderCard)}</div>
       )}
 
           <ScriptEditor
             open={editing.open}
             initial={editing.initial}
             botId={bot.id}
+            categories={allCats}
             onClose={() => setEditing({ open: false, initial: null })}
             onSave={handleSave}
           />

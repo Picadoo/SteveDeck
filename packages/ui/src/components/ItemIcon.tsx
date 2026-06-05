@@ -35,7 +35,8 @@ export function ItemIcon({ texture, base, size }: { texture?: string; base: stri
   const id = (texture || "").toLowerCase();
   const alias = TEX_ALIAS[id];
   const candidates = [
-    `${base}/items/${id}.png`,
+    `${base}/_icon/${id}.png`, // 引擎智能解析：动画帧/方块贴图/别名/存在性，命中率最高
+    `${base}/items/${id}.png`, // 以下为兜底（解析未命中时再试旧启发式）
     `${base}/blocks/${id}.png`,
     alias ? `${base}/items/${alias}.png` : null,
     alias ? `${base}/blocks/${alias}.png` : null,

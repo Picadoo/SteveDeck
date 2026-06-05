@@ -130,11 +130,12 @@ function SlotGrid({
               !it
                 ? "cursor-default border-border/30 bg-surface-2/20"
                 : filler
-                  ? "cursor-default border-border/20 bg-surface-2/30 opacity-30"
+                  ? "cursor-default border-border/20 bg-surface-2/30 opacity-60"
                   : "border-border bg-surface-2/70 hover:border-accent hover:bg-accent/10",
             )}
           >
-            {active && <ItemIcon texture={it!.id} base={texBase} size={30} />}
+            {/* 渲染所有有 id 的物品(含玻璃板边框，贴图弱化显示)；悬浮仍只给非装饰项 */}
+            {it && <ItemIcon texture={it.id} base={texBase} size={30} />}
             {it && it.count > 1 && (
               <span
                 className="pointer-events-none absolute -bottom-px right-0.5 text-[10px] font-bold tabular-nums text-white"

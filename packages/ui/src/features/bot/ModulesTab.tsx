@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Settings2, FileCode2 } from "lucide-react";
-import { Card, Switch, Button } from "@/components/ui/primitives";
+import { Settings2, FileCode2, Pickaxe } from "lucide-react";
+import { Card, Switch, Button, Input } from "@/components/ui/primitives";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { MODULES, defaultConfig, type ModuleDef } from "./moduleDefs";
@@ -215,6 +215,8 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
         );
       })}
 
+      <BehaviorCard bot={bot} />
+
       {editing && (
         <ModuleConfigDialog
           def={editing}
@@ -225,6 +227,81 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
         />
       )}
     </div>
+  );
+}
+
+/** 行为设置：允许破坏方块寻路 / 复活后自动指令（从交互页移来；属持久行为配置，归「托管」） */
+function BehaviorCard({ bot }: { bot: BotSummary }) {
+  const pushToast = useStore((s) => s.pushToast);
+  const [behavior, setBehavior] = useState<{ allowDig: boolean; respawnCommand: string } | null>(null);
+  const [respawnDraft, setRespawnDraft] = useState("");
+  const disabled = !bot.online;
+
+  useEffect(() => {
+    let live = true;
+    cmd.behavior.get(bot.id).then((r) => {
+      if (live && r.ok && r.data) {
+        setBehavior(r.data);
+        setRespawnDraft(r.data.respawnCommand || "");
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [bot.id]);
+
+  async function toggleDig(allow: boolean) {
+    setBehavior((b) => ({ respawnCommand: b?.respawnCommand ?? "", allowDig: allow })); // 立即反映
+    const r = await cmd.behavior.setDig(bot.id, allow);
+    if (r.ok) {
+      pushToast(allow ? "已允许破坏方块寻路" : "已切换为无破坏寻路", "success");
+    } else {
+      pushToast(r.error || "设置失败", "error");
+      setBehavior((b) => ({ respawnCommand: b?.respawnCommand ?? "", allowDig: !allow })); // 回滚
+    }
+  }
+  async function saveRespawn() {
+    const c = respawnDraft.trim();
+    const r = await cmd.behavior.setRespawnCmd(bot.id, c);
+    if (r.ok) {
+      setBehavior((b) => ({ allowDig: b?.allowDig ?? false, respawnCommand: c }));
+      pushToast("已保存复活后指令", "success");
+    } else pushToast(r.error || "保存失败", "error");
+  }
+
+  return (
+    <Card className="p-4 sm:col-span-2">
+      <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+        <Pickaxe className="h-4 w-4 text-accent" /> 行为设置
+      </h3>
+      <div className="flex items-center justify-between gap-3 py-1">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">允许破坏方块寻路</div>
+          <p className="text-[11px] leading-relaxed text-muted">
+            默认关闭（无破坏模式）。多数服务器地图受保护，开启后寻路会尝试挖/搭方块，反而更容易卡路径。
+          </p>
+        </div>
+        <Switch checked={!!behavior?.allowDig} onChange={toggleDig} disabled={disabled} />
+      </div>
+      <div className="mt-2 border-t border-border/40 pt-2.5">
+        <div className="text-sm font-medium">复活后自动指令</div>
+        <p className="mb-1.5 text-[11px] leading-relaxed text-muted">
+          死亡后自动复活（内置）。若服务器死亡会回主城，可填 <code className="rounded bg-surface-2 px-1">/back</code>、
+          <code className="rounded bg-surface-2 px-1">/spawn</code> 等返回原处；留空则不执行。
+        </p>
+        <div className="flex gap-1.5">
+          <Input
+            value={respawnDraft}
+            onChange={(e) => setRespawnDraft(e.target.value)}
+            placeholder="如 /back（留空不执行）"
+            disabled={disabled}
+          />
+          <Button size="sm" variant="secondary" disabled={disabled} onClick={saveRespawn}>
+            保存
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 

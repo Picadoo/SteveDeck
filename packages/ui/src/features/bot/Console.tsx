@@ -4,6 +4,7 @@ import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
 import McText from "@/components/McText";
 import MonitorPanel from "./MonitorPanel";
+import { mcPlain } from "@/lib/format";
 import type { LogLine } from "@mcbot/protocol";
 
 // 模块级稳定空数组：避免 zustand v5 选择器返回新引用导致无限重渲染
@@ -18,10 +19,12 @@ export default function Console({ botId }: { botId: string }) {
   const [autoScroll, setAutoScroll] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
+  // 用去掉 §/& 颜色码的纯文本匹配（=屏幕上看到的字），否则带色原文会让过滤"看着失效"
+  const needle = filter.trim().toLowerCase();
   const shown = logs.filter((l) => {
     if (level === "chat" && l.level !== "chat") return false;
     if (level === "op" && l.level === "chat") return false;
-    if (filter && !l.text.toLowerCase().includes(filter.toLowerCase())) return false;
+    if (needle && !mcPlain(l.text).toLowerCase().includes(needle)) return false;
     return true;
   });
 
@@ -33,7 +36,7 @@ export default function Console({ botId }: { botId: string }) {
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(logs.map((l) => `${l.time} ${l.text}`).join("\n"));
+      await navigator.clipboard.writeText(logs.map((l) => `${l.time ?? ""} ${mcPlain(l.text)}`).join("\n"));
       pushToast("日志已复制", "success");
     } catch {
       pushToast("复制失败", "error");

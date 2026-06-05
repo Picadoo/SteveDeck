@@ -38,6 +38,19 @@ export function fmtBig(n: number | null | undefined): string {
   return unit(abs / 1e12, "万亿");
 }
 
+/**
+ * 去掉 Minecraft 颜色/格式码（§ 与 & 系），得到屏幕上看到的纯文本。
+ * 用于搜索/过滤/复制——避免拿带 §c/§f 的原文匹配，导致"按看到的字过滤却匹配不上"。
+ * 同时对 null/undefined 安全（返回 ""），防止过滤时 .toLowerCase() 抛错。
+ */
+export function mcPlain(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .replace(/[§&]#[0-9a-fA-F]{6}/g, "") // §#RRGGBB / &#RRGGBB
+    .replace(/[§&]x(?:[§&][0-9a-fA-F]){6}/gi, "") // §x§R§R§G§G§B§B
+    .replace(/[§&][0-9a-fk-or]/gi, ""); // §0-9 / a-f 颜色 + k-o 格式 + r 复位
+}
+
 /** 秒 → 在线时长（如 2天3时 / 5时12分 / 8分30秒） */
 export function fmtUptime(sec: number | null | undefined): string {
   if (sec == null || sec < 0) return "—";

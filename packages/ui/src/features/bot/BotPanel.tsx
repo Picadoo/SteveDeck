@@ -1,38 +1,33 @@
-import { useState, type FormEvent, type ReactNode, type KeyboardEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode, type KeyboardEvent } from "react";
 import {
-  Heart,
-  Drumstick,
-  Star,
-  MapPin,
   RotateCw,
   Square,
   Trash2,
   Send,
   Bot as BotIcon,
   Pencil,
-  Eye,
   History,
-  Wifi,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Button, Input, Badge, StatusDot } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
-import { healthPct } from "@/lib/format";
+import { computeMetrics, loadCfg, saveCfg, defaultCfg, type HeaderCfg } from "@/lib/headerMetrics";
+import HeaderMetricsConfig from "./HeaderMetricsConfig";
 import AddBotDialog, { type EditInitial } from "./AddBotDialog";
 import Console from "./Console";
 import GuiWindow from "./GuiWindow";
-import ViewerModal from "./ViewerModal";
 import OverviewTab from "./OverviewTab";
 import ModulesTab from "./ModulesTab";
-import InteractionTab from "./InteractionTab";
+import LiveTab from "./LiveTab";
 import LocationsTab from "./LocationsTab";
 import ScriptsTab from "./ScriptsTab";
 import InventoryTab from "./InventoryTab";
 import AiTab from "./AiTab";
 import { cn } from "@/lib/cn";
 
-type Tab = "overview" | "ai" | "modules" | "interaction" | "locations" | "scripts" | "inventory" | "console";
+type Tab = "overview" | "live" | "modules" | "scripts" | "inventory" | "locations" | "ai" | "console";
 
 export default function BotPanel() {
   const bot = useStore((s) => s.bots.find((b) => b.id === s.selectedId));
@@ -45,7 +40,34 @@ export default function BotPanel() {
   const [showHist, setShowHist] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [edit, setEdit] = useState<{ open: boolean; initial?: EditInitial }>({ open: false });
-  const [viewer, setViewer] = useState(false);
+  const [metricsCfg, setMetricsCfg] = useState<HeaderCfg>(defaultCfg);
+  const [metricsCfgOpen, setMetricsCfgOpen] = useState(false);
+  const [sbLines, setSbLines] = useState<string[]>([]);
+
+  // 顶栏指标配置按 host 加载；钉了计分板指标（或正在配置）时轮询计分板取实时数字
+  const host = bot?.host;
+  useEffect(() => {
+    if (host) setMetricsCfg(loadCfg(host));
+  }, [host]);
+  useEffect(() => {
+    const id = bot?.id;
+    if (!id || !bot?.online || (metricsCfg.pinned.length === 0 && !metricsCfgOpen)) return;
+    let live = true;
+    const poll = async () => {
+      const r = await cmd.moduleAction(id, "scoreboard", "get");
+      if (!live || !r.ok || !r.data) return;
+      const sb = r.data as { items?: { raw?: string; name?: string }[]; sidebar?: { raw?: string; name?: string }[] };
+      const lines = (sb.items || sb.sidebar || []).map((it) => it.raw || it.name || "").filter(Boolean);
+      setSbLines(lines);
+    };
+    poll();
+    const t = setInterval(poll, 3000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bot?.id, bot?.online, metricsCfg.pinned.length, metricsCfgOpen]);
 
   if (!bot) {
     return (
@@ -56,7 +78,11 @@ export default function BotPanel() {
     );
   }
 
-  const pct = healthPct(bot);
+  const metricChips = computeMetrics(bot, sbLines, metricsCfg);
+  const updateMetricsCfg = (c: HeaderCfg) => {
+    setMetricsCfg(c);
+    saveCfg(bot.host, c);
+  };
 
   async function send(msg: string) {
     if (!msg.trim() || !bot) return;
@@ -121,11 +147,6 @@ export default function BotPanel() {
             <Button size="sm" variant="secondary" onClick={() => cmd.stop(bot.id)}>
               <Square className="h-3.5 w-3.5" /> 停止
             </Button>
-            {bot.online && (
-              <Button size="sm" variant="ghost" onClick={() => setViewer(true)} title="实时视角">
-                <Eye className="h-3.5 w-3.5" />
-              </Button>
-            )}
             <Button size="sm" variant="ghost" onClick={openEdit} title="编辑">
               <Pencil className="h-3.5 w-3.5" />
             </Button>
@@ -136,22 +157,25 @@ export default function BotPanel() {
         </div>
 
         {bot.online && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Metric icon={<Heart className="h-3.5 w-3.5 text-danger" />} label="生命" value={pct != null ? `${pct}%` : "-"} />
-            <Metric icon={<Drumstick className="h-3.5 w-3.5 text-warning" />} label="饱食" value={bot.food ?? "-"} />
-            <Metric icon={<Star className="h-3.5 w-3.5 text-accent" />} label="等级" value={bot.level ?? "-"} />
-            <Metric
-              icon={<Wifi className="h-3.5 w-3.5 text-success" />}
-              label="延迟"
-              value={
-                bot.ping != null ? <span className={pingTone(bot.ping)}>{bot.ping}ms</span> : "-"
-              }
-            />
-            <Metric
-              icon={<MapPin className="h-3.5 w-3.5 text-success" />}
-              label="坐标"
-              value={bot.pos ? `${bot.pos.x}, ${bot.pos.y}, ${bot.pos.z}` : "-"}
-            />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {metricChips.map((chip) => {
+              const Icon = chip.icon;
+              return (
+                <Metric
+                  key={chip.key}
+                  icon={<Icon className={cn("h-3.5 w-3.5", chip.iconClass)} />}
+                  label={chip.label}
+                  value={chip.value}
+                />
+              );
+            })}
+            <button
+              onClick={() => setMetricsCfgOpen(true)}
+              title="配置顶栏指标（从计分板提取金币/点卷等）"
+              className="rounded-lg p-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+            </button>
           </div>
         )}
 
@@ -165,24 +189,24 @@ export default function BotPanel() {
       {/* 标签栏 */}
       <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4">
         <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>概览</TabButton>
-        <TabButton active={tab === "ai"} onClick={() => setTab("ai")}>AI</TabButton>
+        <TabButton active={tab === "live"} onClick={() => setTab("live")}>交互</TabButton>
         <TabButton active={tab === "modules"} onClick={() => setTab("modules")}>模块</TabButton>
-        <TabButton active={tab === "interaction"} onClick={() => setTab("interaction")}>交互</TabButton>
-        <TabButton active={tab === "locations"} onClick={() => setTab("locations")}>地点</TabButton>
         <TabButton active={tab === "scripts"} onClick={() => setTab("scripts")}>脚本</TabButton>
         <TabButton active={tab === "inventory"} onClick={() => setTab("inventory")}>背包</TabButton>
+        <TabButton active={tab === "locations"} onClick={() => setTab("locations")}>地点</TabButton>
+        <TabButton active={tab === "ai"} onClick={() => setTab("ai")}>AI</TabButton>
         <TabButton active={tab === "console"} onClick={() => setTab("console")}>日志</TabButton>
       </div>
 
       {/* 内容 */}
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {tab === "overview" && <OverviewTab bot={bot} />}
-        {tab === "ai" && <AiTab bot={bot} />}
+        {tab === "live" && <LiveTab bot={bot} />}
         {tab === "modules" && <ModulesTab bot={bot} />}
-        {tab === "interaction" && <InteractionTab bot={bot} />}
-        {tab === "locations" && <LocationsTab bot={bot} />}
         {tab === "scripts" && <ScriptsTab bot={bot} />}
         {tab === "inventory" && <InventoryTab bot={bot} />}
+        {tab === "locations" && <LocationsTab bot={bot} />}
+        {tab === "ai" && <AiTab bot={bot} />}
         {tab === "console" && <Console botId={bot.id} />}
       </div>
 
@@ -261,17 +285,16 @@ export default function BotPanel() {
       {/* 服务器打开的窗口/GUI（箱子/菜单），自动弹出可操作 */}
       <GuiWindow bot={bot} />
 
-      {/* 机器人实时视角 */}
-      <ViewerModal bot={bot} open={viewer} onClose={() => setViewer(false)} />
+      {/* 顶栏指标配置（内置开关 + 从计分板勾选自定义数字，按服务器独立） */}
+      <HeaderMetricsConfig
+        open={metricsCfgOpen}
+        onClose={() => setMetricsCfgOpen(false)}
+        cfg={metricsCfg}
+        onChange={updateMetricsCfg}
+        scoreboardLines={sbLines}
+      />
     </div>
   );
-}
-
-/** 延迟着色：流畅 <80ms 绿 / 一般 <200ms 黄 / 偏高 红 */
-function pingTone(ms: number): string {
-  if (ms < 80) return "text-success";
-  if (ms < 200) return "text-warning";
-  return "text-danger";
 }
 
 function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) {

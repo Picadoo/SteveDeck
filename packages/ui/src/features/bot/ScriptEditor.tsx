@@ -12,16 +12,19 @@ interface EditScript {
   name: string;
   loop: boolean;
   server: string; // 适用服务器 host；空=通用
+  category: string; // 分类/文件夹；空=未分类
   trigger: { type: string; value?: string | number };
   steps: any[];
 }
 
 function toEdit(s: BotScript | null, defaultServer = ""): EditScript {
-  if (!s) return { name: "新脚本", loop: false, server: defaultServer, trigger: { type: "manual" }, steps: [] };
+  if (!s)
+    return { name: "新脚本", loop: false, server: defaultServer, category: "", trigger: { type: "manual" }, steps: [] };
   return {
     name: s.name || "新脚本",
     loop: !!s.loop,
     server: s.server ?? "",
+    category: s.category ?? "",
     trigger: { type: s.trigger?.type || "manual", value: s.trigger?.value },
     steps: Array.isArray(s.steps) ? JSON.parse(JSON.stringify(s.steps)) : [],
   };
@@ -31,6 +34,7 @@ function toScript(e: EditScript): BotScript {
   if (e.trigger.value !== undefined && e.trigger.value !== "") trigger.value = e.trigger.value;
   const out: any = { name: e.name.trim(), loop: e.loop, trigger, steps: e.steps };
   if (e.server) out.server = e.server;
+  if (e.category.trim()) out.category = e.category.trim();
   return out as BotScript;
 }
 
@@ -45,12 +49,14 @@ export default function ScriptEditor({
   open,
   initial,
   botId,
+  categories = [],
   onClose,
   onSave,
 }: {
   open: boolean;
   initial: BotScript | null;
   botId?: string;
+  categories?: string[];
   onClose: () => void;
   onSave: (script: BotScript) => void;
 }) {
@@ -154,6 +160,16 @@ export default function ScriptEditor({
                 </select>
               </label>
 
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-muted">分类（可选，脚本页按此分组）</span>
+                <Input
+                  list="script-cats"
+                  value={s.category}
+                  onChange={(e) => setS((p) => ({ ...p, category: e.target.value }))}
+                  placeholder="如 地点传送 / 领取奖励（留空=未分类）"
+                />
+              </label>
+
               <div className="flex items-end gap-3">
                 <label className="block flex-1">
                   <span className="mb-1.5 block text-xs font-medium text-muted">触发方式</span>
@@ -188,6 +204,7 @@ export default function ScriptEditor({
       </div>
 
       {/* 自动补全数据源（来自 AI 感知） */}
+      <datalist id="script-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist>
       <datalist id="mc-items">{items.map((n) => <option key={n} value={n} />)}</datalist>
       <datalist id="mc-entities">{entities.map((n) => <option key={n} value={n} />)}</datalist>
       <datalist id="mc-players">{players.map((n) => <option key={n} value={n} />)}</datalist>

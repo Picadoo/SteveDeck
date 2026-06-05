@@ -1,11 +1,21 @@
 import { useState, useEffect, type FormEvent, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import Modal from "@/components/ui/Modal";
-import { Button, Input } from "@/components/ui/primitives";
+import { Button, Input, Switch } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
+import type { BotSettings } from "@mcbot/protocol";
 
-const EMPTY = { username: "", host: "", port: "25565", version: "1.20.1", loginPassword: "", note: "" };
+const EMPTY = {
+  username: "",
+  host: "",
+  port: "25565",
+  version: "1.20.1",
+  loginPassword: "",
+  note: "",
+  maxReconnectAttempts: "0", // 0 = 无限
+  reconnectDelay: "5",
+};
 
 export interface EditInitial {
   username: string;
@@ -14,6 +24,7 @@ export interface EditInitial {
   version?: string;
   loginPassword?: string;
   note?: string;
+  settings?: BotSettings;
 }
 
 export default function AddBotDialog({
@@ -29,6 +40,7 @@ export default function AddBotDialog({
 }) {
   const pushToast = useStore((s) => s.pushToast);
   const [form, setForm] = useState({ ...EMPTY });
+  const [autoReconnect, setAutoReconnect] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!editId;
@@ -36,6 +48,7 @@ export default function AddBotDialog({
   useEffect(() => {
     if (!open) return;
     if (initial) {
+      const s = initial.settings || {};
       setForm({
         username: initial.username || "",
         host: initial.host || "",
@@ -43,9 +56,13 @@ export default function AddBotDialog({
         version: initial.version || "1.20.1",
         loginPassword: initial.loginPassword || "",
         note: initial.note || "",
+        maxReconnectAttempts: String(s.maxReconnectAttempts ?? 0),
+        reconnectDelay: String(s.reconnectDelay ?? 5),
       });
+      setAutoReconnect(s.autoReconnect !== false); // 未设/true → 开
     } else {
       setForm({ ...EMPTY });
+      setAutoReconnect(true);
     }
     setErr(null);
   }, [open, initial]);
@@ -69,11 +86,20 @@ export default function AddBotDialog({
       version: form.version.trim() || undefined,
       loginPassword: form.loginPassword || undefined,
       note: form.note.trim() || undefined,
+      // 只传重连相关键；引擎侧 merge，不会覆盖模块配置/定时等其它设置
+      settings: {
+        autoReconnect,
+        maxReconnectAttempts: Math.max(0, Number(form.maxReconnectAttempts) || 0),
+        reconnectDelay: Math.max(1, Number(form.reconnectDelay) || 5),
+      } as BotSettings,
     };
     const res = isEdit ? await cmd.updateBot(editId!, payload) : await cmd.addBot(payload);
     setBusy(false);
     if (res.ok) {
-      if (!isEdit) setForm({ ...EMPTY });
+      if (!isEdit) {
+        setForm({ ...EMPTY });
+        setAutoReconnect(true);
+      }
       onClose();
       pushToast(isEdit ? "已保存，正在重连…" : "机器人已添加，正在连接…", "success");
     } else {
@@ -105,6 +131,37 @@ export default function AddBotDialog({
           <Field label="登录密码（可选）">
             <Input type="password" value={form.loginPassword} onChange={(e) => set("loginPassword", e.target.value)} placeholder="/login 用" />
           </Field>
+        </div>
+
+        {/* 连接 / 重连 */}
+        <div className="rounded-lg border border-border/60 p-3">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">自动重连</div>
+              <p className="text-[11px] leading-relaxed text-muted">断线后自动重连（被 ban/白名单等不可恢复断开仍会停）。关掉则掉线不重连。</p>
+            </div>
+            <Switch checked={autoReconnect} onChange={setAutoReconnect} />
+          </div>
+          {autoReconnect && (
+            <div className="mt-2.5 grid grid-cols-2 gap-3 border-t border-border/40 pt-2.5">
+              <Field label="最大重试次数（0 = 无限）">
+                <Input
+                  value={form.maxReconnectAttempts}
+                  onChange={(e) => set("maxReconnectAttempts", e.target.value)}
+                  placeholder="0"
+                  inputMode="numeric"
+                />
+              </Field>
+              <Field label="重试间隔（秒，会指数退避）">
+                <Input
+                  value={form.reconnectDelay}
+                  onChange={(e) => set("reconnectDelay", e.target.value)}
+                  placeholder="5"
+                  inputMode="numeric"
+                />
+              </Field>
+            </div>
+          )}
         </div>
 
         {err && <div className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{err}</div>}

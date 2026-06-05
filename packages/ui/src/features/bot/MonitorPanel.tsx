@@ -137,6 +137,15 @@ export default function MonitorPanel({ botId }: { botId: string }) {
           )}
           <ChevronDown className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-180")} />
         </button>
+        {enabled.length > 0 && (
+          <button
+            onClick={resetStats}
+            className="shrink-0 rounded p-1 text-muted hover:bg-surface hover:text-fg"
+            title="清零统计数值"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           onClick={() => setManage(true)}
           className="shrink-0 rounded p-1 text-muted hover:bg-surface hover:text-fg"
