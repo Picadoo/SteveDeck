@@ -563,16 +563,17 @@ module.exports = (botInstance) => {
             }
 
             case 'wait_gui_item': {
-                const itemName = String(step.item || '').toLowerCase();
+                const itemName = step.item || '';
                 const timeout = (Number(step.timeout) || 10) * 1000;
-                emitLog(`等待界面物品: ${step.item}`);
+                const matchLore = step.matchLore === true || step.matchLore === 'true';
+                emitLog(`等待界面物品: ${itemName}`);
+                // 按「显示名(+可选 lore)」匹配，与 find_and_click_slot 一致。
+                // 原来只比 item.name(物品 id，如 paper/clock)，永远匹配不到中文显示名 → 必然超时。
                 const found = await pollUntil(() => {
                     if (!bot.currentWindow) return false;
-                    return bot.currentWindow.slots.some(s =>
-                        s && (s.name || '').toLowerCase().includes(itemName)
-                    );
+                    return findMatchingSlot(bot.currentWindow.slots, itemName, { matchLore }) >= 0;
                 }, timeout, ctx);
-                if (!found) emitLog(`超时未找到: ${step.item}`);
+                if (!found) emitLog(`超时未找到: ${itemName}`);
                 break;
             }
 
