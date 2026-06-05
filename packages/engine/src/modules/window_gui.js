@@ -2,7 +2,7 @@
 // 适配大量 RPG 服的「箱子菜单」(DeluxeMenus 等) 与普通箱子。
 
 const vec3 = require("vec3");
-const { enchantNames, parseChat, flattenChat } = require("../utils/items");
+const { enchantNames, parseChat, flattenChat, customName } = require("../utils/items");
 
 function mkVec(x, y, z) {
   try {
@@ -103,6 +103,59 @@ module.exports = (botInstance) => {
       return true;
     }
     return false;
+  };
+
+  // 【AI 主动探索】用背包里某个名字的物品打开 GUI，抓取完整内容后关闭，返回结构。
+  // 让 AI/用户无需逐个手点就能搞清服务器定制菜单里有什么（物品名/lore/槽位）——主动探查而非被动观察。
+  botInstance.exploreMenuItem = async (keyword, opts = {}) => {
+    const timeout = Number(opts.timeout) || 8000;
+    const kw = String(keyword || "").toLowerCase();
+    if (!kw) throw new Error("请提供物品名关键词");
+    const item = bot.inventory.items().find(
+      (i) => i.name.toLowerCase().includes(kw) || customName(i).toLowerCase().includes(kw),
+    );
+    if (!item) throw new Error(`背包里没有名字含「${keyword}」的物品`);
+    await bot.equip(item, "hand");
+    // 先挂监听再使用，等服务器弹出的新窗口
+    const winP = new Promise((resolve, reject) => {
+      const onOpen = (win) => {
+        clearTimeout(t);
+        resolve(win);
+      };
+      const t = setTimeout(() => {
+        bot.removeListener("windowOpen", onOpen);
+        reject(new Error("使用后未弹出界面（可能不是菜单物品，或服务器有延迟）"));
+      }, timeout);
+      bot.once("windowOpen", onOpen);
+    });
+    bot.activateItem();
+    const win = await winP;
+    // open_window 后服务器再发 window_items 填充槽位，等到有内容再快照（最多 1.5s）
+    const deadline = Date.now() + 1500;
+    while (Date.now() < deadline && !(win.slots || []).some((s) => s)) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const snapshot = serialize(win);
+    if (!opts.keep) {
+      try {
+        bot.closeWindow(win);
+      } catch {
+        /* ignore */
+      }
+    }
+    return { usedItem: customName(item) || item.name, window: snapshot };
+  };
+
+  // 【AI 主动探索】列出背包里疑似「菜单/可右键打开」的物品（有自定义名），作为探查候选。
+  botInstance.listMenuCandidates = () => {
+    try {
+      return bot.inventory
+        .items()
+        .map((i) => ({ slot: i.slot, id: i.name, name: customName(i) || i.displayName || i.name, count: i.count }))
+        .filter((x) => x.name && x.name !== x.id);
+    } catch {
+      return [];
+    }
   };
 
   // 扫描附近容器（箱子/木桶/潜影盒等），返回坐标+距离，省去手填 XYZ

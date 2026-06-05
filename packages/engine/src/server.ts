@@ -96,6 +96,27 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     res.json(obs);
   });
 
+  // 主动探索：用背包里某个名字的物品打开 GUI，抓取完整内容后关闭，返回结构（AI 可据此搞清服务器定制菜单）。
+  // GET /api/explore/:id?item=自助菜单   或不带 item → 列出可探查的菜单候选物品
+  app.post("/api/explore/:id", requireToken, async (req: Request, res: Response): Promise<void> => {
+    const inst: any = botManager.getInstance(String(req.params.id));
+    if (!inst) {
+      res.status(404).json({ error: "bot not found" });
+      return;
+    }
+    const item = String(req.query.item || req.body?.item || "");
+    try {
+      if (!item) {
+        res.json({ candidates: inst.listMenuCandidates?.() ?? [] });
+        return;
+      }
+      const result = await inst.exploreMenuItem(item, { keep: !!req.body?.keep });
+      res.json(result);
+    } catch (e: any) {
+      res.status(400).json({ error: String(e?.message ?? e) });
+    }
+  });
+
   app.post("/api/ai/script/:id", requireToken, (req: Request, res: Response): void => {
     const id = String(req.params.id);
     const body = req.body || {};
