@@ -110,7 +110,10 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
         res.json({ candidates: inst.listMenuCandidates?.() ?? [] });
         return;
       }
-      const result = await inst.exploreMenuItem(item, { keep: !!req.body?.keep });
+      const result = await inst.exploreMenuItem(item, {
+        keep: !!req.body?.keep,
+        clickPath: Array.isArray(req.body?.clickPath) ? req.body.clickPath : undefined,
+      });
       res.json(result);
     } catch (e: any) {
       res.status(400).json({ error: String(e?.message ?? e) });

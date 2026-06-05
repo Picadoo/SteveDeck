@@ -63,6 +63,62 @@ export const STEP_TYPES: StepTypeDef[] = [
       { k: "z", label: "Z", type: "number" },
     ],
   },
+  // ===== GUI / 界面交互（服务器定制菜单：开菜单 → 等界面 → 找物品点击 → 关界面）=====
+  {
+    do: "wait_gui_item",
+    label: "等界面出现物品",
+    fields: [
+      { k: "item", label: "物品名关键词", type: "text" },
+      { k: "timeout", label: "超时(秒,默10)", type: "number" },
+    ],
+  },
+  {
+    do: "find_and_click_slot",
+    label: "界面找物品并点击",
+    fields: [
+      { k: "item", label: "名字/Lore关键词", type: "text" },
+      { k: "button", label: "按键(0左/1右)", type: "number" },
+    ],
+  },
+  {
+    do: "click_slot",
+    label: "点击界面槽位",
+    fields: [
+      { k: "slot", label: "槽位号", type: "number" },
+      { k: "button", label: "按键(0左/1右)", type: "number" },
+    ],
+  },
+  { do: "close_gui", label: "关闭界面", fields: [] },
+  // ===== 等待 / 变量 / 地点 =====
+  {
+    do: "wait_chat",
+    label: "等聊天出现",
+    fields: [
+      { k: "pattern", label: "关键词/正则", type: "text" },
+      { k: "timeout", label: "超时(秒,默30)", type: "number" },
+    ],
+  },
+  {
+    do: "wait_until",
+    label: "等条件成立",
+    fields: [
+      { k: "cond", label: "条件(如 health<10)", type: "text" },
+      { k: "timeout", label: "超时(秒,默60)", type: "number" },
+    ],
+  },
+  {
+    do: "set_var",
+    label: "设置变量",
+    fields: [
+      { k: "name", label: "变量名", type: "text" },
+      { k: "value", label: "值($health/$x..)", type: "text" },
+    ],
+  },
+  {
+    do: "goto_location",
+    label: "前往保存地点",
+    fields: [{ k: "name", label: "地点名", type: "text" }],
+  },
   // ===== 控制块（含子步骤） =====
   {
     do: "if",

@@ -3,6 +3,7 @@
 
 const vec3 = require("vec3");
 const { enchantNames, parseChat, flattenChat, customName } = require("../utils/items");
+const { findMatchingSlot } = require("../utils/guiMatch");
 
 function mkVec(x, y, z) {
   try {
@@ -129,21 +130,37 @@ module.exports = (botInstance) => {
       bot.once("windowOpen", onOpen);
     });
     bot.activateItem();
-    const win = await winP;
+    let win = await winP;
     // open_window 后服务器再发 window_items 填充槽位，等到有内容再快照（最多 1.5s）
-    const deadline = Date.now() + 1500;
-    while (Date.now() < deadline && !(win.slots || []).some((s) => s)) {
-      await new Promise((r) => setTimeout(r, 100));
+    const waitSlots = async (w) => {
+      const dl = Date.now() + 1500;
+      while (Date.now() < dl && !(w.slots || []).some((s) => s)) await new Promise((r) => setTimeout(r, 100));
+    };
+    await waitSlots(win);
+    // 主动深入：clickPath 逐级点进子菜单（按 名字/lore 关键词找槽位点击），抓最末一级结构
+    const trail = [];
+    for (const kw of Array.isArray(opts.clickPath) ? opts.clickPath : []) {
+      if (!bot.currentWindow) break;
+      const slot = findMatchingSlot(bot.currentWindow.slots, String(kw), { matchLore: true });
+      if (slot < 0) {
+        trail.push({ keyword: kw, found: false });
+        break;
+      }
+      trail.push({ keyword: kw, slot });
+      await bot.clickWindow(slot, 0, 0);
+      await new Promise((r) => setTimeout(r, 500));
+      if (bot.currentWindow) await waitSlots(bot.currentWindow);
     }
+    win = bot.currentWindow || win;
     const snapshot = serialize(win);
-    if (!opts.keep) {
+    if (!opts.keep && bot.currentWindow) {
       try {
-        bot.closeWindow(win);
+        bot.closeWindow(bot.currentWindow);
       } catch {
         /* ignore */
       }
     }
-    return { usedItem: customName(item) || item.name, window: snapshot };
+    return { usedItem: customName(item) || item.name, trail, window: snapshot };
   };
 
   // 【AI 主动探索】列出背包里疑似「菜单/可右键打开」的物品（有自定义名），作为探查候选。
