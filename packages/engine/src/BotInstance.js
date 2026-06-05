@@ -46,7 +46,7 @@ class BotInstance {
 
         // 新增: 重连管理
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = config.settings?.maxReconnectAttempts || 10;
+        this.maxReconnectAttempts = config.settings?.maxReconnectAttempts ?? 0; // 0 = 无限（7×24 挂机默认；fatal 仍兜底）
         this.reconnectBackoff = 1;
         this.stableTimer = null;       // 连接稳定计时器（min-uptime，稳定后才重置计数）
         this._fatalReason = null;      // 不可恢复的断开原因（命中则停止重连）
@@ -222,6 +222,17 @@ class BotInstance {
     handleReconnect() {
         if (this.isExplicitlyQuitting) return;
 
+        // 用户关闭了自动重连：断线后不再重连（fatal 之外的主动选择）
+        if (this.config.settings?.autoReconnect === false) {
+            logger.info(`[${this.config.username}] 自动重连已关闭，断开后不重连`);
+            this.io.to(this._room).to('admin').emit('bot_error', {
+                user: this.config.username,
+                ownerId: this.config.ownerId,
+                error: '已关闭自动重连'
+            });
+            return;
+        }
+
         // 不可恢复的断开（被ban/白名单/版本不符等）：停止重连并通知，不消耗重试次数
         if (this._fatalReason) {
             logger.error(`[${this.config.username}] 不可恢复的断开(${this._fatalReason})，停止重连`);
@@ -233,7 +244,7 @@ class BotInstance {
             return;
         }
 
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        if (this.maxReconnectAttempts > 0 && this.reconnectAttempts >= this.maxReconnectAttempts) {
             logger.error(`[${this.config.username}] 达到最大重连次数(${this.maxReconnectAttempts})，停止重连`);
             this.io.to(this._room).to('admin').emit('bot_error', {
                 user: this.config.username,

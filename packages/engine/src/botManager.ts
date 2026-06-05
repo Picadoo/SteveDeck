@@ -195,6 +195,7 @@ class BotManager {
       host: cfg.host,
       port: cfg.port,
       version: cfg.version,
+      auth: cfg.auth, // 修复：之前漏传 → 微软/正版账号会被当 offline 跑
       password: cfg.loginPassword,
       settings: cfg.settings,
       ownerId: undefined,
@@ -248,7 +249,8 @@ class BotManager {
       auth: input.auth ?? "offline",
       loginPassword: input.loginPassword,
       note: input.note,
-      settings: input.settings ?? { combat: false, fishing: false, reconnectDelay: 5, schedules: [] },
+      // 合并默认值：即便前端只传了重连相关键，也保留 combat/fishing/schedules 等默认，不被整体替换
+      settings: { combat: false, fishing: false, reconnectDelay: 5, schedules: [], ...(input.settings ?? {}) },
     };
     this.configs.push(cfg);
     this.persist();
@@ -291,6 +293,16 @@ class BotManager {
     chg("loginPassword", patch.loginPassword as any);
     // 备注是纯展示字段，改它不必重连
     if (patch.note !== undefined) cfg.note = patch.note;
+    // settings 合并：只覆盖传入的键，保留模块配置/定时/地点等其它设置（避免整体替换抹掉）
+    if (patch.settings && typeof patch.settings === "object") {
+      cfg.settings = { ...cfg.settings, ...patch.settings };
+      // 重连相关设置热生效：更新运行中实例，无需重建连接
+      const live: any = this.bots.get(id);
+      if (live) {
+        if (live.config) live.config.settings = cfg.settings;
+        live.maxReconnectAttempts = cfg.settings.maxReconnectAttempts ?? 0;
+      }
+    }
     this.persist();
     // 仅在连接参数变化时重建实例
     const had = this.bots.get(id);

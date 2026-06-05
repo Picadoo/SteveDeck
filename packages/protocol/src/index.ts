@@ -51,7 +51,11 @@ export interface BotConfig extends Required<Pick<BotConfigInput, "username" | "h
 
 /** 机器人运行设置（各模块开关与参数、定时任务、地点等） */
 export interface BotSettings {
+  /** 是否自动重连（默认 true）。关闭后断线不再自动重连。 */
+  autoReconnect?: boolean;
+  /** 基础重连间隔(秒)，默认 5；之后 ×1.5 指数退避到上限 ×10。 */
   reconnectDelay?: number;
+  /** 最大重连次数，0 或未设 = 无限（7×24 挂机默认无限；ban/白名单等不可恢复断开仍自动停）。 */
   maxReconnectAttempts?: number;
   viewDistance?: "far" | "normal" | "short" | "tiny" | number;
   /** 寻路是否允许破坏方块。默认 false（多数服务器地图受保护，挖不动会卡路径）。 */
@@ -376,6 +380,8 @@ export interface BotScript {
   trigger?: ScriptTrigger;
   /** 适用服务器(host)；空=通用，所有服务器都显示 */
   server?: string;
+  /** 分类/文件夹（如「地点传送」「领取奖励」）；空=未分类 */
+  category?: string;
   steps: ScriptStep[];
 }
 
@@ -387,6 +393,8 @@ export interface ScriptSummary {
   running: boolean;
   /** 适用服务器(host)；空=通用 */
   server?: string;
+  /** 分类/文件夹；空=未分类 */
+  category?: string;
 }
 
 // ==================== AI 感知 ====================
