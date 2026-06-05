@@ -12,6 +12,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [mode, setMode] = useState<"visual" | "js">("visual");
   const [list, setList] = useState<ScriptSummary[]>([]);
+  const [showAll, setShowAll] = useState(false);
   const [editing, setEditing] = useState<{ open: boolean; initial: BotScript | null }>({
     open: false,
     initial: null,
@@ -57,6 +58,9 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
     await cmd.script.remove(name);
     refresh();
   }
+
+  // 按服务器过滤：通用(无 server) + 本服(server===本机 host)；「全部」显示所有
+  const shown = showAll ? list : list.filter((sc) => !sc.server || sc.server === bot.host);
 
   return (
     <div className="space-y-3">
@@ -137,21 +141,39 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
         <CustomJsPanel bot={bot} />
       ) : (
         <>
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted">脚本库为全局，可在任意机器人上运行</p>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-[11px]">
+              {([["本服", false], ["全部", true]] as const).map(([lbl, v]) => (
+                <button
+                  key={lbl}
+                  onClick={() => setShowAll(v)}
+                  className={cn(
+                    "px-2.5 py-1 transition-colors",
+                    showAll === v ? "bg-accent/15 text-accent" : "text-muted hover:text-fg",
+                  )}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
             <Button size="sm" variant="primary" onClick={openNew}>
               <Plus className="h-3.5 w-3.5" /> 新建脚本
             </Button>
           </div>
 
-      {list.length === 0 ? (
+      {shown.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 text-center text-muted">
           <ScrollText className="mb-2 h-8 w-8 opacity-40" />
-          <p className="text-sm">还没有脚本，点击「新建脚本」</p>
+          <p className="text-sm">{list.length > 0 ? "本服务器没有脚本" : "还没有脚本，点击「新建脚本」"}</p>
+          {!showAll && list.length > shown.length && (
+            <button onClick={() => setShowAll(true)} className="mt-1 text-xs text-accent">
+              查看全部 {list.length} 个 →
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-2">
-          {list.map((s) => (
+          {shown.map((s) => (
             <Card key={s.name} className="flex items-center justify-between p-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -162,6 +184,11 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
                     </Badge>
                   )}
                   {s.running && <Badge tone="success">运行中</Badge>}
+                  {!s.server ? (
+                    <Badge tone="neutral">通用</Badge>
+                  ) : s.server !== bot.host ? (
+                    <Badge tone="warning">{s.server}</Badge>
+                  ) : null}
                 </div>
                 <div className="text-[11px] text-muted">
                   触发：{s.trigger?.type ?? "manual"} · {s.stepCount} 步

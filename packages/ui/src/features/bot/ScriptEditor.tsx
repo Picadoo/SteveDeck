@@ -4,21 +4,24 @@ import { Button, Input, Switch } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { STEP_TYPES, STEP_MAP, TRIGGER_TYPES, type StepFieldDef } from "./stepDefs";
 import { cmd } from "@/lib/engine";
+import { useStore } from "@/store/useStore";
 import type { BotScript } from "@mcbot/protocol";
 
 type Mode = "visual" | "json";
 interface EditScript {
   name: string;
   loop: boolean;
+  server: string; // 适用服务器 host；空=通用
   trigger: { type: string; value?: string | number };
   steps: any[];
 }
 
-function toEdit(s: BotScript | null): EditScript {
-  if (!s) return { name: "新脚本", loop: false, trigger: { type: "manual" }, steps: [] };
+function toEdit(s: BotScript | null, defaultServer = ""): EditScript {
+  if (!s) return { name: "新脚本", loop: false, server: defaultServer, trigger: { type: "manual" }, steps: [] };
   return {
     name: s.name || "新脚本",
     loop: !!s.loop,
+    server: s.server ?? "",
     trigger: { type: s.trigger?.type || "manual", value: s.trigger?.value },
     steps: Array.isArray(s.steps) ? JSON.parse(JSON.stringify(s.steps)) : [],
   };
@@ -26,7 +29,9 @@ function toEdit(s: BotScript | null): EditScript {
 function toScript(e: EditScript): BotScript {
   const trigger: any = { type: e.trigger.type };
   if (e.trigger.value !== undefined && e.trigger.value !== "") trigger.value = e.trigger.value;
-  return { name: e.name.trim(), loop: e.loop, trigger, steps: e.steps } as BotScript;
+  const out: any = { name: e.name.trim(), loop: e.loop, trigger, steps: e.steps };
+  if (e.server) out.server = e.server;
+  return out as BotScript;
 }
 
 function listIdFor(key: string): string | undefined {
@@ -56,10 +61,11 @@ export default function ScriptEditor({
   const [items, setItems] = useState<string[]>([]);
   const [entities, setEntities] = useState<string[]>([]);
   const [players, setPlayers] = useState<string[]>([]);
+  const bot = useStore((st) => st.bots.find((b) => b.id === botId));
 
   useEffect(() => {
     if (!open) return;
-    setS(toEdit(initial));
+    setS(toEdit(initial, bot?.host || ""));
     setMode("visual");
     setErr(null);
     if (botId) {
@@ -135,6 +141,19 @@ export default function ScriptEditor({
                 </label>
               </div>
 
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-muted">适用服务器</span>
+                <select
+                  value={s.server}
+                  onChange={(e) => setS((p) => ({ ...p, server: e.target.value }))}
+                  className="h-9 w-full rounded-lg border border-border bg-surface px-2 text-sm outline-none focus:ring-2 focus:ring-accent/50"
+                >
+                  <option value="">通用（所有服务器都显示）</option>
+                  {bot?.host && <option value={bot.host}>仅本服：{bot.note || bot.host}</option>}
+                  {s.server && s.server !== bot?.host && <option value={s.server}>仅：{s.server}</option>}
+                </select>
+              </label>
+
               <div className="flex items-end gap-3">
                 <label className="block flex-1">
                   <span className="mb-1.5 block text-xs font-medium text-muted">触发方式</span>
@@ -180,7 +199,10 @@ function StepList({ steps, onChange, depth }: { steps: any[]; onChange: (s: any[
   function add(doType: string) {
     const def = STEP_MAP[doType];
     const step: any = { do: doType };
-    def?.fields.forEach((f) => (step[f.k] = f.type === "number" ? 0 : ""));
+    def?.fields.forEach((f) => {
+      step[f.k] =
+        f.type === "number" ? 0 : f.type === "bool" ? false : f.type === "select" ? f.options?.[0]?.value ?? "" : "";
+    });
     def?.containers?.forEach((c) => (step[c.key] = []));
     onChange([...steps, step]);
   }
@@ -263,13 +285,39 @@ function StepCard({
               {def.fields.map((f: StepFieldDef) => (
                 <label key={f.k} className="block">
                   <span className="mb-1 block text-[10px] text-muted">{f.label}</span>
-                  <Input
-                    className="h-8 text-xs"
-                    type={f.type === "number" ? "number" : "text"}
-                    list={listIdFor(f.k)}
-                    value={String(step[f.k] ?? "")}
-                    onChange={(e) => onField(f.k, f.type === "number" ? Number(e.target.value) : e.target.value)}
-                  />
+                  {f.type === "bool" ? (
+                    <div className="flex h-8 items-center">
+                      <input
+                        type="checkbox"
+                        checked={!!step[f.k]}
+                        onChange={(e) => onField(f.k, e.target.checked)}
+                        className="h-4 w-4 accent-accent"
+                      />
+                    </div>
+                  ) : f.type === "select" ? (
+                    <select
+                      value={String(step[f.k] ?? "")}
+                      onChange={(e) => {
+                        const opt = f.options?.find((o) => String(o.value) === e.target.value);
+                        onField(f.k, opt ? opt.value : e.target.value);
+                      }}
+                      className="h-8 w-full rounded-lg border border-border bg-surface px-2 text-xs outline-none focus:ring-2 focus:ring-accent/50"
+                    >
+                      {f.options?.map((o) => (
+                        <option key={String(o.value)} value={String(o.value)}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      className="h-8 text-xs"
+                      type={f.type === "number" ? "number" : "text"}
+                      list={listIdFor(f.k)}
+                      value={String(step[f.k] ?? "")}
+                      onChange={(e) => onField(f.k, f.type === "number" ? Number(e.target.value) : e.target.value)}
+                    />
+                  )}
                 </label>
               ))}
             </div>

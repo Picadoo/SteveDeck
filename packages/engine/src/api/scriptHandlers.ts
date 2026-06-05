@@ -13,6 +13,7 @@ export function registerScriptHandlers(socket: Socket): void {
       name,
       trigger: s.trigger || { type: "manual" },
       loop: !!s.loop,
+      server: s.server,
       stepCount: Array.isArray(s.steps) ? s.steps.length : 0,
       running: running === name,
     }));

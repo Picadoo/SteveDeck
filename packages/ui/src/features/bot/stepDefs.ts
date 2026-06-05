@@ -3,8 +3,15 @@
 export interface StepFieldDef {
   k: string;
   label: string;
-  type: "text" | "number";
+  type: "text" | "number" | "bool" | "select";
+  /** select 的选项 */
+  options?: { value: string | number; label: string }[];
 }
+
+const BTN_OPTS = [
+  { value: 0, label: "左键" },
+  { value: 1, label: "右键" },
+];
 export interface StepContainerDef {
   key: string; // 嵌套 steps 数组所在的字段名（如 steps / then / else）
   label: string;
@@ -77,7 +84,9 @@ export const STEP_TYPES: StepTypeDef[] = [
     label: "界面找物品并点击",
     fields: [
       { k: "item", label: "名字/Lore关键词", type: "text" },
-      { k: "button", label: "按键(0左/1右)", type: "number" },
+      { k: "button", label: "按键", type: "select", options: BTN_OPTS },
+      { k: "matchLore", label: "也搜Lore(领取常看lore)", type: "bool" },
+      { k: "save_slot", label: "命中槽存变量(可空)", type: "text" },
     ],
   },
   {
@@ -85,7 +94,7 @@ export const STEP_TYPES: StepTypeDef[] = [
     label: "点击界面槽位",
     fields: [
       { k: "slot", label: "槽位号", type: "number" },
-      { k: "button", label: "按键(0左/1右)", type: "number" },
+      { k: "button", label: "按键", type: "select", options: BTN_OPTS },
     ],
   },
   { do: "close_gui", label: "关闭界面", fields: [] },

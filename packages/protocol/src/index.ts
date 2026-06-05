@@ -374,6 +374,8 @@ export interface BotScript {
   loop?: boolean;
   loopDelay?: number;
   trigger?: ScriptTrigger;
+  /** 适用服务器(host)；空=通用，所有服务器都显示 */
+  server?: string;
   steps: ScriptStep[];
 }
 
@@ -383,6 +385,8 @@ export interface ScriptSummary {
   loop: boolean;
   stepCount: number;
   running: boolean;
+  /** 适用服务器(host)；空=通用 */
+  server?: string;
 }
 
 // ==================== AI 感知 ====================
