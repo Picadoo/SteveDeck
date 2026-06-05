@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const { goals } = require('mineflayer-pathfinder');
 const { isChatBlocked } = require('../utils/chatSafety');
 const { findMatchingSlot, slotText } = require('../utils/guiMatch');
+const { customName } = require('../utils/items');
 
 const MAX_CALL_DEPTH = 5;
 const GOTO_TIMEOUT = 60000;
@@ -458,10 +459,14 @@ module.exports = (botInstance) => {
             }
 
             case 'equip': {
-                const itemName = String(step.item || '').toLowerCase();
-                const item = bot.inventory.items().find(i => i.name.toLowerCase().includes(itemName));
+                // 关键词同时匹配「物品 id」与「自定义显示名」——RPG 服物品 id 多是 clock/paper，
+                // 真正的「自助菜单」等名字在 NBT 显示名里，只按 id 匹配会找不到。
+                const kw = String(step.item || '').toLowerCase();
+                const item = bot.inventory.items().find(
+                    (i) => i.name.toLowerCase().includes(kw) || customName(i).toLowerCase().includes(kw),
+                );
                 if (item) {
-                    emitLog(`装备: ${item.name}`);
+                    emitLog(`持物: ${customName(item) || item.name}`);
                     await bot.equip(item, step.dest || 'hand');
                 } else {
                     emitLog(`没有: ${step.item}`);
