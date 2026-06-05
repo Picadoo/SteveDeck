@@ -276,6 +276,17 @@ export const cmd = {
         action: "openAt",
         args: { x, y, z },
       }),
+    explore: (id: string, item: string, clickPath?: string[]) =>
+      emitAck<{ usedItem: string; trail?: { keyword: string; slot?: number; found?: boolean }[]; window: WindowState }>(
+        ClientCommands.MODULE_ACTION,
+        { id, module: "window", action: "explore", args: { item, clickPath } },
+      ),
+    menuCandidates: (id: string) =>
+      emitAck<{ slot: number; id: string; name: string; count: number }[]>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "window",
+        action: "menuCandidates",
+      }),
   },
   js: {
     list: (id: string) =>

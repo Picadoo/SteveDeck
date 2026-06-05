@@ -14,6 +14,9 @@ import {
   ArrowLeft,
   ArrowRight,
   ChevronsUp,
+  Copy,
+  CornerDownRight,
+  Compass,
 } from "lucide-react";
 import { Card, Button, Input, Badge, Switch } from "@/components/ui/primitives";
 import { HoldButton } from "@/components/Joystick";
@@ -22,7 +25,7 @@ import { cnMob } from "@/lib/mobNames";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import SchedulerTab from "./SchedulerTab";
-import type { BotSummary } from "@mcbot/protocol";
+import type { BotSummary, WindowState } from "@mcbot/protocol";
 
 type Npc = {
   id: number;
@@ -45,6 +48,12 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
   const [behavior, setBehavior] = useState<{ allowDig: boolean; respawnCommand: string } | null>(null);
   const [respawnDraft, setRespawnDraft] = useState("");
   const disabled = !bot.online;
+  // 探查菜单：开背包菜单物品 → 抓内容 → 可逐级点进；快速看清菜单里有什么、复制名字写脚本
+  const [exItem, setExItem] = useState("");
+  const [exPath, setExPath] = useState<string[]>([]);
+  const [exRes, setExRes] = useState<{ usedItem: string; window: WindowState } | null>(null);
+  const [exLoading, setExLoading] = useState(false);
+  const [cands, setCands] = useState<{ name: string }[]>([]);
 
   useEffect(() => {
     if (!bot.online) return;
@@ -109,11 +118,114 @@ export default function InteractionTab({ bot }: { bot: BotSummary }) {
     if (r.ok) setSb(r.data ?? { empty: true });
     else pushToast(r.error || "获取计分板失败", "error");
   }
+  async function loadCands() {
+    const r = await cmd.window.menuCandidates(bot.id);
+    if (r.ok && Array.isArray(r.data)) setCands(r.data);
+  }
+  async function explore(item: string, path: string[]) {
+    if (!item.trim()) return;
+    setExLoading(true);
+    const r = await cmd.window.explore(bot.id, item, path);
+    setExLoading(false);
+    if (r.ok && r.data) {
+      setExRes(r.data);
+      setExItem(item);
+      setExPath(path);
+    } else pushToast(r.error || "探查失败（可能不是菜单物品）", "error");
+  }
+  async function copyName(name: string) {
+    try {
+      await navigator.clipboard.writeText(name);
+      pushToast(`已复制「${name}」`, "success");
+    } catch {
+      pushToast("复制失败", "error");
+    }
+  }
+
   const sbItems: { name: string; raw?: string; value: number | string }[] =
     sb?.items || sb?.sidebar || [];
 
   return (
     <div className="space-y-4">
+      {/* 探查菜单：一键看清服务器菜单里有什么，复制名字写进 find_and_click_slot 脚本步骤 */}
+      <Card className="p-4">
+        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+          <Compass className="h-4 w-4 text-accent" /> 探查菜单
+          <span className="ml-1 text-[11px] font-normal text-muted">开菜单看里面有什么 → 复制名字写脚本</span>
+        </h3>
+        <div className="flex gap-1.5">
+          <Input
+            list="menu-cands"
+            value={exItem}
+            onFocus={loadCands}
+            onChange={(e) => setExItem(e.target.value)}
+            placeholder="背包菜单物品名，如 自助菜单"
+            className="h-8 flex-1 text-xs"
+          />
+          <Button size="sm" disabled={disabled || exLoading || !exItem.trim()} onClick={() => explore(exItem, [])}>
+            {exLoading ? "探查中…" : "探查"}
+          </Button>
+        </div>
+        <datalist id="menu-cands">
+          {cands.map((c) => (
+            <option key={c.name} value={c.name} />
+          ))}
+        </datalist>
+
+        {exRes && (
+          <div className="mt-2">
+            <div className="mb-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-muted">
+              <span className="font-medium text-fg">{exRes.usedItem}</span>
+              {exPath.map((p, i) => (
+                <span key={i}>› {p}</span>
+              ))}
+              {exPath.length > 0 && (
+                <button onClick={() => explore(exItem, exPath.slice(0, -1))} className="ml-1 text-accent">
+                  ← 返回上级
+                </button>
+              )}
+              <span className="ml-auto">
+                {exRes.window.title} · {(exRes.window.slots || []).filter(Boolean).length} 项
+              </span>
+            </div>
+            <div className="max-h-64 space-y-0.5 overflow-y-auto">
+              {(exRes.window.slots || [])
+                .filter((it): it is NonNullable<typeof it> => !!it && !/glass_pane|stained_glass/i.test(it.id || ""))
+                .slice(0, 60)
+                .map((it) => (
+                  <div key={it.slot} className="group flex items-start gap-1.5 rounded bg-surface-2/40 px-2 py-1 text-xs">
+                    <span className="shrink-0 pt-0.5 text-[10px] tabular-nums text-muted/50">{it.slot}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">
+                        <McText text={it.display || it.name} />
+                      </div>
+                      {it.lore && (
+                        <div className="truncate text-[10px] text-muted/70">
+                          <McText text={it.lore.split("\n")[0]} />
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => copyName(it.name)}
+                      title="复制名字（粘到 find_and_click_slot）"
+                      className="shrink-0 rounded p-0.5 text-muted opacity-60 hover:text-fg group-hover:opacity-100"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => explore(exItem, [...exPath, it.name])}
+                      title="点进子菜单"
+                      className="shrink-0 rounded p-0.5 text-muted opacity-60 hover:text-accent group-hover:opacity-100"
+                    >
+                      <CornerDownRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+      </Card>
+
       {/* NPC */}
       <Card className="p-4">
         <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">

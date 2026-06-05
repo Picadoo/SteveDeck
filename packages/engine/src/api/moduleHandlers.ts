@@ -127,6 +127,17 @@ function dispatchAction(
         .openContainerAt(Number(args.x), Number(args.y), Number(args.z))
         .then((w: any) => ok(w))
         .catch((e: any) => fail(String(e?.message ?? e)));
+    // 主动探查：用背包物品开菜单→抓内容→关闭（玩家一键看清菜单里有什么）
+    case "window:explore":
+      return inst
+        .exploreMenuItem(String(args.item || ""), {
+          clickPath: Array.isArray(args.clickPath) ? args.clickPath : undefined,
+          keep: !!args.keep,
+        })
+        .then((r: any) => ok(r))
+        .catch((e: any) => fail(String(e?.message ?? e)));
+    case "window:menuCandidates":
+      return ok(inst.listMenuCandidates?.() ?? []);
 
     // ===== 原生 JS 自定义脚本 =====
     case "js:list":
