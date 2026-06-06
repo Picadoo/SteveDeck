@@ -168,6 +168,30 @@ export default function Viewer({
     if (next) setFirstPerson(true); // 操控=第一人称：走动时镜头跟机器人，不乱晃
     else cmd.control.stop(bot.id); // 收起即停
   }
+  // 踩点：取机器人当前精确坐标。录制中→插一条 goto；否则复制坐标（可粘到脚本/地点）
+  async function markHere() {
+    const r = await cmd.moduleAction<{ x: number; y: number; z: number; recorded: boolean }>(
+      bot.id,
+      "recording",
+      "mark",
+    );
+    if (!r.ok || !r.data) {
+      pushToast(r.error || "获取位置失败", "error");
+      return;
+    }
+    const { x, y, z, recorded } = r.data;
+    const coord = `${x}, ${y}, ${z}`;
+    if (recorded) {
+      pushToast(`已踩点 → ${coord}（已加入录制）`, "success");
+    } else {
+      try {
+        await navigator.clipboard?.writeText(coord);
+        pushToast(`已复制当前坐标 ${coord}`, "success");
+      } catch {
+        pushToast(`当前坐标 ${coord}`, "info");
+      }
+    }
+  }
 
   // 仅第一人称挂全屏拖动转向层（镜头=机器人视线，拖动=转身体+俯仰）
   const dragTurn = firstPerson;
@@ -325,6 +349,9 @@ export default function Viewer({
       <div className="flex flex-wrap items-center gap-1.5">
         <Button size="sm" variant={walk ? "primary" : "ghost"} onClick={toggleWalk} disabled={!bot.online}>
           <Gamepad2 className="h-3.5 w-3.5" /> {walk ? "停操控" : "操控"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={markHere} disabled={!bot.online} title="获取当前位置（踩点）——录制中插入 goto，否则复制坐标">
+          <MapPin className="h-3.5 w-3.5 text-emerald-400" /> 踩点
         </Button>
         <span className="mx-0.5 h-4 w-px bg-border" />
         <Button size="sm" variant="ghost" onClick={() => setShowMods((v) => !v)}>

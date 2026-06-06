@@ -116,11 +116,14 @@ function dispatchAction(
     case "window:get":
       return ok(inst.getWindow?.() ?? null);
     case "window:click":
+      // 录制：按点中槽位的物品名录成 find_and_click_slot（趁界面还开着、槽位有物品）
+      inst.recorder?.note?.("window_click", { slot: Number(args.slot), button: Number(args.button ?? 0) });
       return inst
         .clickWindowSlot(Number(args.slot), Number(args.button ?? 0), Number(args.mode ?? 0))
         .then((w: any) => ok(w))
         .catch((e: any) => fail(String(e?.message ?? e)));
     case "window:close":
+      inst.recorder?.note?.("window_close", {});
       return ok({ closed: inst.closeGui?.() ?? false });
     case "window:openAt":
       return inst
@@ -246,6 +249,10 @@ function dispatchAction(
       return fail(res?.error || "删除失败");
     }
     case "location:goto": {
+      const loc = (inst.savedLocations || []).find(
+        (l: any) => l.id === args.locationId || l.name === args.locationId,
+      );
+      inst.recorder?.note?.("goto_location", { name: loc?.name || String(args.locationId) });
       const res = inst.goToLocation?.(String(args.locationId));
       return res?.success ? ok() : fail(res?.error || "前往失败");
     }
@@ -257,6 +264,7 @@ function dispatchAction(
     case "container:scan":
       return ok(inst.scanContainers?.() ?? []);
     case "move:goto":
+      inst.recorder?.note?.("goto", { x: Number(args.x), y: Number(args.y), z: Number(args.z) });
       inst.move?.(Number(args.x), Number(args.y), Number(args.z));
       return ok();
     case "move:stop":
@@ -344,21 +352,26 @@ function dispatchAction(
       inst.syncInventory?.();
       return ok();
     case "inventory:drop":
+      inst.recorder?.note?.("drop", { slot: Number(args.slot) });
       return inst
         .dropSlot(Number(args.slot))
         .then(() => ok())
         .catch((e: any) => fail(String(e?.message ?? e)));
     case "inventory:equip":
+      inst.recorder?.note?.("equip", { slot: Number(args.slot) });
       return inst
         .equipSlot(Number(args.slot))
         .then(() => ok())
         .catch((e: any) => fail(String(e?.message ?? e)));
     case "inventory:hold":
+      inst.recorder?.note?.("equip", { slot: Number(args.slot) });
       return inst
         .holdSlot(Number(args.slot))
         .then(() => ok())
         .catch((e: any) => fail(String(e?.message ?? e)));
     case "inventory:use":
+      // 录制要趁物品还在原槽位：先记录再执行（useSlot 会把物品移到手上）
+      inst.recorder?.note?.("use", { slot: Number(args.slot) });
       return inst
         .useSlot(Number(args.slot))
         .then(() => ok())
@@ -380,6 +393,22 @@ function dispatchAction(
     case "scheduler:list":
       ensureSchedules(inst);
       return ok(inst.config.settings.schedules);
+    // ===== 录制：把玩家操作录成脚本步骤 =====
+    case "recording:start":
+      return ok(inst.recorder?.start?.() ?? { active: false, count: 0 });
+    case "recording:stop":
+      return ok(inst.recorder?.stop?.() ?? { steps: [], count: 0 });
+    case "recording:status":
+      return ok(inst.recorder?.status?.() ?? { active: false, count: 0, last: null });
+    case "recording:mark": {
+      // 踩点：取机器人当前精确坐标；录制中则插一条 goto，否则只回坐标供前端复制/存地点
+      const p = inst.bot?.entity?.position;
+      if (!p) return fail("机器人不在线");
+      const coord = { x: Math.round(p.x), y: Math.round(p.y), z: Math.round(p.z) };
+      const rec = !!inst.recorder?.active;
+      if (rec) inst.recorder.note("goto", coord);
+      return ok({ ...coord, recorded: rec });
+    }
     default:
       return fail(`未知操作 ${module}:${action}`);
   }

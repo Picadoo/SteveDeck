@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Play, Square, Plus, Pencil, Trash2, ScrollText, Repeat, AlertCircle, Activity, Folder, ChevronDown } from "lucide-react";
+import { Play, Square, Plus, Pencil, Trash2, ScrollText, Repeat, AlertCircle, Activity, Folder, ChevronDown, CircleDot } from "lucide-react";
 import { Card, Button, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
@@ -18,6 +18,49 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
     initial: null,
   });
   const runtime = useStore((s) => s.scriptRuntime[bot.id]);
+  // 录制态（轮询引擎 recording:status；录制中加快刷新步数）
+  const [rec, setRec] = useState<{ active: boolean; count: number } | null>(null);
+
+  // 切换机器人时探一次录制状态（重进页面也能续上正在进行的录制）
+  useEffect(() => {
+    if (!bot.online) { setRec(null); return; }
+    let alive = true;
+    cmd
+      .moduleAction<{ active: boolean; count: number }>(bot.id, "recording", "status")
+      .then((r) => { if (alive && r.ok && r.data) setRec({ active: !!r.data.active, count: r.data.count || 0 }); });
+    return () => { alive = false; };
+  }, [bot.id, bot.online]);
+  // 录制中：每 1.5s 刷新步数
+  useEffect(() => {
+    if (!rec?.active) return;
+    const t = setInterval(async () => {
+      const r = await cmd.moduleAction<{ active: boolean; count: number }>(bot.id, "recording", "status");
+      if (r.ok && r.data) setRec({ active: !!r.data.active, count: r.data.count || 0 });
+    }, 1500);
+    return () => clearInterval(t);
+  }, [rec?.active, bot.id]);
+
+  async function startRec() {
+    const r = await cmd.moduleAction(bot.id, "recording", "start");
+    if (r.ok) { setRec({ active: true, count: 0 }); pushToast("开始录制 — 去各页操作（走、用物品、点菜单、踩点），回来停止", "success"); }
+    else pushToast(r.error || "无法开始录制", "error");
+  }
+  async function stopRec() {
+    const r = await cmd.moduleAction<{ steps: unknown[]; count: number }>(bot.id, "recording", "stop");
+    setRec({ active: false, count: 0 });
+    const steps = (r.ok && Array.isArray(r.data?.steps) ? r.data!.steps : []) as BotScript["steps"];
+    if (!steps.length) { pushToast("没录到任何操作", "info"); return; }
+    const draft = {
+      name: "录制 " + new Date().toLocaleTimeString().slice(0, 5),
+      steps,
+      trigger: { type: "manual" },
+      server: bot.host,
+      category: "录制",
+    } as BotScript;
+    setMode("visual");
+    setEditing({ open: true, initial: draft });
+    pushToast(`录制完成 ${steps.length} 步 — 命名后保存`, "success");
+  }
 
   async function refresh() {
     const r = await cmd.script.list(bot.id);
@@ -184,6 +227,22 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
           </Card>
         )}
 
+      {/* 录制态红条：录制中常驻，随处可停止 */}
+      {rec?.active && (
+        <Card className="flex items-center justify-between gap-2 border-danger/40 bg-danger/10 p-3">
+          <span className="flex items-center gap-2 text-sm font-medium text-danger">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-danger" />
+            </span>
+            正在录制… 已记录 {rec.count} 步
+          </span>
+          <Button size="sm" variant="secondary" onClick={stopRec}>
+            <Square className="h-3.5 w-3.5" /> 停止并保存
+          </Button>
+        </Card>
+      )}
+
       <div className="flex gap-1 rounded-lg bg-surface-2 p-1 text-sm">
         <button
           onClick={() => setMode("visual")}
@@ -224,9 +283,16 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
                 </button>
               ))}
             </div>
-            <Button size="sm" variant="primary" onClick={openNew}>
-              <Plus className="h-3.5 w-3.5" /> 新建脚本
-            </Button>
+            <div className="flex shrink-0 gap-1.5">
+              {!rec?.active && (
+                <Button size="sm" variant="secondary" disabled={!bot.online} onClick={startRec} title="录制你的操作，一键生成脚本">
+                  <CircleDot className="h-3.5 w-3.5 text-danger" /> 录制
+                </Button>
+              )}
+              <Button size="sm" variant="primary" onClick={openNew}>
+                <Plus className="h-3.5 w-3.5" /> 新建脚本
+              </Button>
+            </div>
           </div>
 
       {shown.length === 0 ? (

@@ -5,6 +5,7 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const collectBlock = require('mineflayer-collectblock').plugin;
 const logger = require('./utils/logger');
 const { isFatalKick, extractText } = require('./utils/reconnectPolicy');
+const { Recorder } = require('./modules/recorder');
 
 class BotInstance {
     constructor(config, io, saveCallback, loadGlobalScripts) {
@@ -53,6 +54,9 @@ class BotInstance {
         this._lastStatusSig = null;    // 状态推送去重签名（静止挂机时避免每 2s 空推）
         this._lastStatusEmitAt = 0;
 
+        // 录制：把玩家操作录成脚本步骤（一切皆步骤，与手搓/AI 同构）
+        this.recorder = new Recorder(this);
+
         this.init();
     }
 
@@ -66,6 +70,15 @@ class BotInstance {
             logger.error(`[${this.config.username}] 加载用户脚本失败:`, err.message);
         }
         return {};
+    }
+
+    // 录制状态推送给前端（复用 module:state 事件，UI 据此刷录制条）
+    emitRecordingState(state) {
+        try {
+            this.io.emit('module:state', { id: this.config.id, module: 'recording', state });
+        } catch (e) {
+            /* ignore */
+        }
     }
 
     init() {

@@ -53,6 +53,7 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
       if (isChatBlocked(message)) return ack?.(fail("该命令已被安全策略禁止发送"));
       try {
         inst.bot.chat(message);
+        (inst as any).recorder?.note?.("chat", { message });
         ack?.(ok());
       } catch (e: any) {
         ack?.(fail(String(e?.message ?? e)));
@@ -66,6 +67,7 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
       const inst = botManager.getInstance(id);
       if (!inst) return ack?.(fail("机器人不存在"));
       try {
+        (inst as any).recorder?.note?.("goto", { x, y, z });
         inst.move(x, y, z);
         ack?.(ok());
       } catch (e: any) {
