@@ -41,7 +41,7 @@ module.exports = (botInstance) => {
     compiled = botInstance._monitorRules.map((rule) => {
       let re = null;
       try {
-        re = new RegExp(rule.pattern);
+        re = new RegExp(rule.pattern, "g"); // 全局：一条消息里多个匹配(爆多种材料)都能逐个抓
       } catch (e) {
         re = null; // 正则无效则跳过（编辑器侧会提示）
       }
@@ -83,30 +83,38 @@ module.exports = (botInstance) => {
     const now = Date.now();
     for (const { rule, re } of compiled) {
       if (!rule.enabled || !re) continue;
+      re.lastIndex = 0;
       let m;
+      let hit = false;
+      let guard = 0;
       try {
-        m = re.exec(text);
+        // 全局迭代：一条消息里若爆了多种材料(各类型各数量)，每个匹配都各自计入；按分类键各自分桶
+        while ((m = re.exec(text)) !== null) {
+          hit = true;
+          const st = ensureStat(rule.id);
+          st.lastAt = now;
+          if (st.firstAt == null) st.firstAt = now;
+          const rawVal = m[rule.valueGroup || 1];
+          const val = rule.numberMode ? parseNum(rawVal) : null;
+          applyVal(st, rule, rawVal, val);
+          // 按分类键(如物品名)细分：keyGroup 指定的捕获组作为键，各键各自累计
+          if (rule.keyGroup) {
+            const keyRaw = m[rule.keyGroup];
+            const key = keyRaw != null ? String(keyRaw).trim() : null;
+            if (key) {
+              st.byKey = st.byKey || {};
+              const b = st.byKey[key] || (st.byKey[key] = { count: 0, total: 0, last: null, max: null });
+              applyVal(b, rule, rawVal, val);
+            }
+          }
+          if (!re.global) break; // 非全局只处理一次
+          if (m.index === re.lastIndex) re.lastIndex++; // 防零宽匹配死循环
+          if (++guard > 500) break; // 安全上限
+        }
       } catch (e) {
         continue;
       }
-      if (!m) continue;
-      const st = ensureStat(rule.id);
-      st.lastAt = now;
-      if (st.firstAt == null) st.firstAt = now;
-      const rawVal = m[rule.valueGroup || 1];
-      const val = rule.numberMode ? parseNum(rawVal) : null;
-      applyVal(st, rule, rawVal, val);
-      // 按分类键(如物品名)细分：keyGroup 指定的捕获组作为键，各键各自累计
-      if (rule.keyGroup) {
-        const keyRaw = m[rule.keyGroup];
-        const key = keyRaw != null ? String(keyRaw).trim() : null;
-        if (key) {
-          st.byKey = st.byKey || {};
-          const b = st.byKey[key] || (st.byKey[key] = { count: 0, total: 0, last: null, max: null });
-          applyVal(b, rule, rawVal, val);
-        }
-      }
-      dirty = true;
+      if (hit) dirty = true;
     }
   };
   bot.on("message", onMessage);
