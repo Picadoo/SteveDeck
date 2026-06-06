@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Plus, Trash2, RotateCcw, Pencil, Radio, FlaskConical, Power, Settings, ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Trash2, RotateCcw, Pencil, Radio, FlaskConical, Power, Settings, ChevronDown, Sparkles } from "lucide-react";
 import { Button, Badge, Input } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
@@ -266,6 +266,127 @@ export default function MonitorPanel({ botId }: { botId: string }) {
   );
 }
 
+// ===== 通用「消息→规则」助手：粘一条消息，点数字=要统计的值、点词=按它分类，自动生成正则规则。 =====
+// 不针对任何服务器：纯靠用户标注 + 文本结构生成。这样不会写正则的人也能在任意服务器搓出自己的统计（含按材料分类计数）。
+type Tok = { type: "num" | "word" | "sep"; text: string };
+function tokenize(msg: string): Tok[] {
+  const out: Tok[] = [];
+  const re = /(\d[\d,]*(?:\.\d+)?[万亿兆]?)|([一-龥]+|[A-Za-z]+)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(msg))) {
+    if (m.index > last) out.push({ type: "sep", text: msg.slice(last, m.index) });
+    out.push({ type: m[1] ? "num" : "word", text: m[0] });
+    last = re.lastIndex;
+  }
+  if (last < msg.length) out.push({ type: "sep", text: msg.slice(last) });
+  return out;
+}
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const sepToRe = (s: string) => s.replace(/(\s+)|(\S+)/g, (_m, ws, nw) => (ws ? "\\s*" : escapeRe(nw)));
+function buildRule(toks: Tok[], valueIdx: number, keyIdx: number) {
+  let pattern = "";
+  let grp = 0;
+  let valueGroup = 1;
+  let keyGroup = 0;
+  toks.forEach((t, i) => {
+    if (i === valueIdx) {
+      grp++;
+      valueGroup = grp;
+      pattern += "([\\d,]+(?:\\.\\d+)?\\s*[万亿兆]?)";
+    } else if (i === keyIdx) {
+      grp++;
+      keyGroup = grp;
+      pattern += "(.+?)";
+    } else if (t.type === "num") {
+      pattern += "\\d[\\d,]*";
+    } else if (t.type === "sep") {
+      pattern += sepToRe(t.text);
+    } else {
+      pattern += escapeRe(t.text);
+    }
+  });
+  return { pattern, valueGroup, keyGroup };
+}
+
+function RuleFromMessage({
+  onApply,
+}: {
+  onApply: (p: { pattern: string; valueGroup: number; keyGroup: number; agg: MonitorRule["agg"] }) => void;
+}) {
+  const [msg, setMsg] = useState("");
+  const [valueIdx, setValueIdx] = useState(-1);
+  const [keyIdx, setKeyIdx] = useState(-1);
+  const toks = useMemo(() => tokenize(msg), [msg]);
+  useEffect(() => {
+    setValueIdx(-1);
+    setKeyIdx(-1);
+  }, [msg]);
+
+  function apply() {
+    if (valueIdx < 0) return;
+    const { pattern, valueGroup, keyGroup } = buildRule(toks, valueIdx, keyIdx);
+    // 余额/当前类→取最新；否则累加
+    const before = toks.slice(Math.max(0, valueIdx - 3), valueIdx).map((t) => t.text).join("");
+    const agg: MonitorRule["agg"] = /当前|现有|剩余|余额|拥有|共有|还有/.test(before) ? "last" : "sum";
+    onApply({ pattern, valueGroup, keyGroup, agg });
+  }
+
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent/5 p-2.5">
+      <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-accent">
+        <Sparkles className="h-3.5 w-3.5" /> 从消息生成（不会写正则也能用）
+      </div>
+      <textarea
+        value={msg}
+        onChange={(e) => setMsg(e.target.value)}
+        rows={2}
+        placeholder="粘一条游戏里的消息，如：已存入 天秤座灵息X3, 当前 473 个"
+        className="w-full resize-none rounded border border-border bg-surface px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-accent/50"
+      />
+      {toks.some((t) => t.type !== "sep") && (
+        <>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-0.5 gap-y-1 rounded bg-surface-2/50 p-1.5 text-xs">
+            {toks.map((t, i) =>
+              t.type === "sep" ? (
+                <span key={i} className="whitespace-pre text-muted">{t.text}</span>
+              ) : (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() =>
+                    t.type === "num" ? setValueIdx((v) => (v === i ? -1 : i)) : setKeyIdx((k) => (k === i ? -1 : i))
+                  }
+                  className={cn(
+                    "rounded px-1 transition-colors",
+                    i === valueIdx
+                      ? "bg-success/25 text-success ring-1 ring-success/50"
+                      : i === keyIdx
+                        ? "bg-accent/25 text-accent ring-1 ring-accent/50"
+                        : t.type === "num"
+                          ? "bg-surface hover:bg-success/15"
+                          : "bg-surface hover:bg-accent/15",
+                  )}
+                >
+                  {t.text}
+                </button>
+              ),
+            )}
+          </div>
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <span className="text-[10px] leading-tight text-muted">
+              点<span className="text-success">数字</span>=要统计的值 · 点<span className="text-accent">词</span>=按它分类（材料多种）
+            </span>
+            <Button size="sm" variant="secondary" disabled={valueIdx < 0} onClick={apply}>
+              生成规则
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function RuleEditor({
   botId,
   rule,
@@ -303,6 +424,17 @@ function RuleEditor({
       }
     >
       <div className="space-y-3">
+        <RuleFromMessage
+          onApply={(p) =>
+            set({
+              pattern: p.pattern,
+              valueGroup: p.valueGroup,
+              keyGroup: p.keyGroup || undefined,
+              numberMode: true,
+              agg: p.agg,
+            })
+          }
+        />
         <Field label="名称">
           <Input value={draft.label} onChange={(e) => set({ label: e.target.value })} placeholder="如：金币收入" />
         </Field>
