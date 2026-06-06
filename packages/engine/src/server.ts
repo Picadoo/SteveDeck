@@ -112,6 +112,8 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
       cocoa_beans: "dye_powder_brown",
       // 盔甲架物品图标在 1.12.2 资源里叫 wooden_armorstand（带 wooden_ 前缀、无下划线）
       armor_stand: "wooden_armorstand",
+      // 盾牌是模型渲染物品，1.12.2 无 items/shield.png，用实体贴图(无花纹底版)近似
+      shield: "entity/shield_base_nopattern",
       // 染料：1.12.2 按 metadata 分色(dye_powder_*)，无统一 dye.png。此处兜底，精确颜色由物品同步按 metadata 处理
       dye: "dye_powder_white",
       ink_sac: "dye_powder_black", // 墨囊=黑色染料
@@ -183,8 +185,13 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
         if (blocks.has(`${name}_00`)) return `blocks/${name}_00`;
         const a = ICON_ALIAS[name];
         if (a) {
-          if (items.has(a)) return `items/${a}`;
-          if (blocks.has(a)) return `blocks/${a}`;
+          // 别名可带子目录（如 entity/shield_base_nopattern）：模型渲染物品取实体贴图
+          if (a.includes("/")) {
+            if (fs.existsSync(path.join(dir, `${a}.png`))) return a;
+          } else {
+            if (items.has(a)) return `items/${a}`;
+            if (blocks.has(a)) return `blocks/${a}`;
+          }
         }
         // 1.12.2 命名差异：wooden_X→wood_X、golden_X→gold_X（工具/盔甲整族）
         const ren = name.replace(/^wooden_/, "wood_").replace(/^golden_/, "gold_");
