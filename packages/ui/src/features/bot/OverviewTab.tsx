@@ -19,26 +19,18 @@ import {
   User,
   Bot,
   Skull,
-  Sparkles,
+  Store,
+  PawPrint,
   Circle,
 } from "lucide-react";
-import { Card, Badge } from "@/components/ui/primitives";
+import { Card } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import McText from "@/components/McText";
-import { normMob, cnMob } from "@/lib/mobNames";
+import { cnMob } from "@/lib/mobNames";
+import { classifyNearby, KIND_ORDER, KIND_LABEL, KIND_COLOR, type NearbyKind } from "@/lib/entityKind";
 import { healthBar, healthTone, fmtUptime, fmtBig } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import type { BotSummary, Observation } from "@mcbot/protocol";
-
-// 已知敌对生物（兜底：引擎 hostile 标记缺失时仍能红色标记）
-const HOSTILE = new Set([
-  "zombie", "husk", "drowned", "zombie_villager", "skeleton", "stray", "wither_skeleton",
-  "creeper", "spider", "cave_spider", "enderman", "endermite", "silverfish", "witch", "slime",
-  "magma_cube", "blaze", "ghast", "guardian", "elder_guardian", "shulker", "vex", "vindicator",
-  "evoker", "illusioner", "ravager", "pillager", "phantom", "zombified_piglin", "zombie_pigman",
-  "piglin", "hoglin", "zoglin", "wither", "ender_dragon", "giant", "warden",
-]);
-const isHostileEnt = (e: { name: string; hostile?: boolean }) => !!e.hostile || HOSTILE.has(normMob(e.name));
 
 // 活动进度文案（取自各模块 stats）
 const fmtMine = (s: any) => (s ? `已挖 ${s.total ?? 0}${s.rate != null ? ` · ${s.rate}/分` : ""}` : "搜索矿物中…");
@@ -119,7 +111,9 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
     .filter(Boolean)
     .slice(-8)
     .reverse();
-  const hostileCount = (obs?.nearbyEntities ?? []).filter(isHostileEnt).length;
+  const hostileCount = (obs?.nearbyEntities ?? []).filter(
+    (e) => classifyNearby({ id: (e as { id?: string }).id, name: e.name, hostile: e.hostile }) === "hostile",
+  ).length;
 
   return (
     <div className="space-y-4">
@@ -350,8 +344,6 @@ function StatTile({
 function NearbyRow({
   icon: Icon,
   iconClass,
-  tag,
-  tagTone,
   name,
   sub,
   distance,
@@ -362,8 +354,6 @@ function NearbyRow({
 }: {
   icon: ComponentType<{ className?: string }>;
   iconClass: string;
-  tag?: string;
-  tagTone?: "success" | "warning" | "danger" | "neutral";
   name: ReactNode;
   sub?: string;
   distance: number;
@@ -376,7 +366,6 @@ function NearbyRow({
     <div className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-surface-2/40">
       <span className="flex min-w-0 items-center gap-1.5">
         <Icon className={cn("h-3.5 w-3.5 shrink-0", iconClass)} />
-        {tag && <Badge tone={tagTone}>{tag}</Badge>}
         <span className={cn("truncate", nameClass || (strong ? "font-medium" : "text-muted"))}>{name}</span>
         {sub && <span className="shrink-0 text-[11px] text-muted">{sub}</span>}
       </span>
@@ -396,56 +385,97 @@ function NearbyRow({
   );
 }
 
+const KIND_ICON: Record<NearbyKind, ComponentType<{ className?: string }>> = {
+  player: User,
+  npc: Bot,
+  villager: Store,
+  hostile: Skull,
+  animal: PawPrint,
+  other: Circle,
+};
+
+type NearbyRowData = {
+  key: string;
+  nameNode: ReactNode;
+  sub?: string;
+  custom?: boolean;
+  hostile?: boolean;
+  health?: number | null;
+  maxHealth?: number | null;
+  distance: number;
+};
+
+// 概览「附近」：按 玩家 / NPC / 村民 / 怪物 / 动物 / 其它 分组，每组带清晰小标题——一眼看清是什么。
 function NearbyList({ obs }: { obs: Observation | null }) {
   const players = obs?.nearbyPlayers ?? [];
-  // 排序：命名(Boss/宠物) > 敌对 > 距离近
-  const ents = [...(obs?.nearbyEntities ?? [])].sort(
-    (a, b) =>
-      Number(!!b.custom) - Number(!!a.custom) ||
-      Number(isHostileEnt(b)) - Number(isHostileEnt(a)) ||
-      a.distance - b.distance,
-  );
+  const ents = obs?.nearbyEntities ?? [];
   if (players.length === 0 && ents.length === 0) {
     return <p className="text-sm text-muted">附近没有检测到玩家或生物</p>;
   }
+
+  const groups: Record<NearbyKind, NearbyRowData[]> = {
+    player: [], npc: [], villager: [], hostile: [], animal: [], other: [],
+  };
+  players.forEach((p, i) => {
+    const kind = classifyNearby({ isPlayer: true, realPlayer: (p as { realPlayer?: boolean }).realPlayer });
+    groups[kind].push({
+      key: `p${i}`,
+      nameNode: <McText text={p.display || p.name} />,
+      sub: p.display && !p.display.includes("§") ? p.name : undefined,
+      health: p.health,
+      maxHealth: p.maxHealth,
+      distance: p.distance,
+      custom: true,
+    });
+  });
+  ents.forEach((e, i) => {
+    const id = (e as { id?: string }).id;
+    const kind = classifyNearby({ id, name: e.name, hostile: e.hostile });
+    groups[kind].push({
+      key: `e${i}`,
+      nameNode: <McText text={e.custom ? e.name : cnMob(id || e.name)} />,
+      health: e.health,
+      maxHealth: e.maxHealth,
+      distance: e.distance,
+      custom: e.custom,
+      hostile: kind === "hostile",
+    });
+  });
+  for (const k of KIND_ORDER) groups[k].sort((a, b) => a.distance - b.distance);
+
   return (
-    <div className="space-y-0.5">
-      {players.slice(0, 6).map((p, i) => {
-        const real = !!(p as { realPlayer?: boolean }).realPlayer;
+    <div className="space-y-2.5">
+      {KIND_ORDER.filter((k) => groups[k].length > 0).map((k) => {
+        const Icon = KIND_ICON[k];
+        const rows = groups[k];
+        const shown = rows.slice(0, 6);
         return (
-          <NearbyRow
-            key={`p${i}`}
-            icon={real ? User : Bot}
-            iconClass={real ? "text-emerald-500" : "text-slate-400"}
-            tag={real ? "玩家" : "NPC"}
-            tagTone={real ? "success" : "neutral"}
-            name={<McText text={p.display || p.name} />}
-            sub={p.display && !p.display.includes("§") ? p.name : undefined}
-            health={p.health}
-            maxHealth={p.maxHealth}
-            distance={p.distance}
-            strong
-          />
-        );
-      })}
-      {ents.slice(0, 8).map((e, i) => {
-        const hostile = isHostileEnt(e);
-        const label = e.custom ? e.name : cnMob(e.name);
-        const Icon = hostile ? Skull : e.custom ? Sparkles : Circle;
-        return (
-          <NearbyRow
-            key={`e${i}`}
-            icon={Icon}
-            iconClass={hostile ? "text-danger" : e.custom ? "text-amber-500" : "text-muted/50"}
-            tag={e.custom ? "命名" : undefined}
-            tagTone="warning"
-            name={<McText text={label} />}
-            health={e.health}
-            maxHealth={e.maxHealth}
-            distance={e.distance}
-            strong={e.custom}
-            nameClass={hostile ? "font-medium text-danger" : undefined}
-          />
+          <div key={k}>
+            <div className={cn("mb-0.5 flex items-center gap-1 text-[11px] font-semibold", KIND_COLOR[k])}>
+              <Icon className="h-3 w-3" />
+              {KIND_LABEL[k]}
+              <span className="font-normal text-muted">· {rows.length}</span>
+            </div>
+            <div className="space-y-0.5">
+              {shown.map((r) => (
+                <NearbyRow
+                  key={r.key}
+                  icon={Icon}
+                  iconClass={KIND_COLOR[k]}
+                  name={r.nameNode}
+                  sub={r.sub}
+                  health={r.health}
+                  maxHealth={r.maxHealth}
+                  distance={r.distance}
+                  strong={r.custom}
+                  nameClass={r.hostile ? "font-medium text-danger" : undefined}
+                />
+              ))}
+              {rows.length > shown.length && (
+                <div className="px-1.5 text-[11px] text-muted">+{rows.length - shown.length} 更多</div>
+              )}
+            </div>
+          </div>
         );
       })}
     </div>

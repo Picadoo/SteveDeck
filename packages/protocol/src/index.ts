@@ -467,9 +467,11 @@ export interface Observation {
     distance: number;
     pos: Vec3Like;
   }[];
-  /** name 优先为自定义名牌；custom 标记是否有名牌；hostile/category 来自 minecraft-data 分类；health/maxHealth 服务器下发才有 */
+  /** name 优先为自定义名牌；id 为原始实体类型(zombie/villager/cow…，用于分类)；custom 标记是否有名牌；hostile/category 来自 minecraft-data 分类；health/maxHealth 服务器下发才有 */
   nearbyEntities: {
     type: string;
+    /** 原始实体 id（如 villager/zombie/cow），即便有自定义名牌也保留，供「玩家/NPC/怪物/村民/动物」分类 */
+    id?: string;
     name: string;
     custom?: boolean;
     category?: string | null;

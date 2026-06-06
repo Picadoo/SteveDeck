@@ -228,6 +228,7 @@ export function buildObservation(id: string): any {
       const maxHp2 = entityMaxHealth(e);
       const item = {
         type: e.type,
+        id: e.name || null, // 原始实体 id（即便有自定义名牌也保留，供分类用）
         name:
           custom ||
           (typeof e.displayName === "string" ? e.displayName : null) ||
