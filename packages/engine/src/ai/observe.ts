@@ -248,10 +248,20 @@ export function buildObservation(id: string): any {
         const realPlayer = !!(bot.players && bot.players[e.username]);
         const cleanU = String(e.username).replace(/§[0-9a-fk-orx]/gi, "");
         const pd = txt(e.displayName);
+        const npcCustom = entityCustomName(e); // Citizens NPC 头顶名常在 customName/metadata
+        // Citizens 内部占位名「CIT-<hex>」不是名字：优先真名(metadata)→PAPI 名→退化为「NPC」，绝不显示这串 id
+        const isCitId = /^cit-[0-9a-f]+$/i.test(cleanU);
+        let name = cleanU || e.username;
+        let display: string | undefined = e.username !== cleanU ? e.username : pd && pd !== cleanU ? pd : undefined;
+        if (isCitId) {
+          name = npcCustom || (pd && pd !== cleanU ? pd : "") || "NPC";
+          display = undefined; // 不暴露 CIT 内部 id
+        } else if (npcCustom && npcCustom !== cleanU) {
+          name = npcCustom; // 用户名非彩色名、但 metadata 有真名（常见 Citizens 命名）
+        }
         obs.nearbyPlayers.push({
-          name: cleanU || e.username, // 纯文本名（NPC 的彩色名去码）
-          // NPC 名常带 §颜色码，原文留给前端上色；否则用 PAPI 展示名（与原名不同才收）
-          display: e.username !== cleanU ? e.username : pd && pd !== cleanU ? pd : undefined,
+          name,
+          display,
           realPlayer,
           health: item.health,
           maxHealth: item.maxHealth,

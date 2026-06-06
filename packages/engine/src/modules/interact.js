@@ -39,8 +39,10 @@ module.exports = (botInstance) => {
             // 保留颜色码（nameRaw）供前端彩色渲染，name 为去色纯文本。
             let src = entity.customName;
             if (src == null && entity.metadata) src = entity.metadata[2];
-            const nameRaw = (src != null ? nameMotd(src) : (entity.username || "")).trim();
-            const name = nameRaw.replace(/§[0-9a-fk-orx]/gi, '').trim();
+            let nameRaw = (src != null ? nameMotd(src) : (entity.username || "")).trim();
+            let name = nameRaw.replace(/§[0-9a-fk-orx]/gi, '').trim();
+            // Citizens 内部占位名「CIT-<hex>」不是名字 → 当作无名(前端回退到类型/「NPC」)，绝不显示这串 id
+            if (/^cit-[0-9a-f]+$/i.test(name)) { name = ''; nameRaw = ''; }
 
             // 区分「真实在线玩家」与「NPC（多为伪装成玩家的 Citizens 实体）」
             const realPlayer = entity.type === 'player' && !!(bot.players && bot.players[entity.username]);
