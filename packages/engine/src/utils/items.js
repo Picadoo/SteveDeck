@@ -115,6 +115,26 @@ function lore(item) {
   return "";
 }
 
+// 1.12.2 染料按 metadata 分色（资源里是 dye_powder_<色>，没有统一 dye.png）。下标=metadata。
+const DYE_TEX = [
+  "dye_powder_black", "dye_powder_red", "dye_powder_green", "dye_powder_brown",
+  "dye_powder_blue", "dye_powder_purple", "dye_powder_cyan", "dye_powder_silver",
+  "dye_powder_gray", "dye_powder_pink", "dye_powder_lime", "dye_powder_yellow",
+  "dye_powder_light_blue", "dye_powder_magenta", "dye_powder_orange", "dye_powder_white",
+];
+
+/** 贴图用的物品 id：多数物品就是 item.name；染料按 metadata 换成对应颜色的 dye_powder_*。 */
+function iconId(item) {
+  if (!item) return null;
+  const n = item.name;
+  if (n === "dye") {
+    const m = typeof item.metadata === "number" ? item.metadata : 15;
+    return DYE_TEX[m] || "dye_powder_white";
+  }
+  if (n === "ink_sac") return "dye_powder_black";
+  return n;
+}
+
 /** 装备/手持物的精简摘要 */
 function itemBrief(item) {
   if (!item) return null;
@@ -136,4 +156,5 @@ module.exports = {
   customName,
   lore,
   itemBrief,
+  iconId,
 };

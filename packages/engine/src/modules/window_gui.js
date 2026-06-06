@@ -2,7 +2,7 @@
 // 适配大量 RPG 服的「箱子菜单」(DeluxeMenus 等) 与普通箱子。
 
 const vec3 = require("vec3");
-const { enchantNames, parseChat, flattenChat, customName } = require("../utils/items");
+const { enchantNames, parseChat, flattenChat, customName, iconId } = require("../utils/items");
 const { findMatchingSlot } = require("../utils/guiMatch");
 
 function mkVec(x, y, z) {
@@ -54,7 +54,7 @@ function serialize(win) {
       slot: i,
       name: rawName.replace(/§[0-9a-fk-orx]/gi, ""), // 纯文本（搜索/标题回退）
       display: rawName, // 原始（含 §颜色码）
-      id: it.name, // 物品 id（贴图来源）
+      id: iconId(it), // 物品 id（贴图来源；染料按 metadata 分色）
       count: it.count,
       lore: loreLines.map((l) => String(parseChat(l))).join("\n"), // 保留颜色码
       enchants: enchantNames(it),

@@ -110,6 +110,11 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
       melon: "melon_speckled",
       speckled_melon: "melon_speckled",
       cocoa_beans: "dye_powder_brown",
+      // 盔甲架物品图标在 1.12.2 资源里叫 wooden_armorstand（带 wooden_ 前缀、无下划线）
+      armor_stand: "wooden_armorstand",
+      // 染料：1.12.2 按 metadata 分色(dye_powder_*)，无统一 dye.png。此处兜底，精确颜色由物品同步按 metadata 处理
+      dye: "dye_powder_white",
+      ink_sac: "dye_powder_black", // 墨囊=黑色染料
       // 方块类物品：无同名整图，映射到代表性贴图
       red_flower: "flower_rose", // 红花(默认罂粟)
       yellow_flower: "flower_dandelion",

@@ -1,5 +1,5 @@
 const Vec3 = require('vec3');
-const { enchantNames, customName } = require('../utils/items');
+const { enchantNames, customName, iconId } = require('../utils/items');
 
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
@@ -62,7 +62,7 @@ module.exports = (botInstance) => {
                 display: rawName, // 原始（含 §颜色码）
                 lore: loreLines.map((l) => String(l)).join('\n'), // 保留颜色码
                 count: item.count,
-                texture: item.name, // 原始物品 id（贴图/能否装备）
+                texture: iconId(item), // 贴图 id（染料按 metadata 分色）
                 enchants: enchantNames(item)
             };
         });
