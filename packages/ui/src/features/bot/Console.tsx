@@ -19,13 +19,19 @@ export default function Console({ botId }: { botId: string }) {
   const [autoScroll, setAutoScroll] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
-  // 用去掉 §/& 颜色码的纯文本匹配（=屏幕上看到的字），否则带色原文会让过滤"看着失效"
+  // 过滤规则：去 §/& 色码后按纯文本匹配（=屏幕上看到的字）。
+  // 空格分词=「且」(全部命中)；以 - 开头的词=「排除」。例：输入 `-金币猪` 滤掉刷怪刷屏，`暴击 -金币猪` 看非刷怪的暴击。
   const needle = filter.trim().toLowerCase();
-  const shown = logs.filter((l) => {
-    if (level === "chat" && l.level !== "chat") return false;
-    if (level === "op" && l.level === "chat") return false;
-    if (needle && !mcPlain(l.text).toLowerCase().includes(needle)) return false;
-    return true;
+  const terms = needle.split(/\s+/).filter(Boolean);
+  const incl = terms.filter((t) => !t.startsWith("-"));
+  const excl = terms.filter((t) => t.startsWith("-") && t.length > 1).map((t) => t.slice(1));
+  const byLevel = logs.filter(
+    (l) => !(level === "chat" && l.level !== "chat") && !(level === "op" && l.level === "chat"),
+  );
+  const shown = byLevel.filter((l) => {
+    if (!terms.length) return true;
+    const t = mcPlain(l.text).toLowerCase();
+    return incl.every((w) => t.includes(w)) && !excl.some((w) => t.includes(w));
   });
 
   useEffect(() => {
@@ -62,12 +68,19 @@ export default function Console({ botId }: { botId: string }) {
             </button>
           ))}
         </div>
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="过滤日志…"
-          className="h-7 flex-1 rounded-lg border border-border bg-surface px-2 text-xs outline-none focus:ring-2 focus:ring-accent/50"
-        />
+        <div className="relative flex-1">
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="过滤…  空格=且, -词=排除（如 -金币猪）"
+            className="h-7 w-full rounded-lg border border-border bg-surface px-2 pr-14 text-xs outline-none focus:ring-2 focus:ring-accent/50"
+          />
+          {terms.length > 0 && (
+            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-mono text-[10px] text-muted">
+              {shown.length}/{byLevel.length}
+            </span>
+          )}
+        </div>
         <ToolBtn active={autoScroll} title="自动滚动" onClick={() => setAutoScroll((a) => !a)}>
           <ArrowDownToLine className="h-3.5 w-3.5" />
         </ToolBtn>
