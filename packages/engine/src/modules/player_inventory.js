@@ -151,6 +151,7 @@ module.exports = (botInstance) => {
         return best;
     };
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const totalOf = (nm) => bot.inventory.items().filter((i) => i.name === nm).reduce((s, i) => s + (i.count || 0), 0);
 
     botInstance.useSlot = async (slot) => {
         const it = bot.inventory.slots[slot];
@@ -183,10 +184,21 @@ module.exports = (botInstance) => {
         if (BLOCK_USE(name)) {
             const ref = pickGroundRef();
             if (ref) {
-                try { await bot.activateBlock(ref, new Vec3(0, 1, 0)); } catch (e) { /* 实体放置无 blockUpdate，忽略 */ }
-                emitItem(`使用/放置 ${label}`);
-                setTimeout(syncInventory, 500);
-                return;
+                const before = totalOf(name);
+                try { await bot.lookAt(ref.position.offset(0.5, 1, 0.5), true); } catch (e) { /* ignore */ }
+                // 放置：placeBlock 发出「手持物品右键方块面」包（这才是放置，旧版用 activateBlock 不会放下手中物）。
+                // 放实体(盔甲架/刷怪蛋)无 blockUpdate 会 reject，但放置包已发出 → 用 race 限时 + 数量减少判断成功。
+                const placed = await Promise.race([
+                    bot.placeBlock(ref, new Vec3(0, 1, 0)).then(() => true).catch(() => false),
+                    sleep(800).then(() => false),
+                ]);
+                await sleep(150);
+                if (placed || totalOf(name) < before) {
+                    emitItem(`放置/使用 ${label}`);
+                    setTimeout(syncInventory, 300);
+                    return;
+                }
+                // 没生效（服务器区域保护，或本就是「右键空气」触发的自定义物品）→ 不 return，落到下面空气兜底
             }
         }
 
