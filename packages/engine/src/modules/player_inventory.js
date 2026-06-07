@@ -1,4 +1,5 @@
 const Vec3 = require('vec3');
+const { ServerEvents } = require('@mcbot/protocol'); // DESK-6：用协议常量 emit，避免与 TS 端事件名漂移
 const { enchantNames, customName, iconId } = require('../utils/items');
 
 module.exports = (botInstance) => {
@@ -67,7 +68,7 @@ module.exports = (botInstance) => {
             };
         });
 
-        botInstance.io.to(botInstance._room).to('admin').emit('player_inv_data', {
+        botInstance.io.to(botInstance._room).to('admin').emit(ServerEvents.INVENTORY, {
             user: bot.username,
             ownerId: botInstance.config.ownerId,
             items: items

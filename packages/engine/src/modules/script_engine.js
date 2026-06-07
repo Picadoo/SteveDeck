@@ -312,6 +312,27 @@ module.exports = (botInstance) => {
         return true;
     }
 
+    // 寻路助手：带超时；超时/失败则取消寻路(setGoal(null))并吞掉败者 promise，
+    // 避免 bot 在后台继续走向目标 + 孤立 goto 的 unhandled reject(MODA-3)。裸 goto 也走这里，杜绝不可达目标无限挂起。
+    async function gotoWithTimeout(goal, timeoutMs) {
+        const ms = timeoutMs && timeoutMs > 0 ? timeoutMs : GOTO_TIMEOUT;
+        let timer;
+        const pathing = bot.pathfinder.goto(goal);
+        const timeout = new Promise((_resolve, reject) => {
+            timer = setTimeout(() => reject(new Error('寻路超时')), ms);
+        });
+        try {
+            await Promise.race([pathing, timeout]);
+        } catch (e) {
+            try { bot.pathfinder.setGoal(null); } catch (_) { /* ignore */ }
+            pathing.catch(() => {}); // 吞掉败者后续 reject（setGoal(null) 会让它以 GoalChanged 拒绝）
+            throw e;
+        } finally {
+            clearTimeout(timer);
+        }
+        pathing.catch(() => {}); // 正常胜出时保险吞错
+    }
+
     // ==================== 动作执行器 ====================
     async function executeAction(rawStep, ctx) {
         if (ctx.aborted || !bot.entity) return;
@@ -332,17 +353,14 @@ module.exports = (botInstance) => {
                     }
                     if (!entity) throw new Error(`找不到目标: ${t}`);
                     emitLog(`走向 ${t}`);
-                    await bot.pathfinder.goto(new goals.GoalFollow(entity, parseFloat(step.distance) || 2));
+                    await gotoWithTimeout(new goals.GoalFollow(entity, parseFloat(step.distance) || 2), Number(step.timeout) * 1000);
                     break;
                 }
                 const x = Number(step.x), y = Number(step.y), z = Number(step.z);
                 if (isNaN(x) || isNaN(y) || isNaN(z)) throw new Error('goto 坐标无效');
                 emitLog(`走到 (${x}, ${y}, ${z})`);
                 const goal = new goals.GoalBlock(Math.floor(x), Math.floor(y), Math.floor(z));
-                const promise = bot.pathfinder.goto(goal);
-                const timeout = sleep(Number(step.timeout) * 1000 || GOTO_TIMEOUT)
-                    .then(() => { throw new Error('寻路超时'); });
-                await Promise.race([promise, timeout]);
+                await gotoWithTimeout(goal, Number(step.timeout) * 1000);
                 break;
             }
 
@@ -352,10 +370,7 @@ module.exports = (botInstance) => {
                 if (!loc) { emitLog(`未找到保存的地点: ${locName}`); break; }
                 emitLog(`前往地点「${locName}」(${loc.x}, ${loc.y}, ${loc.z})`);
                 const locGoal = new goals.GoalBlock(loc.x, loc.y, loc.z);
-                const locPromise = bot.pathfinder.goto(locGoal);
-                const locTimeout = sleep(Number(step.timeout) * 1000 || GOTO_TIMEOUT)
-                    .then(() => { throw new Error('寻路超时'); });
-                await Promise.race([locPromise, locTimeout]);
+                await gotoWithTimeout(locGoal, Number(step.timeout) * 1000);
                 break;
             }
 
@@ -424,7 +439,7 @@ module.exports = (botInstance) => {
                     return name.includes(String(targetName).toLowerCase()) || String(e.id) === String(targetName);
                 });
                 if (!entity) throw new Error(`未找到实体: ${targetName}`);
-                await bot.pathfinder.goto(new goals.GoalFollow(entity, 2));
+                await gotoWithTimeout(new goals.GoalFollow(entity, 2));
                 await bot.lookAt(entity.position.offset(0, (entity.height || 1.8) * 0.8, 0), true);
                 bot.swingArm('right');
                 if (bot.activateEntity) {

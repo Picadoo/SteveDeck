@@ -6,6 +6,8 @@
 // 统计: ruleId -> { total, count, last, max, firstAt, lastAt }；按 _bid 推送给前端。
 // 规则持久化在 settings.monitorRules（跨重启）；统计为本次引擎会话累计，跨「重连」保留、引擎重启或手动重置才清。
 
+const { validatePattern } = require("../utils/safePattern");
+
 const UNITS = { 千: 1e3, 万: 1e4, 亿: 1e8, 兆: 1e12, 万亿: 1e12, 京: 1e16 };
 
 /** 解析带中文单位/逗号的数字："162.41亿"→1.6241e10  "50.31兆"→5.031e13  "1,500,000"→1500000 */
@@ -40,10 +42,13 @@ module.exports = (botInstance) => {
   const compile = () => {
     compiled = botInstance._monitorRules.map((rule) => {
       let re = null;
-      try {
-        re = new RegExp(rule.pattern, "g"); // 全局：一条消息里多个匹配(爆多种材料)都能逐个抓
-      } catch (e) {
-        re = null; // 正则无效则跳过（编辑器侧会提示）
+      // ReDoS 防护(API-3)：不安全/无效正则一律不编译，该规则静默跳过（编辑器侧会提示）
+      if (validatePattern(rule.pattern).ok) {
+        try {
+          re = new RegExp(rule.pattern, "g"); // 全局：一条消息里多个匹配(爆多种材料)都能逐个抓
+        } catch (e) {
+          re = null;
+        }
       }
       return { rule, re };
     });
@@ -80,6 +85,7 @@ module.exports = (botInstance) => {
       return;
     }
     if (!text) return;
+    if (text.length > 1000) text = text.slice(0, 1000); // 限输入长度，缩小回溯最坏开销(API-3 纵深)
     const now = Date.now();
     for (const { rule, re } of compiled) {
       if (!rule.enabled || !re) continue;
@@ -193,6 +199,8 @@ module.exports = (botInstance) => {
 
   // 测试匹配：给一条样例消息，返回是否命中 + 捕获值 + 解析后的数字
   botInstance.testMonitorRule = (pattern, valueGroup, numberMode, sample) => {
+    const safe = validatePattern(pattern); // ReDoS 防护(API-3)：测试入口同样拦不安全正则
+    if (!safe.ok) return { ok: false, error: safe.error };
     let re;
     try {
       re = new RegExp(pattern);

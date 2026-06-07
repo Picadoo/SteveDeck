@@ -8,11 +8,25 @@
 const BASE_PORT = 3007;
 const MAX_PORT = 3060;
 const usedPorts = new Set();
+const portOwners = new Map(); // port -> 持有它的 botInstance；池满时据此识别并回收陈旧端口(MODB-6)
 
 // 选一个当前未占用的端口（已占位的会被跳过，所以刚关闭、待回收的旧端口不会被立刻重选）
 function pickPort() {
   let port = BASE_PORT;
   while (usedPorts.has(port) && port < MAX_PORT) port++;
+  if (usedPorts.has(port)) {
+    // 池满兜底(MODB-6)：回收「仍占位但 owner 已不再持有该端口」的陈旧端口（owner 被清理/换端口却没回收成功）。
+    // 活动中的视角满足 owner._viewerPort === p，不会被误收。
+    for (const p of Array.from(usedPorts)) {
+      const owner = portOwners.get(p);
+      if (!owner || owner._viewerPort !== p) {
+        usedPorts.delete(p);
+        portOwners.delete(p);
+      }
+    }
+    port = BASE_PORT;
+    while (usedPorts.has(port) && port < MAX_PORT) port++;
+  }
   return port;
 }
 
@@ -36,7 +50,10 @@ module.exports = (botInstance) => {
     }
     const p = botInstance._viewerPort;
     botInstance._viewerPort = null;
-    if (p) setTimeout(() => usedPorts.delete(p), 2000);
+    if (p) {
+      portOwners.delete(p); // 立即解除归属（端口本身仍延迟 2s 回收，避免同端口 rebind 触发 EADDRINUSE）
+      setTimeout(() => usedPorts.delete(p), 2000);
+    }
     return true;
   };
 
@@ -61,6 +78,7 @@ module.exports = (botInstance) => {
         mineflayerViewer(bot, { port, firstPerson, viewDistance });
         botInstance._viewerFirstPerson = firstPerson;
         botInstance._viewerPort = port;
+        portOwners.set(port, botInstance); // 记录端口归属(MODB-6)
         // 点击视角里的方块 → 机器人寻路走过去（走动/操控模式下前端会关掉 clickWalk）
         try {
           const { goals } = require('mineflayer-pathfinder');

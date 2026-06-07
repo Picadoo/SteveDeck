@@ -532,6 +532,13 @@ module.exports = (botInstance) => {
         });
     };
 
+    // 从实例 timers 数组移除一个已 clear 的句柄，避免反复 toggle 时数组无界堆积失效句柄(MODA-2)
+    const dropTimer = (t) => {
+        if (!botInstance.timers || t == null) return;
+        const i = botInstance.timers.indexOf(t);
+        if (i >= 0) botInstance.timers.splice(i, 1);
+    };
+
     const handleRespawn = () => {
         if (!botInstance.mobHunterTask.isDead) return;
         botInstance.mobHunterTask.isDead = false;
@@ -539,11 +546,13 @@ module.exports = (botInstance) => {
         emitLog(`机器人已重生`);
 
         if (botInstance.mobHunterTask.autoReturnOnDeath && botInstance.mobHunterTask.active) {
-            setTimeout(() => {
-                if (botInstance.mobHunterTask.active && !botInstance.mobHunterTask.isDead) {
+            // MODA-1：句柄入 timers（断线/cleanup 可取消），回调加 bot.entity 守卫，防对已拆除的 bot 操作
+            botInstance.timers = botInstance.timers || [];
+            botInstance.timers.push(setTimeout(() => {
+                if (bot.entity && botInstance.mobHunterTask.active && !botInstance.mobHunterTask.isDead) {
                     botInstance.returnToHuntArea();
                 }
-            }, 2000);
+            }, 2000));
         } else {
             emitLog(`等待手动返回追怪区域...`);
         }
@@ -637,13 +646,13 @@ module.exports = (botInstance) => {
 
             emitLog(`启动追怪系统\n  模式: ${modeText}\n  安全检测: ${task.safetyEnabled ? '开启' : '关闭'}\n  攻击范围: ${task.attackRange}格`);
 
-            if (task.timer) clearInterval(task.timer);
-            if (task.safetyCheckTimer) clearInterval(task.safetyCheckTimer);
+            botInstance.timers = botInstance.timers || [];
+            // MODA-2：清掉上一轮旧句柄并从 timers 数组移除，避免反复 toggle 时数组无界堆积失效句柄
+            if (task.timer) { clearInterval(task.timer); dropTimer(task.timer); }
+            if (task.safetyCheckTimer) { clearInterval(task.safetyCheckTimer); dropTimer(task.safetyCheckTimer); }
 
             task.timer = setInterval(huntCycle, 350);
             task.safetyCheckTimer = setInterval(safetyCheck, 2000);
-
-            botInstance.timers = botInstance.timers || [];
             botInstance.timers.push(task.timer);
             botInstance.timers.push(task.safetyCheckTimer);
 
@@ -656,8 +665,8 @@ module.exports = (botInstance) => {
                 hunterListenersAttached = true;
             }
         } else {
-            if (task.timer) { clearInterval(task.timer); task.timer = null; }
-            if (task.safetyCheckTimer) { clearInterval(task.safetyCheckTimer); task.safetyCheckTimer = null; }
+            if (task.timer) { clearInterval(task.timer); dropTimer(task.timer); task.timer = null; }
+            if (task.safetyCheckTimer) { clearInterval(task.safetyCheckTimer); dropTimer(task.safetyCheckTimer); task.safetyCheckTimer = null; }
             try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (e) {}
             try { bot.clearControlStates(); } catch (e) {}
             if (hunterListenersAttached) {

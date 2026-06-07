@@ -2,6 +2,7 @@
 // 适配大量 RPG 服的「箱子菜单」(DeluxeMenus 等) 与普通箱子。
 
 const vec3 = require("vec3");
+const { ServerEvents } = require("@mcbot/protocol"); // DESK-6：用协议常量 emit，避免与 TS 端事件名漂移
 const { enchantNames, parseChat, flattenChat, customName, iconId } = require("../utils/items");
 const { findMatchingSlot } = require("../utils/guiMatch");
 
@@ -228,7 +229,7 @@ module.exports = (botInstance) => {
 
   const pushUpdate = () => {
     updateTimer = null;
-    if (bot.currentWindow) emit("window_update", { window: serialize(bot.currentWindow) });
+    if (bot.currentWindow) emit(ServerEvents.WINDOW_UPDATE, { window: serialize(bot.currentWindow) });
   };
   const scheduleUpdate = () => {
     if (updateTimer) return; // 合并连续 set_slot 为一次推送
@@ -244,7 +245,7 @@ module.exports = (botInstance) => {
   const onOpen = (win) => {
     if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; } // 取消即将发出的关闭：换子菜单不闪烁
     bindWindow(win);
-    emit("window_open", { window: serialize(win) });
+    emit(ServerEvents.WINDOW_OPEN, { window: serialize(win) });
     botInstance.io.to(botInstance._room).to("admin").emit("log", {
       user: bot.username,
       ownerId: botInstance.config.ownerId,
@@ -257,7 +258,7 @@ module.exports = (botInstance) => {
     if (updateTimer) { clearTimeout(updateTimer); updateTimer = null; }
     // 延迟发关闭：若紧接着触发 windowOpen（换子菜单）则被取消，避免弹窗闪一下
     if (closeTimer) clearTimeout(closeTimer);
-    closeTimer = setTimeout(() => { closeTimer = null; emit("window_close", {}); }, 180);
+    closeTimer = setTimeout(() => { closeTimer = null; emit(ServerEvents.WINDOW_CLOSE, {}); }, 180);
   };
   bot.on("windowOpen", onOpen);
   bot.on("windowClose", onClose);

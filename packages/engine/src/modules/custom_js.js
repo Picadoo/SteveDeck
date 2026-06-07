@@ -20,7 +20,20 @@ module.exports = (botInstance) => {
         time: new Date().toLocaleTimeString(),
       });
 
-  let state = null; // { name, cancelled }
+  let state = null; // { name, cancelled, _timers, _listeners }
+
+  // 统一解绑某次运行经 api 注册的监听/定时器(MODB-1)。直接用 bot.on / 全局 setInterval 的不在此列（文档已说明）。
+  function disposeRun(st) {
+    if (!st) return;
+    for (const t of st._timers || []) {
+      try { clearInterval(t); clearTimeout(t); } catch (e) { /* ignore */ }
+    }
+    for (const pair of st._listeners || []) {
+      try { bot.removeListener(pair[0], pair[1]); } catch (e) { /* ignore */ }
+    }
+    st._timers = [];
+    st._listeners = [];
+  }
 
   function buildApi(st) {
     return {
@@ -69,13 +82,42 @@ module.exports = (botInstance) => {
       clickSlot: (slot, button = 0, mode = 0) => botInstance.clickWindowSlot(slot, button, mode),
       closeWindow: () => botInstance.closeGui(),
       window: () => botInstance.getWindow(),
+      // 受控注册(MODB-1)：经 api 注册的监听/定时器会在脚本停止时被统一解绑；
+      // 直接用 bot.on(...) / 全局 setInterval 不会被自动清理（请优先用这些包装版）。
+      on: (event, handler) => {
+        bot.on(event, handler);
+        st._listeners.push([event, handler]);
+        return () => bot.removeListener(event, handler);
+      },
+      once: (event, handler) => {
+        bot.once(event, handler);
+        st._listeners.push([event, handler]);
+      },
+      off: (event, handler) => bot.removeListener(event, handler),
+      setInterval: (cb, ms) => {
+        const t = setInterval(cb, Math.max(10, Number(ms) || 0));
+        st._timers.push(t);
+        return t;
+      },
+      setTimeout: (cb, ms) => {
+        const t = setTimeout(cb, Math.max(0, Number(ms) || 0));
+        st._timers.push(t);
+        return t;
+      },
+      clearInterval: (t) => clearInterval(t),
+      clearTimeout: (t) => clearTimeout(t),
     };
   }
 
   /** 运行一段自定义 JS。code 体内可 await，可用 api/bot/log/sleep/chat/Vec3/require。 */
   botInstance.runCustomJs = (name, code) => {
+    // MODB-2：执行入口再复检开关（防 js:run 网关之外的内部调用者绕过 RCE 风险面）
+    if (process.env.ENGINE_ALLOW_JS !== "1") {
+      emitLog("已禁用自定义 JS（需引擎 .env 设 ENGINE_ALLOW_JS=1）");
+      return { ok: false, error: "自定义 JS 已禁用" };
+    }
     botInstance.stopCustomJs();
-    const st = { name: name || "未命名脚本", cancelled: false };
+    const st = { name: name || "未命名脚本", cancelled: false, _timers: [], _listeners: [] };
     state = st;
     botInstance._customJs = st;
     emitLog(`运行「${st.name}」`);
@@ -110,6 +152,7 @@ module.exports = (botInstance) => {
     if (!state) return false;
     state.cancelled = true;
     emitLog(`停止「${state.name}」`);
+    disposeRun(state); // MODB-1：解绑脚本经 api 注册的监听/定时器
     try {
       bot.pathfinder.setGoal(null);
     } catch {
@@ -123,7 +166,7 @@ module.exports = (botInstance) => {
   // 断线时取消运行
   botInstance.cleanupHooks = botInstance.cleanupHooks || [];
   botInstance.cleanupHooks.push(() => {
-    if (state) state.cancelled = true;
+    if (state) { state.cancelled = true; disposeRun(state); }
     state = null;
     botInstance._customJs = null;
   });

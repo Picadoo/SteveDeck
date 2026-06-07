@@ -264,15 +264,23 @@ module.exports = (botInstance) => {
             const cropNames = botInstance.farmTask.cropTypes.map(t => CROP_DATABASE[t]?.name || t).join('、');
             emitLog(`启动自动农场\n  作物: ${cropNames}\n  扫描半径: ${botInstance.farmTask.scanRadius}格\n  自动补种: ${botInstance.farmTask.autoReplant ? '是' : '否'}\n  使用骨粉: ${botInstance.farmTask.useBoneMeal ? '是' : '否'}`);
 
-            if (botInstance.farmTask.timer) clearInterval(botInstance.farmTask.timer);
+            botInstance.timers = botInstance.timers || [];
+            // MODA-2：清旧句柄并从 timers 数组移除，避免反复 toggle 时数组堆积失效句柄
+            if (botInstance.farmTask.timer) {
+                clearInterval(botInstance.farmTask.timer);
+                const _i = botInstance.timers.indexOf(botInstance.farmTask.timer);
+                if (_i >= 0) botInstance.timers.splice(_i, 1);
+            }
             botInstance.farmTask.timer = setInterval(farmCycle, 20000);
             farmCycle();
-
-            botInstance.timers = botInstance.timers || [];
             botInstance.timers.push(botInstance.farmTask.timer);
         } else {
             if (botInstance.farmTask.timer) {
                 clearInterval(botInstance.farmTask.timer);
+                if (botInstance.timers) {
+                    const _i = botInstance.timers.indexOf(botInstance.farmTask.timer);
+                    if (_i >= 0) botInstance.timers.splice(_i, 1);
+                }
                 botInstance.farmTask.timer = null;
             }
 
@@ -292,7 +300,7 @@ module.exports = (botInstance) => {
         const farmlandBlocks = bot.findBlocks({
             matching: (block) => block.name.includes('farmland'),
             maxDistance: botInstance.farmTask.scanRadius,
-            count: 999
+            count: 512 // MODA-7：上限，避免近无界分配
         });
 
         if (farmlandBlocks.length === 0) {

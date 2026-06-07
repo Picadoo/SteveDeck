@@ -39,7 +39,9 @@ module.exports = (botInstance) => {
         try {
             if (rod.nbt) {
                 const damage = rod.nbt.value?.Damage?.value || 0;
-                const maxDurability = 64; // 鱼竿默认耐久
+                // MODB-5：用物品真实最大耐久（原版鱼竿 65，旧常量 64 差一），取不到再回退；
+                // 用相对阈值，避免高耐久/附魔(Unbreaking)/自定义竿被误判低耐久换走
+                const maxDurability = rod.maxDurability || 65;
                 if (damage >= maxDurability - 5) {
                     // 耐久快没了，尝试切换到另一根
                     const otherRod = bot.inventory.items().find(item =>
