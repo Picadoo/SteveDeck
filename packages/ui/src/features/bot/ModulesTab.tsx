@@ -5,6 +5,7 @@ import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { MODULES, defaultConfig, type ModuleDef } from "./moduleDefs";
 import ModuleConfigDialog from "./ModuleConfigDialog";
+import AutoUsePanel from "./AutoUsePanel";
 import type { BotSummary } from "@mcbot/protocol";
 
 const STATS_MODULES = new Set(["auto_farm", "automine", "mob_hunter"]);
@@ -215,6 +216,7 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
         );
       })}
 
+      <AutoUsePanel bot={bot} />
       <BehaviorCard bot={bot} />
 
       {editing && (
