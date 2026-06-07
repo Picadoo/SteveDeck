@@ -50,6 +50,7 @@ module.exports = (botInstance) => {
 
     async function tick() {
         if (!task.active || !bot.entity) return;
+        if (botInstance.isBodyBusy && botInstance.isBodyBusy()) return; // 用东西时让位一拍(auto_use)
         switch (task.state) {
             case 'SCAN': return doScan();
             case 'APPROACH': return doApproach();

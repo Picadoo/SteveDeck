@@ -14,6 +14,7 @@ module.exports = (botInstance) => {
 
     const attackInterval = setInterval(() => {
         if (!bot || !bot.entity || !botInstance.combatConfig.enabled) return;
+        if (botInstance.isBodyBusy && botInstance.isBodyBusy()) return; // 用东西时让位一拍(auto_use)
 
         const cfg = botInstance.combatConfig;
         const p = bot.entity.position;

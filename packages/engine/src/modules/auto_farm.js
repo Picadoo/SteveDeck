@@ -186,6 +186,7 @@ module.exports = (botInstance) => {
 
     const farmCycle = async () => {
         if (!botInstance.farmTask.active || !bot.entity) return;
+        if (botInstance.isBodyBusy && botInstance.isBodyBusy()) return; // 用东西时让位一拍(auto_use)
         if (botInstance.farmTask._isRunning) return; // 防止重入
         botInstance.farmTask._isRunning = true;
 
