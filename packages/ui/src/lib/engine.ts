@@ -91,6 +91,10 @@ export function normalizeUrl(addr: string): string {
   return a.replace(/\/+$/, "");
 }
 
+// 连接世代(UICORE-2)：每次 disconnect() +1。tryTauriAutoConnect 在 ~20s 轮询前后比对，
+// 若期间用户手动断开/切走，则放弃这次自动连接，避免复活已被拆除的连接。
+let connectEpoch = 0;
+
 /**
  * 桌面内置版：在 Tauri 壳内向 Rust 取内置引擎地址+令牌，等引擎就绪后自动连接。
  * 返回 true 表示处于「内置引擎」流程（调用方不再回退到保存的远程连接）；
@@ -107,9 +111,11 @@ export async function tryTauriAutoConnect(): Promise<boolean> {
     return false; // 内置引擎未起/命令缺失 → 交回退处理
   }
   if (!info?.url || !info?.token) return false;
+  const myEpoch = connectEpoch; // UICORE-2：记录世代，轮询期间被 disconnect 打断则放弃
   useStore.getState().setConn({ status: "connecting", error: undefined });
   // 内置引擎刚启动需 1~3s，轮询 /health 最多等 ~20s，就绪即连
   for (let i = 0; i < 40; i++) {
+    if (connectEpoch !== myEpoch) return false; // 期间用户手动断开/切走 → 不再连
     try {
       const r = await fetch(info.url + "/health", { cache: "no-store" });
       if (r.ok) break;
@@ -118,6 +124,7 @@ export async function tryTauriAutoConnect(): Promise<boolean> {
     }
     await new Promise((res) => setTimeout(res, 500));
   }
+  if (connectEpoch !== myEpoch) return false; // 最终连接前再确认一次
   connect(info.url, info.token);
   return true;
 }
@@ -279,11 +286,15 @@ export function connect(url: string, token: string): void {
 }
 
 export function disconnect(): void {
+  connectEpoch++; // UICORE-2：打断在途的自动连接
   if (socket) {
     socket.removeAllListeners();
     socket.disconnect();
     socket = null;
   }
+  // UICORE-8：断开/切换引擎即清 per-bot 映射，防新引擎 id 偶同导致串显旧引擎数据。
+  // 仅在显式 disconnect()/connect() 触发（socket.io 的瞬时重连不走这里），故网络抖动不丢日志。
+  useStore.getState().resetSession();
   useStore.getState().setConn({ status: "disconnected" });
 }
 

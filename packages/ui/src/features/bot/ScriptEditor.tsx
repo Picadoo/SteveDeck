@@ -74,15 +74,19 @@ export default function ScriptEditor({
     setS(toEdit(initial, bot?.host || ""));
     setMode("visual");
     setErr(null);
+    let cancelled = false; // UIFEAT-9：关闭/切 bot 后不再 setState
     if (botId) {
       cmd.observe(botId).then((r) => {
-        if (!r.ok || !r.data) return;
+        if (cancelled || !r.ok || !r.data) return;
         const o: any = r.data;
         setItems(Array.from(new Set((o.inventory || []).map((i: any) => i.name))));
         setEntities(Array.from(new Set((o.nearbyEntities || []).map((e: any) => e.name))));
         setPlayers((o.nearbyPlayers || []).map((p: any) => p.name));
       });
     }
+    return () => {
+      cancelled = true;
+    };
   }, [open, initial, botId]);
 
   if (!open) return null;

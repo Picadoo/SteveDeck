@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 /** 虚拟摇杆：拖动手柄输出归一化向量 {x,y}∈[-1,1]（y 向上为负，符合屏幕坐标）。松手回中并输出 {0,0}。 */
@@ -93,8 +93,12 @@ export function HoldButton({
   children: ReactNode;
 }) {
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const held = useRef(false);
+  const onReleaseRef = useRef(onRelease);
+  onReleaseRef.current = onRelease;
   const start = () => {
     if (disabled) return;
+    held.current = true;
     onPress?.();
     if (onTick) {
       onTick();
@@ -102,12 +106,28 @@ export function HoldButton({
     }
   };
   const stop = () => {
+    held.current = false;
     if (timer.current) {
       clearInterval(timer.current);
       timer.current = null;
     }
     onRelease?.();
   };
+  // UIFEAT-1：卸载时若仍在持握（切 tab/关弹窗/walk 翻 false 导致移除），清 interval 并补发停止指令，
+  // 否则 onPointerUp 不会触发于已移除元素 → interval 永远调 onTick（bot 一直转）+ 定时器泄漏。
+  useEffect(
+    () => () => {
+      if (timer.current) {
+        clearInterval(timer.current);
+        timer.current = null;
+      }
+      if (held.current) {
+        held.current = false;
+        onReleaseRef.current?.();
+      }
+    },
+    [],
+  );
   return (
     <button
       type="button"

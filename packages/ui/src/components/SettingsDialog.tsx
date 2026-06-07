@@ -31,10 +31,15 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
   const [info, setInfo] = useState<ConnInfo | null>(null);
 
   useEffect(() => {
-    if (open) {
-      setInfo(null);
-      fetchConnectionInfo().then(setInfo);
-    }
+    if (!open) return;
+    let alive = true; // UICORE-5：关闭/卸载后丢弃迟到/慢响应，避免对无关组件 setState
+    setInfo(null);
+    fetchConnectionInfo().then((r) => {
+      if (alive) setInfo(r);
+    });
+    return () => {
+      alive = false;
+    };
   }, [open]);
 
   if (!open) return null;
@@ -135,12 +140,16 @@ function EngineSourceSection() {
   const [needRestart, setNeedRestart] = useState(false);
 
   useEffect(() => {
+    let alive = true; // UICORE-5：卸载后不 setState
     getEngineConfig().then((c) => {
-      if (!c) return;
+      if (!alive || !c) return;
       setMode(c.mode === "remote" ? "remote" : "builtin");
       setUrl(c.url || "");
       setToken(c.token || "");
     });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   async function save() {

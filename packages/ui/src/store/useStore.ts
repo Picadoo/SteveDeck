@@ -70,6 +70,8 @@ interface AppState {
   setBots: (bots: BotSummary[]) => void;
   upsertBot: (bot: BotStatus) => void;
   removeBot: (id: string) => void;
+  /** 清空所有 per-bot 映射与选中项（切换引擎/断开时调用，防陈旧数据串引擎） */
+  resetSession: () => void;
   appendLog: (id: string, line: LogLine) => void;
   clearLog: (id: string) => void;
   setSelected: (id: string | null) => void;
@@ -197,11 +199,41 @@ export const useStore = create<AppState>((set, get) => ({
     }),
   removeBot: (id) =>
     set((s) => {
+      const removed = s.bots.find((b) => b.id === id);
       const bots = s.bots.filter((b) => b.id !== id);
+      // UICORE-1：回收该 bot 的全部 per-bot 映射，避免删/重建累积永不可达的陈旧条目
       const logs = { ...s.logs };
       delete logs[id];
+      const scriptRuntime = { ...s.scriptRuntime };
+      delete scriptRuntime[id];
+      const monitorStats = { ...s.monitorStats };
+      delete monitorStats[id];
+      // inventory/windows 键为 _bid||username（见 engine.ts），两种键形都清
+      const inventory = { ...s.inventory };
+      const windows = { ...s.windows };
+      delete inventory[id];
+      delete windows[id];
+      if (removed?.username) {
+        delete inventory[removed.username];
+        delete windows[removed.username];
+      }
+      // moduleConfigs 键为 `${id}:${module}`，删该 id 的所有模块项
+      const moduleConfigs = { ...s.moduleConfigs };
+      for (const k of Object.keys(moduleConfigs)) {
+        if (k.startsWith(`${id}:`)) delete moduleConfigs[k];
+      }
       const selectedId = s.selectedId === id ? (bots[0]?.id ?? null) : s.selectedId;
-      return { bots, logs, selectedId };
+      return { bots, logs, scriptRuntime, monitorStats, inventory, windows, moduleConfigs, selectedId };
+    }),
+  resetSession: () =>
+    set({
+      logs: {},
+      inventory: {},
+      windows: {},
+      scriptRuntime: {},
+      monitorStats: {},
+      moduleConfigs: {},
+      selectedId: null,
     }),
   appendLog: (id, line) =>
     set((s) => {

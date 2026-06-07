@@ -83,8 +83,9 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
       cancelled = true;
       clearInterval(t);
     };
+    // UIFEAT-4：只依赖 poll 实际读取的模块标志，去掉无关的 combat/fishing/trashcleaner（避免无谓重建 interval）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bot.id, bot.online, prefs.intervalSec, m.combat, m.fishing, m.automine, m.autofarm, m.mobhunter, m.trashcleaner]);
+  }, [bot.id, bot.online, prefs.intervalSec, m.automine, m.autofarm, m.mobhunter]);
 
   if (!bot.online) {
     return (

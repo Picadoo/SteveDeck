@@ -27,12 +27,17 @@ export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
   const running = !!bot.modules.script && bot.modules.script.startsWith("JS:");
   const runningName = running ? bot.modules.script!.slice(3) : null;
 
-  async function refresh() {
+  async function refresh(alive?: () => boolean) {
     const r = await cmd.js.list(bot.id);
+    if (alive && !alive()) return; // UIFEAT-9：卸载/切 bot 后不再 setState
     if (r.ok && Array.isArray(r.data)) setList(r.data);
   }
   useEffect(() => {
-    refresh();
+    let cancelled = false;
+    refresh(() => !cancelled);
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.id]);
 

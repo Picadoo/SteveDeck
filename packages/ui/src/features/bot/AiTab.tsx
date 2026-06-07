@@ -34,15 +34,20 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
   const [obs, setObs] = useState<Observation | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function refresh() {
+  async function refresh(alive?: () => boolean) {
     setLoading(true);
     const r = await cmd.observe(bot.id);
+    if (alive && !alive()) return; // UIFEAT-9：卸载/切 bot 后（8s 超时在途）不再 setState
     setLoading(false);
     if (r.ok) setObs(r.data as Observation);
     else pushToast(r.error || "获取感知失败", "error");
   }
   useEffect(() => {
-    refresh();
+    let cancelled = false;
+    refresh(() => !cancelled);
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.id]);
 
@@ -60,7 +65,7 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted">让 AI 感知机器人状态并生成脚本</p>
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={refresh} disabled={loading}>
+          <Button size="sm" variant="secondary" onClick={() => refresh()} disabled={loading}>
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> 刷新
           </Button>
           <Button size="sm" variant="primary" disabled={!obs} onClick={() => obs && copy(buildPrompt(obs), "AI 提示词")}>
