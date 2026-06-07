@@ -724,6 +724,11 @@ module.exports = (botInstance) => {
 
         for (let i = 0; i < steps.length; i++) {
             if (ctx.aborted || !bot.entity) return;
+            // auto_use 让位：自动使用正在用东西(吃/喝 ~1.6s)时，脚本在步与步之间等它落下，避免互相打断
+            while (botInstance.isBodyBusy && botInstance.isBodyBusy() && !ctx.aborted && bot.entity) {
+                await sleep(50);
+            }
+            if (ctx.aborted || !bot.entity) return;
             ctx.totalSteps = (ctx.totalSteps || 0) + 1;
             if (ctx.totalSteps > MAX_TOTAL_STEPS) {
                 emitLog(`总执行步数超过 ${MAX_TOTAL_STEPS}，强制终止（疑似死循环）`);
