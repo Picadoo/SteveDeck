@@ -36,6 +36,29 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.id, bot.online]);
 
+  // UIFEAT-6：hover 每像素 setState（+ItemTip 重算布局）→ rAF 合并到每帧最多一次；离开立即应用。
+  const hoverRafRef = useRef<number | null>(null);
+  const hoverRef = useRef<Hover | null>(null);
+  const onHover = (h: Hover | null) => {
+    hoverRef.current = h;
+    if (h === null) {
+      if (hoverRafRef.current != null) {
+        cancelAnimationFrame(hoverRafRef.current);
+        hoverRafRef.current = null;
+      }
+      setHover(null);
+      return;
+    }
+    if (hoverRafRef.current != null) return;
+    hoverRafRef.current = requestAnimationFrame(() => {
+      hoverRafRef.current = null;
+      setHover(hoverRef.current);
+    });
+  };
+  useEffect(() => () => {
+    if (hoverRafRef.current != null) cancelAnimationFrame(hoverRafRef.current);
+  }, []);
+
   if (!win) return null;
 
   const texBase = `${connUrl.replace(/\/+$/, "")}/textures/${bot.version || "1.12.2"}`;
@@ -82,11 +105,11 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
       <p className="mb-2.5 text-[11px] text-muted">
         左键点击操作 · 右键 = 右键点击 · 悬浮查看完整信息（菜单按钮直接点即可）
       </p>
-      <SlotGrid slots={container} texBase={texBase} onClick={click} onHover={setHover} />
+      <SlotGrid slots={container} texBase={texBase} onClick={click} onHover={onHover} />
       {split < total && backpack.length > 0 && (
         <>
           <div className="mb-1.5 mt-3 text-[11px] font-medium text-muted">你的背包</div>
-          <SlotGrid slots={backpack} base={split} texBase={texBase} onClick={click} onHover={setHover} />
+          <SlotGrid slots={backpack} base={split} texBase={texBase} onClick={click} onHover={onHover} />
         </>
       )}
       {hover && <ItemTip hover={hover} />}

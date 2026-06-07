@@ -1,5 +1,6 @@
 // 渲染 Minecraft 颜色/格式码：§0-§f 颜色、§l 粗 §o 斜 §n 下划线 §m 删除线 §r 复位、
 // §x§R§R§G§G§B§B 与 &#RRGGBB 十六进制色。§ 与 & 都识别。
+import { memo, useMemo } from "react";
 import { useStore } from "@/store/useStore";
 
 const COLORS: Record<string, string> = {
@@ -88,12 +89,17 @@ function parse(input: string): Seg[] {
   return segs;
 }
 
-export default function McText({ text, onDark }: { text: string; onDark?: boolean }) {
+// UICORE-7：McText 在聊天/名字/Lore/计分板/Tab 到处高频渲染（热路径）。
+// memo 跳过 props 未变时的重渲；useMemo 缓存 parse —— 只随 text 变，主题切换不重解析（只重算颜色）。
+function McTextInner({ text, onDark }: { text: string; onDark?: boolean }) {
   // 跟随主题：浅色主题压暗亮色，深色主题提亮暗色；onDark 强制按深底处理（如物品提示框始终深底）
   const theme = useStore((s) => s.theme);
-  if (!text || (!text.includes("§") && !text.includes("&"))) return <>{text}</>;
   const darkBg = !!onDark || theme === "dark";
-  const segs = parse(text);
+  const segs = useMemo(
+    () => (text && (text.includes("§") || text.includes("&")) ? parse(text) : null),
+    [text],
+  );
+  if (!segs) return <>{text}</>;
   return (
     <>
       {segs.map((s, i) => (
@@ -113,3 +119,6 @@ export default function McText({ text, onDark }: { text: string; onDark?: boolea
     </>
   );
 }
+
+const McText = memo(McTextInner);
+export default McText;
