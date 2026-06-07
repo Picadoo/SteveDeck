@@ -281,10 +281,16 @@ class BotInstance {
         if (!this.bot) return;
 
         // 优化消息处理逻辑
-        this.bot.on('message', (jsonMsg) => {
+        this.bot.on('message', (jsonMsg, position) => {
             // 保留 §/§x 颜色与格式码（前端渲染彩色）；尾部 ANSI 清洗对 §motd 无副作用
             const raw = (typeof jsonMsg.toMotd === "function" ? jsonMsg.toMotd() : jsonMsg.toString()).replace(/\u001b\[[0-9;]*m/g, '');
             if (!raw.trim()) return;
+
+            // actionbar（物品栏上方文本，position=game_info）：单独存最新值，不当聊天刷屏
+            if (position === 'game_info') {
+                this._actionBar = { text: raw.replace(/§[0-9a-fk-orx]/gi, '').trim(), at: Date.now() };
+                return;
+            }
 
             this.msgBuffer += raw + "\n";
             if (this.msgTimeout) clearTimeout(this.msgTimeout);

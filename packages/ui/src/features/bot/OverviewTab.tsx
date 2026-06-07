@@ -213,37 +213,52 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
         <NearbyList obs={obs} />
       </Card>
 
-      {/* 服务器信息：Tab 头尾 / Boss 条（PAPI 渲染处，有才显示） */}
+      {/* Boss 血条（独立一卡，有才显示） */}
+      {obs?.serverText && obs.serverText.bossBars.length > 0 && (
+        <Card className="p-4">
+          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+            <Swords className="h-4 w-4 text-danger" /> Boss 血条
+          </h3>
+          <div className="space-y-1.5">
+            {obs.serverText.bossBars.map((b, i) => (
+              <div key={i}>
+                <div className="flex justify-between text-xs">
+                  <span className="truncate pr-2 font-medium">{b.title}</span>
+                  {b.progress != null && <span className="text-muted">{Math.round(b.progress * 100)}%</span>}
+                </div>
+                {b.progress != null && (
+                  <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
+                    <div
+                      className="h-full rounded-full bg-danger"
+                      style={{ width: `${Math.round(b.progress * 100)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Actionbar（物品栏上方文本，PAPI 实时数据常在此；有才显示） */}
+      {obs?.serverText?.actionBar && (
+        <Card className="p-4">
+          <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
+            <Activity className="h-4 w-4 text-accent" /> 状态栏 Actionbar
+          </h3>
+          <p className="whitespace-pre-line text-xs leading-relaxed text-fg">{obs.serverText.actionBar}</p>
+        </Card>
+      )}
+
+      {/* Tab 列表：表头/表尾 + 在线玩家展示名（含 PAPI 前后缀；有才显示） */}
       {obs?.serverText &&
         (obs.serverText.tablistHeader ||
           obs.serverText.tablistFooter ||
-          obs.serverText.bossBars.length > 0) && (
+          (obs.playersDisplay?.length ?? 0) > 0) && (
           <Card className="p-4">
             <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
-              <Globe2 className="h-4 w-4 text-accent" /> 服务器信息
+              <Globe2 className="h-4 w-4 text-accent" /> Tab 列表
             </h3>
-            {obs.serverText.bossBars.length > 0 && (
-              <div className="mb-2 space-y-1.5">
-                {obs.serverText.bossBars.map((b, i) => (
-                  <div key={i}>
-                    <div className="flex justify-between text-xs">
-                      <span className="truncate pr-2 font-medium">{b.title}</span>
-                      {b.progress != null && (
-                        <span className="text-muted">{Math.round(b.progress * 100)}%</span>
-                      )}
-                    </div>
-                    {b.progress != null && (
-                      <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
-                        <div
-                          className="h-full rounded-full bg-danger"
-                          style={{ width: `${Math.round(b.progress * 100)}%` }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
             {obs.serverText.tablistHeader && (
               <p className="whitespace-pre-line text-xs leading-relaxed text-muted">
                 {obs.serverText.tablistHeader}
@@ -253,6 +268,24 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
               <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted">
                 {obs.serverText.tablistFooter}
               </p>
+            )}
+            {(obs.playersDisplay?.length ?? 0) > 0 && (
+              <div className="mt-2 border-t border-border pt-2">
+                <div className="mb-1 flex items-center gap-1 text-[11px] text-muted">
+                  <Users className="h-3 w-3" /> 在线玩家 · {obs.playersDisplay!.length}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {obs.playersDisplay!.map((p, i) => (
+                    <span
+                      key={i}
+                      className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px]"
+                      title={p.name ?? undefined}
+                    >
+                      {p.display}
+                    </span>
+                  ))}
+                </div>
+              </div>
             )}
           </Card>
         )}

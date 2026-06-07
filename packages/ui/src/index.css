@@ -42,6 +42,10 @@
     @apply bg-bg text-fg font-sans antialiased;
     margin: 0;
   }
+  /* 桌面无边框透明窗口：body 透明，让 App 根容器的圆角露出桌面（Win10 圆角方案） */
+  body.tauri-frameless {
+    background-color: transparent;
+  }
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;

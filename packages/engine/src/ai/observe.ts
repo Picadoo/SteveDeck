@@ -304,11 +304,13 @@ export function buildObservation(id: string): any {
         progress: typeof b?.health === "number" ? b.health : typeof b?.progress === "number" ? b.progress : null,
       }))
       .filter((b: any) => b.title);
+    const ab = inst._actionBar && Date.now() - inst._actionBar.at < 15000 ? inst._actionBar.text : null;
     obs.serverText = {
       world: bot.game?.dimension ?? null,
       tablistHeader: txt(tl.header),
       tablistFooter: txt(tl.footer),
       bossBars: bars,
+      actionBar: ab || null,
     };
   } catch {
     /* ignore */

@@ -502,6 +502,7 @@ export interface Observation {
     tablistHeader: string | null;
     tablistFooter: string | null;
     bossBars: { title: string | null; progress: number | null }[];
+    actionBar?: string | null;
   };
   /** 玩家 Tab 展示名（含 PAPI 前后缀） */
   playersDisplay?: { name: string; display: string }[];
