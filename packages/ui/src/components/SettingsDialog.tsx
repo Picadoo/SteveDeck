@@ -4,7 +4,15 @@ import Modal from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
-import { fetchConnectionInfo, disconnect, forgetConn } from "@/lib/engine";
+import {
+  fetchConnectionInfo,
+  disconnect,
+  forgetConn,
+  isTauri,
+  getEngineConfig,
+  setEngineConfig,
+  restartApp,
+} from "@/lib/engine";
 
 interface ConnInfo {
   addresses: string[];
@@ -48,6 +56,8 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
           <Row k="版本" v={conn.engine?.version ? "v" + conn.engine.version : "—"} />
           <Row k="状态" v={conn.status === "online" ? "已连接" : "连接中"} />
         </Section>
+
+        {isTauri() && <EngineSourceSection />}
 
         <Section title="连接手机 / 其他设备">
           {info?.qrcodeDataUrl ? (
@@ -112,6 +122,96 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
         </Section>
       </div>
     </Modal>
+  );
+}
+
+// 引擎来源（仅桌面版）：内置自带引擎 / 连远程 Docker 引擎。改动写入 AppData，重启后由 Rust 侧决定起不起内置引擎。
+function EngineSourceSection() {
+  const pushToast = useStore((s) => s.pushToast);
+  const [mode, setMode] = useState<"builtin" | "remote">("builtin");
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [needRestart, setNeedRestart] = useState(false);
+
+  useEffect(() => {
+    getEngineConfig().then((c) => {
+      if (!c) return;
+      setMode(c.mode === "remote" ? "remote" : "builtin");
+      setUrl(c.url || "");
+      setToken(c.token || "");
+    });
+  }, []);
+
+  async function save() {
+    const ok = await setEngineConfig(mode, url.trim(), token.trim());
+    if (ok) {
+      setDirty(false);
+      setNeedRestart(true);
+      pushToast("已保存，重启后生效", "success");
+    } else {
+      pushToast("保存失败", "error");
+    }
+  }
+
+  return (
+    <Section title="引擎来源（桌面版）">
+      <div className="flex items-center justify-between">
+        <div className="pr-3">
+          <div className="text-sm">引擎运行在哪</div>
+          <div className="text-[11px] text-muted">内置=本机自带引擎；远程=连 Docker/服务器引擎，本机不再起引擎</div>
+        </div>
+        <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-xs">
+          {(["builtin", "remote"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => {
+                setMode(m);
+                setDirty(true);
+              }}
+              className={cn(
+                "px-2.5 py-1 transition-colors",
+                mode === m ? "bg-accent/15 text-accent" : "text-muted hover:text-fg",
+              )}
+            >
+              {m === "builtin" ? "内置" : "远程"}
+            </button>
+          ))}
+        </div>
+      </div>
+      {mode === "remote" && (
+        <div className="space-y-2">
+          <input
+            value={url}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              setDirty(true);
+            }}
+            placeholder="引擎地址，如 http://192.168.1.10:8723"
+            className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg"
+          />
+          <input
+            value={token}
+            onChange={(e) => {
+              setToken(e.target.value);
+              setDirty(true);
+            }}
+            placeholder="访问令牌"
+            className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg"
+          />
+        </div>
+      )}
+      <div className="flex items-center justify-end gap-2">
+        {needRestart && (
+          <Button size="sm" variant="secondary" onClick={() => restartApp()}>
+            立即重启
+          </Button>
+        )}
+        <Button size="sm" onClick={save} disabled={!dirty}>
+          保存
+        </Button>
+      </div>
+    </Section>
   );
 }
 

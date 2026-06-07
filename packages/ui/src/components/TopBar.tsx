@@ -3,6 +3,7 @@ import { Wifi, WifiOff, Loader2, Moon, Sun, PanelLeft, PanelLeftClose, Settings 
 import { useStore } from "@/store/useStore";
 import { IconButton, Badge, StatusDot } from "@/components/ui/primitives";
 import SettingsDialog from "./SettingsDialog";
+import WindowControls from "./WindowControls";
 
 export default function TopBar({
   navOpen,
@@ -19,7 +20,10 @@ export default function TopBar({
 
   return (
     <>
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-surface px-4 drag-region">
+      <header
+        data-tauri-drag-region
+        className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-surface px-4 drag-region"
+      >
         <div className="no-drag flex min-w-0 items-center gap-2">
           <IconButton onClick={onToggleNav} title={navOpen ? "收起侧栏" : "展开侧栏"}>
             {navOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
@@ -54,6 +58,7 @@ export default function TopBar({
           <IconButton onClick={() => setSettingsOpen(true)} title="设置">
             <Settings className="h-4 w-4" />
           </IconButton>
+          <WindowControls className="-mr-4 self-stretch" />
         </div>
       </header>
 

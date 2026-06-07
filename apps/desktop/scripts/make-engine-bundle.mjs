@@ -1,5 +1,8 @@
-// 生成自包含引擎包：pnpm deploy → 删 bedrock 版本数据 → 精简版去掉 3D 视角 → 带 node.exe
+// 生成自包含引擎包：pnpm deploy（hoisted 扁平依赖）→ 删 bedrock 版本数据 → 精简版去掉 3D 视角 → 带 node.exe
 // 用法: node make-engine-bundle.mjs <slim|full>
+//
+// 关键：用 node-linker=hoisted 让 node_modules 扁平、无符号链接。
+// 否则 pnpm 默认的 .pnpm 符号链接/Junction 结构在被 Tauri 复制进资源时会全部断链（Cannot find module）。
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -29,20 +32,40 @@ const dirSizeMB = (p) => {
   return Math.round(s / 1024 / 1024);
 };
 
-// 1. 清理 + deploy（生产依赖拍平）
+// 解析包真实目录：优先扁平布局 node_modules/<name>（hoisted），回退 pnpm 的 .pnpm 虚拟store
+const pkgDir = (name) => {
+  const flat = path.join(out, "node_modules", name);
+  if (fs.existsSync(path.join(flat, "package.json"))) return flat;
+  const pnpmDir = path.join(out, "node_modules", ".pnpm");
+  if (fs.existsSync(pnpmDir)) {
+    const hit = fs.readdirSync(pnpmDir).find((n) => n.startsWith(name + "@"));
+    if (hit) {
+      const p = path.join(pnpmDir, hit, "node_modules", name);
+      if (fs.existsSync(p)) return p;
+    }
+  }
+  return null;
+};
+
+// 统计顶层符号链接数（应为 0，否则复制进资源会断链）
+const countTopLinks = () => {
+  const nm = path.join(out, "node_modules");
+  if (!fs.existsSync(nm)) return -1;
+  return fs.readdirSync(nm, { withFileTypes: true }).filter((e) => e.isSymbolicLink()).length;
+};
+
+// 1. 清理 + deploy（hoisted：扁平、无符号链接的生产依赖）
 log("清理旧包");
 fs.rmSync(out, { recursive: true, force: true });
-log("pnpm deploy …");
-execSync(`pnpm -C "${root}" --filter=@mcbot/engine deploy --prod --legacy "${out}"`, { stdio: "inherit" });
+log("pnpm deploy（node-linker=hoisted）…");
+execSync(
+  `pnpm -C "${root}" --filter=@mcbot/engine deploy --prod --legacy --config.node-linker=hoisted "${out}"`,
+  { stdio: "inherit" },
+);
 
 // 2. 删 bedrock 各版本数据（纯 Java 版用不到；保留 bedrock/common，minecraft-data 加载需要）
-const findMcDataData = () => {
-  const pnpmDir = path.join(out, "node_modules", ".pnpm");
-  const pkg = fs.readdirSync(pnpmDir).find((n) => n.startsWith("minecraft-data@"));
-  if (!pkg) return null;
-  return path.join(pnpmDir, pkg, "node_modules", "minecraft-data", "minecraft-data", "data");
-};
-const dataDir = findMcDataData();
+const mdDir = pkgDir("minecraft-data");
+const dataDir = mdDir && path.join(mdDir, "minecraft-data", "data");
 if (dataDir && fs.existsSync(path.join(dataDir, "bedrock"))) {
   for (const d of fs.readdirSync(path.join(dataDir, "bedrock"))) {
     if (d !== "common") fs.rmSync(path.join(dataDir, "bedrock", d), { recursive: true, force: true });
@@ -52,19 +75,20 @@ if (dataDir && fs.existsSync(path.join(dataDir, "bedrock"))) {
 
 // 3. 精简版：去掉 3D 视角相关大包（bot_viewer 会优雅降级）
 if (variant === "slim") {
-  const pnpmDir = path.join(out, "node_modules", ".pnpm");
   const heavy = ["prismarine-viewer", "canvas", "three"];
-  // 顶层符号链接
+  const pnpmDir = path.join(out, "node_modules", ".pnpm");
   for (const h of heavy) {
-    const link = path.join(out, "node_modules", h);
+    // 扁平布局下的顶层实体
     try {
-      fs.rmSync(link, { recursive: true, force: true });
+      fs.rmSync(path.join(out, "node_modules", h), { recursive: true, force: true });
     } catch {}
-  }
-  // .pnpm 实体
-  for (const name of fs.readdirSync(pnpmDir)) {
-    if (heavy.some((h) => name.startsWith(h + "@"))) {
-      fs.rmSync(path.join(pnpmDir, name), { recursive: true, force: true });
+    // pnpm 布局下的 .pnpm 实体（若存在）
+    if (fs.existsSync(pnpmDir)) {
+      for (const name of fs.readdirSync(pnpmDir)) {
+        if (heavy.some((x) => name.startsWith(x + "@"))) {
+          fs.rmSync(path.join(pnpmDir, name), { recursive: true, force: true });
+        }
+      }
     }
   }
   log("精简版：已移除 prismarine-viewer / canvas / three");
@@ -80,9 +104,8 @@ if (variant === "full") {
       .map((s) => s.trim())
       .filter(Boolean),
   );
-  const pnpmDir = path.join(out, "node_modules", ".pnpm");
-  const pvName = fs.existsSync(pnpmDir) && fs.readdirSync(pnpmDir).find((n) => n.startsWith("prismarine-viewer@"));
-  const pub = pvName && path.join(pnpmDir, pvName, "node_modules", "prismarine-viewer", "public");
+  const pv = pkgDir("prismarine-viewer");
+  const pub = pv && path.join(pv, "public");
   if (pub && fs.existsSync(pub)) {
     const before = dirSizeMB(pub);
     const isVer = (v) => /^\d+\.\d+/.test(v); // 仅动版本号命名的条目，避免误删 entity 等公共资源
@@ -102,5 +125,13 @@ if (variant === "full") {
 const nodeExe = process.execPath;
 fs.copyFileSync(nodeExe, path.join(out, path.basename(nodeExe)));
 log(`已复制运行时: ${path.basename(nodeExe)}`);
+
+// 5. 自检：顶层不能有符号链接（否则复制进 Tauri 资源必断链）
+const links = countTopLinks();
+if (links > 0) {
+  log(`⚠️ 警告：node_modules 顶层仍有 ${links} 个符号链接，复制后会断链！需检查 node-linker 配置。`);
+} else {
+  log(`自检通过：node_modules 顶层 0 符号链接（复制安全）`);
+}
 
 log(`完成，体积 ${dirSizeMB(out)} MB  ->  ${out}`);

@@ -7,8 +7,172 @@ use tauri::{
 #[cfg(desktop)]
 use tauri_plugin_autostart::ManagerExt;
 
+#[cfg(desktop)]
+use std::sync::Mutex;
+
+// ===================== 内置引擎（仅桌面） =====================
+// 桌面版把 Node 引擎（engine-bundle：node.exe + dist + 生产依赖）作为资源随包打进去，
+// 应用启动时在本机回环拉起、退出时杀掉；前端在 Tauri 内调用 engine_info 拿地址+令牌自动连接。
+#[cfg(desktop)]
+struct EngineState {
+    url: String,
+    token: String,
+    child: Mutex<Option<std::process::Child>>,
+}
+
+// 前端（Tauri 内）调用：返回内置引擎地址 + 访问令牌，用于自动连接
+#[cfg(desktop)]
+#[tauri::command]
+fn engine_info(state: tauri::State<EngineState>) -> serde_json::Value {
+    serde_json::json!({ "url": state.url, "token": state.token })
+}
+
+// 引擎来源配置文件（AppData/engine-config.json）：{ mode: "builtin"|"remote", url, token }
+#[cfg(desktop)]
+fn engine_config_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_data_dir().ok().map(|p| p.join("engine-config.json"))
+}
+
+// 读「远程引擎」配置：仅当 mode=remote 且 url 非空时返回 (url, token)，否则 None（走内置）
+#[cfg(desktop)]
+fn load_remote_engine(app: &tauri::AppHandle) -> Option<(String, String)> {
+    let p = engine_config_path(app)?;
+    let txt = std::fs::read_to_string(p).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&txt).ok()?;
+    if v.get("mode").and_then(|m| m.as_str()) == Some("remote") {
+        let url = v.get("url").and_then(|u| u.as_str()).unwrap_or("").trim().to_string();
+        let token = v.get("token").and_then(|t| t.as_str()).unwrap_or("").trim().to_string();
+        if !url.is_empty() {
+            return Some((url, token));
+        }
+    }
+    None
+}
+
+// 前端读当前引擎来源配置（用于设置面板回填）
+#[cfg(desktop)]
+#[tauri::command]
+fn get_engine_config(app: tauri::AppHandle) -> serde_json::Value {
+    if let Some(p) = engine_config_path(&app) {
+        if let Ok(txt) = std::fs::read_to_string(p) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                return v;
+            }
+        }
+    }
+    serde_json::json!({ "mode": "builtin", "url": "", "token": "" })
+}
+
+// 前端写引擎来源配置（重启后生效）
+#[cfg(desktop)]
+#[tauri::command]
+fn set_engine_config(app: tauri::AppHandle, mode: String, url: String, token: String) -> Result<(), String> {
+    let p = engine_config_path(&app).ok_or_else(|| "无法定位配置目录".to_string())?;
+    if let Some(dir) = p.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let v = serde_json::json!({ "mode": mode, "url": url, "token": token });
+    std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap_or_default()).map_err(|e| e.to_string())
+}
+
+// 重启应用（切换引擎来源后调用以生效）
+#[cfg(desktop)]
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
+// 让系统分配一个空闲端口（绑 127.0.0.1:0 拿到端口后立刻释放给引擎用）
+#[cfg(desktop)]
+fn pick_free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .map(|a| a.port())
+        .unwrap_or(8137)
+}
+
+// 定位引擎包：打包后在 resources/engine-bundle；开发期回退到 apps/desktop/engine-bundle
+#[cfg(desktop)]
+fn locate_engine_bundle(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    if let Ok(res) = app.path().resource_dir() {
+        let p = res.join("engine-bundle");
+        if p.join("node.exe").exists() {
+            return Some(p);
+        }
+    }
+    let dev = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("engine-bundle");
+    if dev.join("node.exe").exists() {
+        return Some(dev);
+    }
+    None
+}
+
+// 拉起内置引擎进程，返回其运行态（失败返回 None，不致命：用户仍可手填远程引擎）
+#[cfg(desktop)]
+fn spawn_engine(app: &tauri::AppHandle) -> Option<EngineState> {
+    let bundle = match locate_engine_bundle(app) {
+        Some(b) => b,
+        None => {
+            eprintln!("[engine] 未找到内置引擎包（engine-bundle/node.exe）");
+            return None;
+        }
+    };
+    let port = pick_free_port();
+    let token = uuid::Uuid::new_v4().to_string();
+    // 数据（机器人配置/脚本/令牌）落在用户 AppData，可写且随用户保留
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map(|p| p.join("engine-data"))
+        .unwrap_or_else(|_| bundle.join("data"));
+    let _ = std::fs::create_dir_all(&data_dir);
+
+    let mut cmd = std::process::Command::new(bundle.join("node.exe"));
+    cmd.current_dir(&bundle)
+        .arg("dist/bin/serve.js")
+        .env("PORT", port.to_string())
+        .env("ENGINE_TOKEN", &token)
+        .env("ENGINE_HOST", "127.0.0.1") // 仅本机回环，不暴露局域网
+        .env("MCBOT_DATA_DIR", &data_dir)
+        .env("MCBOT_PARENT_PID", std::process::id().to_string()); // 父进程看门狗：宿主崩溃时引擎自杀
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW：不弹黑色控制台窗
+    }
+    match cmd.spawn() {
+        Ok(child) => {
+            println!("[engine] 内置引擎已启动于 127.0.0.1:{}", port);
+            Some(EngineState {
+                url: format!("http://127.0.0.1:{}", port),
+                token,
+                child: Mutex::new(Some(child)),
+            })
+        }
+        Err(e) => {
+            eprintln!("[engine] 内置引擎启动失败: {}", e);
+            None
+        }
+    }
+}
+
+// 退出时杀掉内置引擎，避免残留 node 进程
+#[cfg(desktop)]
+fn kill_engine(handle: &tauri::AppHandle) {
+    if let Some(state) = handle.try_state::<EngineState>() {
+        if let Ok(mut guard) = state.child.lock() {
+            if let Some(mut child) = guard.take() {
+                let _ = child.kill();
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
 
     #[cfg(desktop)]
@@ -18,7 +182,25 @@ pub fn run() {
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 None,
             ))
+            .invoke_handler(tauri::generate_handler![
+                engine_info,
+                get_engine_config,
+                set_engine_config,
+                restart_app
+            ])
             .setup(|app| {
+                // 引擎来源：配置为「远程」则不起内置引擎、直接用远程地址；否则起内置（失败不致命）
+                let engine_state = match load_remote_engine(app.handle()) {
+                    Some((url, token)) => {
+                        println!("[engine] 使用远程引擎: {}", url);
+                        Some(EngineState { url, token, child: Mutex::new(None) })
+                    }
+                    None => spawn_engine(app.handle()),
+                };
+                if let Some(state) = engine_state {
+                    app.manage(state);
+                }
+
                 let show = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
                 let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
                 let autostart =
@@ -75,7 +257,15 @@ pub fn run() {
             });
     }
 
-    builder
-        .run(tauri::generate_context!())
+    let app = builder
+        .build(tauri::generate_context!())
         .expect("error while running tauri application");
+
+    app.run(|_handle, _event| {
+        // 应用真正退出时清掉内置引擎子进程
+        #[cfg(desktop)]
+        if let tauri::RunEvent::Exit = _event {
+            kill_engine(_handle);
+        }
+    });
 }

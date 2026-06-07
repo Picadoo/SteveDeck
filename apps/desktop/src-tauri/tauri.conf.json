@@ -10,6 +10,7 @@
     "beforeBuildCommand": "pnpm --filter @mcbot/ui build"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "mc-bot-player",
@@ -18,7 +19,7 @@
         "minWidth": 880,
         "minHeight": 560,
         "resizable": true,
-        "decorations": true,
+        "decorations": false,
         "center": true
       }
     ],
@@ -29,6 +30,9 @@
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
+    "resources": {
+      "../engine-bundle": "engine-bundle"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

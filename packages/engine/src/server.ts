@@ -334,8 +334,10 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     registerHandlers(io, socket);
   });
 
+  // 默认绑 0.0.0.0（Docker/远程引擎需对外可达）；内置桌面版会传 ENGINE_HOST=127.0.0.1 收紧为仅本机回环
+  const host = process.env.ENGINE_HOST || "0.0.0.0";
   await new Promise<void>((resolve) => {
-    server.listen(port, "0.0.0.0", () => resolve());
+    server.listen(port, host, () => resolve());
   });
 
   botManager.startAll();

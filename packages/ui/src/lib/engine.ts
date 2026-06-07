@@ -91,6 +91,84 @@ export function normalizeUrl(addr: string): string {
   return a.replace(/\/+$/, "");
 }
 
+/**
+ * 桌面内置版：在 Tauri 壳内向 Rust 取内置引擎地址+令牌，等引擎就绪后自动连接。
+ * 返回 true 表示处于「内置引擎」流程（调用方不再回退到保存的远程连接）；
+ * 非 Tauri 环境（网页/移动浏览器）或内置引擎不可用时返回 false。
+ */
+export async function tryTauriAutoConnect(): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const invoke = (globalThis as any)?.__TAURI__?.core?.invoke;
+  if (typeof invoke !== "function") return false; // 非 Tauri 环境
+  let info: { url?: string; token?: string } | undefined;
+  try {
+    info = (await invoke("engine_info")) as { url?: string; token?: string };
+  } catch {
+    return false; // 内置引擎未起/命令缺失 → 交回退处理
+  }
+  if (!info?.url || !info?.token) return false;
+  useStore.getState().setConn({ status: "connecting", error: undefined });
+  // 内置引擎刚启动需 1~3s，轮询 /health 最多等 ~20s，就绪即连
+  for (let i = 0; i < 40; i++) {
+    try {
+      const r = await fetch(info.url + "/health", { cache: "no-store" });
+      if (r.ok) break;
+    } catch {
+      /* 还没起来，继续等 */
+    }
+    await new Promise((res) => setTimeout(res, 500));
+  }
+  connect(info.url, info.token);
+  return true;
+}
+
+// ===== Tauri 桥（桌面内置/远程引擎来源切换）=====
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function tauriInvoke(): ((cmd: string, args?: any) => Promise<any>) | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inv = (globalThis as any)?.__TAURI__?.core?.invoke;
+  return typeof inv === "function" ? inv : null;
+}
+
+/** 是否运行在 Tauri 桌面壳内 */
+export function isTauri(): boolean {
+  return tauriInvoke() !== null;
+}
+
+/** 读引擎来源配置（内置/远程）；非 Tauri 返回 null */
+export async function getEngineConfig(): Promise<{ mode: string; url: string; token: string } | null> {
+  const inv = tauriInvoke();
+  if (!inv) return null;
+  try {
+    return (await inv("get_engine_config")) as { mode: string; url: string; token: string };
+  } catch {
+    return null;
+  }
+}
+
+/** 写引擎来源配置（重启后生效） */
+export async function setEngineConfig(mode: string, url: string, token: string): Promise<boolean> {
+  const inv = tauriInvoke();
+  if (!inv) return false;
+  try {
+    await inv("set_engine_config", { mode, url, token });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 重启桌面应用（切换引擎来源后生效） */
+export async function restartApp(): Promise<void> {
+  const inv = tauriInvoke();
+  if (!inv) return;
+  try {
+    await inv("restart_app");
+  } catch {
+    /* ignore */
+  }
+}
+
 export function connect(url: string, token: string): void {
   disconnect();
   const setConn = useStore.getState().setConn;

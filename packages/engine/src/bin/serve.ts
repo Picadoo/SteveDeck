@@ -12,6 +12,20 @@ process.on("uncaughtException", (err) => {
 });
 
 async function main(): Promise<void> {
+  // 父进程看门狗（内置桌面版）：宿主 app 若被强杀/崩溃（优雅退出钩子来不及杀引擎），
+  // 探测到父进程消失就自行退出，避免残留 node 进程。MCBOT_PARENT_PID 由桌面壳传入。
+  const parentPid = process.env.MCBOT_PARENT_PID ? Number(process.env.MCBOT_PARENT_PID) : 0;
+  if (Number.isFinite(parentPid) && parentPid > 0) {
+    setInterval(() => {
+      try {
+        process.kill(parentPid, 0); // 信号 0 仅探测存活，进程不存在会抛错
+      } catch {
+        console.error("[引擎] 宿主进程已退出，内置引擎自行关闭");
+        process.exit(0);
+      }
+    }, 3000).unref();
+  }
+
   const { port, token } = await startEngine();
   const info = await buildConnectionInfo({ version: ENGINE_VERSION, port, token });
 
