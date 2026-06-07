@@ -27,8 +27,14 @@ export function registerScriptHandlers(socket: Socket): void {
   });
 
   socket.on(ClientCommands.SCRIPT_SAVE, ({ script }: { script: any }, ack?: Ack) => {
-    if (!script || !script.name || !Array.isArray(script.steps)) {
+    if (!script || typeof script.name !== "string" || !script.name.trim() || !Array.isArray(script.steps)) {
       return ack?.(fail("脚本格式不正确（需 name 与 steps 数组）"));
+    }
+    // API-9：基本形状/规模校验，挡畸形脚本入盘并广播到所有在线实例（之前只验 steps 是数组）
+    if (script.name.length > 80) return ack?.(fail("脚本名过长(>80)"));
+    if (script.steps.length > 2000) return ack?.(fail("脚本步数过多(>2000)"));
+    if (!script.steps.every((s: any) => s && typeof s === "object" && typeof s.type === "string")) {
+      return ack?.(fail("脚本步骤格式不正确（每步需含 type 字段）"));
     }
     const lib = botManager.loadScripts();
     lib[script.name] = script;

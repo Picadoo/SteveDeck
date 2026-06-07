@@ -66,9 +66,11 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
     ({ id, x, y, z }: { id: string; x: number; y: number; z: number }, ack?: Ack) => {
       const inst = botManager.getInstance(id);
       if (!inst) return ack?.(fail("机器人不存在"));
+      const nx = Number(x), ny = Number(y), nz = Number(z);
+      if (![nx, ny, nz].every(Number.isFinite)) return ack?.(fail("坐标无效")); // API-11：挡 NaN 入寻路
       try {
-        (inst as any).recorder?.note?.("goto", { x, y, z });
-        inst.move(x, y, z);
+        (inst as any).recorder?.note?.("goto", { x: nx, y: ny, z: nz });
+        inst.move(nx, ny, nz);
         ack?.(ok());
       } catch (e: any) {
         ack?.(fail(String(e?.message ?? e)));
@@ -77,9 +79,13 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
   );
 
   socket.on(ClientCommands.BOT_UPDATE, ({ id, patch }: { id: string; patch: any }, ack?: Ack) => {
-    const done = botManager.updateBot(id, patch || {});
-    if (done) broadcastSnapshot(io);
-    ack?.(done ? ok() : fail("机器人不存在"));
+    try {
+      const done = botManager.updateBot(id, patch || {});
+      if (done) broadcastSnapshot(io);
+      ack?.(done ? ok() : fail("机器人不存在"));
+    } catch (e: any) {
+      ack?.(fail(String(e?.message ?? e))); // API-6：校验失败（端口/长度）回 ack，不抛崩进程
+    }
   });
 
   socket.on(ClientCommands.BOT_CONFIG, ({ id }: { id: string }, ack?: Ack) => {

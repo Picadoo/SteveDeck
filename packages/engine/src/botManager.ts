@@ -19,6 +19,30 @@ import {
 const BotInstance = require("./BotInstance");
 const logger = require("./utils/logger");
 
+// API-6：bot 配置输入校验——端口范围、字段类型/长度，挡类型混淆与无界字段入盘/广播。
+const MAX_STR = 120;
+function validateBotInput(input: Partial<BotConfigInput> | undefined): string | null {
+  if (!input) return null;
+  if (input.port !== undefined && input.port !== null) {
+    const p = Number(input.port);
+    if (!Number.isInteger(p) || p < 1 || p > 65535) return "端口需为 1-65535 的整数";
+  }
+  const limits: [keyof BotConfigInput, number][] = [
+    ["username", MAX_STR],
+    ["host", MAX_STR],
+    ["version", 24],
+    ["loginPassword", MAX_STR],
+    ["note", 500],
+  ];
+  for (const [k, max] of limits) {
+    const v = input[k];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "string") return `${String(k)} 类型无效`;
+    if (v.length > max) return `${String(k)} 过长(>${max})`;
+  }
+  return null;
+}
+
 /** 广播链：兼容被复用模块的 io.to(room).to(room).emit() 调用形态。
  *  单主人模型下「所有已认证客户端」即目标，故忽略 room 一律广播。 */
 interface EmitChain {
@@ -237,6 +261,8 @@ class BotManager {
 
   addBot(input: BotConfigInput): BotConfig {
     if (!input?.username || !input?.host) throw new Error("用户名和服务器地址必填");
+    const verr = validateBotInput(input); // API-6
+    if (verr) throw new Error(verr);
     const dup = this.configs.find((c) => c.username === input.username && c.host === input.host);
     if (dup) throw new Error(`机器人 ${input.username}@${input.host} 已存在`);
 
@@ -268,6 +294,7 @@ class BotManager {
       }
       this.bots.delete(id);
     }
+    this.dropLogs(id); // CORE-2/API-8: 回收 per-bot 聊天/操作日志缓冲，避免删后残留键
     const before = this.configs.length;
     this.configs = this.configs.filter((c) => c.id !== id);
     if (this.configs.length === before) return false;
@@ -279,6 +306,8 @@ class BotManager {
   updateBot(id: string, patch: Partial<BotConfigInput>): boolean {
     const cfg = this.configs.find((c) => c.id === id);
     if (!cfg) return false;
+    const verr = validateBotInput(patch); // API-6（BOT_UPDATE handler 已 try/catch 接住）
+    if (verr) throw new Error(verr);
     let reconnect = false;
     const chg = <K extends keyof BotConfig>(k: K, v: BotConfig[K]) => {
       if (v !== undefined && v !== cfg[k]) {

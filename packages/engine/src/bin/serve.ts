@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { startEngine, ENGINE_VERSION } from "../server";
 import { buildConnectionInfo } from "../net/connectionInfo";
+import { botManager } from "../botManager";
 
 // 进程级兜底：单个机器人/脚本/模块的异步异常（定时器/事件回调里抛错）不应拖垮整个引擎进程（所有机器人）。
 // 记录但不退出——长期运行的多机器人管理器宁可隔离单点故障，也不要全体掉线。
@@ -11,22 +12,57 @@ process.on("uncaughtException", (err) => {
   console.error("[引擎] 未捕获异常（已隔离，进程继续）：", err);
 });
 
+let shuttingDown = false;
+
 async function main(): Promise<void> {
+  const engine = await startEngine();
+  const { port, token } = engine;
+
+  // 优雅关停(CORE-3)：停所有 bot（关 mineflayer TCP / 模块定时器 / viewer http+io）、关引擎 io/http server，再退出。
+  // Ctrl+C(SIGINT)、docker stop(SIGTERM)、宿主退出共用此路径，避免把连接丢给 OS 留下"幽灵会话"。
+  const shutdown = (reason: string): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.error(`[引擎] ${reason}，正在优雅关停…`);
+    try {
+      botManager.eachInstance((inst: { stop?: () => void }) => {
+        try {
+          inst.stop?.();
+        } catch {
+          /* 单个实例停止失败不影响其它 */
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+    try {
+      engine.io.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      engine.server.close(() => process.exit(0));
+    } catch {
+      process.exit(0);
+    }
+    setTimeout(() => process.exit(0), 3000).unref(); // 兜底：3s 内没关干净就强退
+  };
+  process.on("SIGINT", () => shutdown("收到 SIGINT"));
+  process.on("SIGTERM", () => shutdown("收到 SIGTERM"));
+
   // 父进程看门狗（内置桌面版）：宿主 app 若被强杀/崩溃（优雅退出钩子来不及杀引擎），
-  // 探测到父进程消失就自行退出，避免残留 node 进程。MCBOT_PARENT_PID 由桌面壳传入。
+  // 探测到父进程消失就优雅关停（停 bot + 关 server），避免残留 node 进程与幽灵会话。MCBOT_PARENT_PID 由桌面壳传入。
   const parentPid = process.env.MCBOT_PARENT_PID ? Number(process.env.MCBOT_PARENT_PID) : 0;
   if (Number.isFinite(parentPid) && parentPid > 0) {
     setInterval(() => {
       try {
         process.kill(parentPid, 0); // 信号 0 仅探测存活，进程不存在会抛错
       } catch {
-        console.error("[引擎] 宿主进程已退出，内置引擎自行关闭");
-        process.exit(0);
+        shutdown("宿主进程已退出，内置引擎自行关闭");
       }
     }, 3000).unref();
   }
 
-  const { port, token } = await startEngine();
   const info = await buildConnectionInfo({ version: ENGINE_VERSION, port, token });
 
   console.log("\n================ mc-bot-player 引擎已启动 ================");

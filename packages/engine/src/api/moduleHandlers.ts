@@ -2,6 +2,8 @@ import { Server as IOServer, Socket } from "socket.io";
 import { ClientCommands, ServerEvents, CommandAck, BotSettings } from "@mcbot/protocol";
 import { botManager } from "../botManager";
 import { Ack, ok, fail } from "./ack";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { isChatBlocked } = require("../utils/chatSafety"); // 命令安全过滤(API-1)：存储前即时拦截
 
 function persistSettings(id: string, mutate: (s: BotSettings) => void): void {
   const cfg = botManager.getConfigs().find((c) => c.id === id);
@@ -230,6 +232,7 @@ function dispatchAction(
       inst.returnToHuntArea?.();
       return ok();
     case "location:save": {
+      if (args.command && isChatBlocked(String(args.command))) return fail("到达指令被安全过滤拦截"); // API-1
       const res = inst.saveLocation?.(
         String(args.name || ""),
         args.command ? String(args.command) : undefined,
@@ -258,6 +261,7 @@ function dispatchAction(
       return res?.success ? ok() : fail(res?.error || "前往失败");
     }
     case "location:set-reach": {
+      if (args.command && isChatBlocked(String(args.command))) return fail("到达指令被安全过滤拦截"); // API-1
       const res = inst.setLocationReach?.(String(args.locationId), {
         command: args.command !== undefined ? String(args.command || "") : undefined,
         steps: Array.isArray(args.steps) ? args.steps : undefined,
@@ -275,10 +279,13 @@ function dispatchAction(
       return ok();
     case "container:scan":
       return ok(inst.scanContainers?.() ?? []);
-    case "move:goto":
-      inst.recorder?.note?.("goto", { x: Number(args.x), y: Number(args.y), z: Number(args.z) });
-      inst.move?.(Number(args.x), Number(args.y), Number(args.z));
+    case "move:goto": {
+      const gx = Number(args.x), gy = Number(args.y), gz = Number(args.z);
+      if (![gx, gy, gz].every(Number.isFinite)) return fail("坐标无效"); // API-11：挡 NaN 入寻路
+      inst.recorder?.note?.("goto", { x: gx, y: gy, z: gz });
+      inst.move?.(gx, gy, gz);
       return ok();
+    }
     case "move:stop":
       try {
         inst.bot?.pathfinder?.setGoal(null);
@@ -340,6 +347,8 @@ function dispatchAction(
     }
     case "behavior:setRespawnCmd": {
       const c = String(args.command || "").trim();
+      // API-1：存储前过安全过滤（即时反馈；执行时 BotInstance 也会再过一道）
+      if (c && isChatBlocked(c)) return fail("该指令被安全过滤拦截，未保存");
       persistSettings(id, (s) => {
         (s as any).respawnCommand = c || undefined;
       });
@@ -390,14 +399,22 @@ function dispatchAction(
         .catch((e: any) => fail(String(e?.message ?? e)));
     case "scheduler:add": {
       ensureSchedules(inst);
-      inst.config.settings.schedules.push(args.schedule);
+      const sched = args.schedule;
+      // API-9：形状校验——必须是普通对象，且总数有上限，避免垃圾对象入盘 / 无界增长
+      if (!sched || typeof sched !== "object" || Array.isArray(sched)) return fail("定时任务格式无效");
+      if (inst.config.settings.schedules.length >= 50) return fail("定时任务数量已达上限(50)");
+      inst.config.settings.schedules.push(sched);
       botManager.save();
       io.emit(ServerEvents.MODULE_STATE, { id, module: "scheduler", state: { schedules: inst.config.settings.schedules } });
       return ok(inst.config.settings.schedules);
     }
     case "scheduler:remove": {
       ensureSchedules(inst);
-      inst.config.settings.schedules.splice(Number(args.index), 1);
+      const idx = Number(args.index);
+      // API-9：索引边界——NaN/负数/越界会让 splice 静默删错条目或无效
+      if (!Number.isInteger(idx) || idx < 0 || idx >= inst.config.settings.schedules.length)
+        return fail("定时任务索引无效");
+      inst.config.settings.schedules.splice(idx, 1);
       botManager.save();
       io.emit(ServerEvents.MODULE_STATE, { id, module: "scheduler", state: { schedules: inst.config.settings.schedules } });
       return ok(inst.config.settings.schedules);

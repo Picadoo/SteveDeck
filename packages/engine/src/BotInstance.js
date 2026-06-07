@@ -5,6 +5,7 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const collectBlock = require('mineflayer-collectblock').plugin;
 const logger = require('./utils/logger');
 const { isFatalKick, extractText } = require('./utils/reconnectPolicy');
+const { isChatBlocked } = require('./utils/chatSafety');
 const { Recorder } = require('./modules/recorder');
 
 class BotInstance {
@@ -36,6 +37,8 @@ class BotInstance {
         this.reconnectTimer = null;
         this.statusTimer = null;
         this.isExplicitlyQuitting = false;
+        this.destroyed = false;        // stop()/deleteBot 后置位：init() 与延迟回调据此 bail，杜绝僵尸复活(CORE-1)
+        this._epoch = 0;               // 连接世代：每次 init() +1，延迟回调比对防陈旧命中新会话(CORE-4)
 
         // 消息缓冲防止刷屏
         this.msgBuffer = "";
@@ -83,7 +86,9 @@ class BotInstance {
 
     init() {
         this.cleanup();
+        if (this.destroyed) return;    // 已被显式停止/删除：拒绝任何（含陈旧定时器触发的）复活(CORE-1)
         this.isExplicitlyQuitting = false;
+        const epoch = ++this._epoch;   // 本次连接世代，供下方延迟回调（自动登录等）比对
 
         try {
             this.bot = mineflayer.createBot({
@@ -124,7 +129,7 @@ class BotInstance {
 
                 // 2. 模块挂载：逐个 try/catch 隔离——单个模块构造抛错不再连累后续模块与状态推送
                 const MODULE_NAMES = [
-                    'combat', 'fishing', 'scheduler', 'inventory', 'player_inventory',
+                    'combat', 'fishing', 'scheduler', 'player_inventory',
                     'interact', 'automine', 'trash_cleaner', 'auto_farm', 'mob_hunter',
                     'scoreboard', 'script_engine', 'fishing_hotspot', 'window_gui',
                     'custom_js', 'bot_viewer', 'message_monitor',
@@ -146,16 +151,16 @@ class BotInstance {
 
                 // 4. 自动登录：如果配置了密码，延迟2秒后自动发送 /login 命令
                 if (this.config.password) {
-                    setTimeout(() => {
+                    this.timers.push(setTimeout(() => {
                         try {
-                            if (this.bot) {
+                            if (this.bot && this._epoch === epoch) {
                                 this.bot.chat(`/login ${this.config.password}`);
                                 logger.info(`[${this.config.username}] 已自动发送登录命令`);
                             }
                         } catch (err) {
                             logger.error(`[${this.config.username}] 自动登录失败:`, err?.message || err);
                         }
-                    }, 2000); // 延迟2秒，给服务器加载时间
+                    }, 2000)); // 延迟2秒，给服务器加载时间（句柄入 timers，断线即取消）
                 }
 
                 // 应用寻路策略（默认无破坏模式，适配受保护地图）
@@ -201,8 +206,9 @@ class BotInstance {
 
         // 延迟激活会移动 bot 的模块：必须晚于自动 /login（2秒），否则在需要登录的服务器上动作会被冻结/拒绝
         const RESTORE_DELAY = 3500;
-        setTimeout(() => {
-            if (!this.bot || !this.bot.entity) return; // 延迟期间已断线则放弃
+        const epoch = this._epoch; // 捕获当前世代：延迟期间若断线重连(新世代)则不对新连接重复激活(CORE-4)
+        this.timers.push(setTimeout(() => {
+            if (this._epoch !== epoch || !this.bot || !this.bot.entity) return; // 已断线/换连接则放弃
             try {
                 this.combatConfig.enabled = settings.combat || false;
                 if (settings.fishing) { if (typeof this.setFishing === 'function') this.setFishing(true); else this.fishingActive = true; }
@@ -229,7 +235,7 @@ class BotInstance {
             } catch (err) {
                 logger.error(`[${this.config.username}] 模块恢复失败:`, err.message);
             }
-        }, RESTORE_DELAY);
+        }, RESTORE_DELAY));
     }
 
     handleReconnect() {
@@ -339,14 +345,20 @@ class BotInstance {
             });
             const respawnCmd = this.config.settings?.respawnCommand?.trim();
             if (respawnCmd) {
-                setTimeout(() => {
-                    if (!this.bot) return;
+                const epoch = this._epoch;
+                this.timers.push(setTimeout(() => {
+                    if (this._epoch !== epoch || !this.bot) return;
+                    // API-1：复活指令也过安全过滤（防有人把 /op 之类塞进 respawnCommand 绕过唯一防线）
+                    if (isChatBlocked(respawnCmd)) {
+                        logger.warn(`[${this.config.username}] 复活指令被安全过滤拦截，已跳过: ${respawnCmd}`);
+                        return;
+                    }
                     this.bot.chat(respawnCmd);
                     this.io.to(this._room).to('admin').emit('log', {
                         user: this.config.username, ownerId: this.config.ownerId,
                         msg: `复活后执行: ${respawnCmd}`, time: new Date().toLocaleTimeString()
                     });
-                }, 1500);
+                }, 1500));
             }
         });
     }
@@ -513,6 +525,7 @@ class BotInstance {
 
     stop() {
         this.isExplicitlyQuitting = true;
+        this.destroyed = true;          // 置销毁标记：任何延迟回调/陈旧定时器触发的 init() 都会 bail(CORE-1)
         this.cleanup();
         this.io.to(this._room).to('admin').emit('status', { user: this.config.username, ownerId: this.config.ownerId, online: false });
     }
@@ -520,11 +533,13 @@ class BotInstance {
     reconnect() {
         logger.info(`[${this.config.username}] 手动重连请求`);
         this.isExplicitlyQuitting = false;
+        this.destroyed = false;         // 手动重连：撤销 stop() 的销毁标记
         this._fatalReason = null;       // 手动重连：清除致命标记，重新尝试
         this.reconnectAttempts = 0;
         this.reconnectBackoff = 1;
         this.cleanup();
-        setTimeout(() => this.init(), 1000); // 延迟1秒后重连，避免立即连接
+        // 句柄入 this.reconnectTimer（cleanup 会清它）：随后的 stop()/delete 能取消，杜绝已停止的 bot 被复活(CORE-1)
+        this.reconnectTimer = setTimeout(() => this.init(), 1000);
     }
 
     // 地点管理功能
@@ -595,6 +610,10 @@ class BotInstance {
 
         // 其次：前置指令切图，延迟后再寻路（多世界）
         if (location.command) {
+            // API-1：地点 warp 指令也过安全过滤（与 respawn 同理，堵命令注入旁路）
+            if (isChatBlocked(location.command)) {
+                return { success: false, error: '到达指令被安全过滤拦截' };
+            }
             this.bot.chat(location.command);
             this.io.to(this._room).to('admin').emit('log', {
                 user: this.config.username,
@@ -602,9 +621,10 @@ class BotInstance {
                 msg: `切图指令: ${location.command}，2.5秒后寻路`,
                 time: new Date().toLocaleTimeString()
             });
-            setTimeout(() => {
-                if (this.bot?.entity) this.move(location.x, location.y, location.z);
-            }, 2500);
+            const epoch = this._epoch;
+            this.timers.push(setTimeout(() => {
+                if (this._epoch === epoch && this.bot?.entity) this.move(location.x, location.y, location.z);
+            }, 2500));
         } else {
             // 兜底：当前世界内寻路到坐标
             this.move(location.x, location.y, location.z);
