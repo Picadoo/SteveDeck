@@ -235,6 +235,12 @@ class BotInstance {
                     const items = (typeof tc === 'object' && Array.isArray(tc.items)) ? tc.items : [];
                     if (active) this.toggleTrashCleaner(true, items);
                 }
+                if (settings.autoUse && this.toggleAutoUse) {
+                    const au = settings.autoUse;
+                    const active = typeof au === 'object' ? !!au.active : !!au;
+                    const cfg = (typeof au === 'object' && Array.isArray(au.rules)) ? { rules: au.rules } : {};
+                    if (active) this.toggleAutoUse(true, cfg);
+                }
                 const activeScript = settings.activeScript;
                 if (activeScript && this._scripts && this._scripts[activeScript] && this._runningScript == null) {
                     logger.info(`[${this.config.username}] 断线恢复脚本: ${activeScript}`);

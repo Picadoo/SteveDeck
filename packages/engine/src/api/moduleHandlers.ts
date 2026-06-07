@@ -54,6 +54,13 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
             persistSettings(id, (s) => ((s as any).trash_cleaner = { active, items }));
             break;
           }
+          case "auto_use":
+            inst.toggleAutoUse?.(active, config || {});
+            persistSettings(
+              id,
+              (s) => ((s as any).autoUse = { active, rules: inst.autoUseTask?.rules || (config && config.rules) || [] }),
+            );
+            break;
           default:
             return ack?.(fail(`未知模块 ${module}`));
         }
@@ -80,6 +87,12 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
           persistSettings(id, (s) => (s.mobHunter = { active: !!inst.mobHunterTask?.active, config }));
         } else if (module === "automine") {
           persistSettings(id, (s) => (s.autoMine = { active: !!inst.autoMineTask?.active, config }));
+        } else if (module === "auto_use") {
+          if (config && Array.isArray(config.rules) && inst.autoUseTask) inst.autoUseTask.rules = config.rules;
+          persistSettings(
+            id,
+            (s) => ((s as any).autoUse = { active: !!inst.autoUseTask?.active, rules: inst.autoUseTask?.rules || [] }),
+          );
         }
         io.emit(ServerEvents.MODULE_STATE, { id, module, state: config });
         ack?.(ok());

@@ -73,6 +73,8 @@ export interface BotSettings {
   activeScript?: string | null;
   /** 通用消息监听规则（每服务器可定制的聊天正则统计） */
   monitorRules?: MonitorRule[];
+  /** 自动使用：条件→使用物品（玩家自配规则，auto-eat 为默认规则） */
+  autoUse?: { active: boolean; rules?: AutoUseRule[] };
   [key: string]: unknown;
 }
 
@@ -105,6 +107,20 @@ export interface MonitorRule {
   numberMode: boolean;
   /** 聚合方式：sum 累加 / count 计次 / last 取最新 / max 峰值 / rate 速率 */
   agg: "sum" | "count" | "last" | "max" | "rate";
+}
+
+/** 自动使用：一条「条件 → 使用物品」规则 */
+export interface AutoUseRule {
+  id: string;
+  enabled: boolean;
+  trigger:
+    | { type: "food_below"; value: number }
+    | { type: "health_below"; value: number }
+    | { type: "effect_missing"; effect: string; minRemainSec?: number }
+    | { type: "interval"; everySec: number };
+  match: { by: "name" | "category" | "displayName" | "slot"; value: string | number };
+  method: "air" | "sneak_air" | "block" | "entity";
+  cooldownSec?: number;
 }
 
 /** 按分类键细分的一项统计 */
