@@ -51,3 +51,63 @@ test('DEFAULT_RULES 含一条 auto-eat', () => {
   assert.ok(eat);
   assert.equal(eat.trigger.type, 'food_below');
 });
+
+test('auto_use 模块：低饱食 + 背包有面包 → 触发 equip+activateItem', async () => {
+  const factory = require('../src/modules/auto_use/index.js');
+  const calls = { equip: [], activate: 0, deactivate: 0, quickBar: null };
+  const breadStack = { name: 'bread', slot: 36, count: 3, displayName: 'Bread' };
+  const bot = {
+    username: 'tester', food: 8, health: 20, quickBarSlot: 0,
+    entity: { effects: {} },
+    heldItem: null,
+    inventory: { slots: { 36: breadStack }, items: () => [breadStack] },
+    equip: async (it, dest) => { calls.equip.push([it.name, dest]); },
+    activateItem: () => { calls.activate++; },
+    deactivateItem: () => { calls.deactivate++; },
+    setControlState: () => {},
+    setQuickBarSlot: (s) => { calls.quickBar = s; },
+  };
+  const inst = {
+    bot, io: { to: () => ({ to: () => ({ emit: () => {} }) }) },
+    config: { ownerId: 'o1' }, _room: 'user:o1',
+    timers: [], cleanupHooks: [],
+    bodyBusy: 0,
+    isBodyBusy() { return Date.now() < (this.bodyBusy || 0); },
+    setBodyBusy(ms) { this.bodyBusy = Date.now() + (ms || 0); },
+    getMcData: () => ({ foodsByName: { bread: { foodPoints: 5 } } }),
+    syncInventory: () => {},
+  };
+  factory(inst);                              // 安装模块
+  inst.toggleAutoUse(true, {});               // 开启（用默认 auto-eat 规则）
+  assert.ok(typeof inst.autoUseTask._evalTick === 'function');
+  await inst.autoUseTask._evalTick();         // 手动跑一轮评估
+  assert.deepEqual(calls.equip[0], ['bread', 'hand']); // 把面包拿到手
+  assert.equal(calls.activate, 1);                     // 右键使用了一次
+  assert.ok(inst.isBodyBusy());                        // 用东西时占用了身体
+  inst.toggleAutoUse(false);                           // 关闭
+  assert.equal(inst.autoUseTask.timer, null);          // 定时器已清
+});
+
+test('effect_missing：适配层把 mineflayer 数字键 effects 转成按名字键（修计划里的 bug）', () => {
+  const factory = require('../src/modules/auto_use/index.js');
+  // mineflayer entity.effects 按数字 id 键（speed=1），值含 id/duration
+  const bot = {
+    username: 't', food: 20, health: 20, quickBarSlot: 0,
+    entity: { effects: { 1: { id: 1, amplifier: 0, duration: 200 } } },
+    inventory: { slots: {}, items: () => [] },
+    equip: async () => {}, activateItem: () => {}, deactivateItem: () => {},
+    setControlState: () => {}, setQuickBarSlot: () => {},
+  };
+  const inst = {
+    bot, io: { to: () => ({ to: () => ({ emit: () => {} }) }) },
+    config: { ownerId: 'o' }, _room: 'r', timers: [], cleanupHooks: [],
+    bodyBusy: 0, isBodyBusy() { return false; }, setBodyBusy() {},
+    getMcData: () => ({ effects: { 1: { id: 1, name: 'Speed' } }, foodsByName: {} }),
+    syncInventory: () => {},
+  };
+  factory(inst);
+  const eff = inst.autoUseTask._effectsByName();
+  assert.ok(eff.speed, '数字键 1 应被映射为按名字键 speed');
+  assert.equal(eff.speed.duration, 200);
+});
+

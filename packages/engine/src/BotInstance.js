@@ -60,6 +60,9 @@ class BotInstance {
         // 录制：把玩家操作录成脚本步骤（一切皆步骤，与手搓/AI 同构）
         this.recorder = new Recorder(this);
 
+        // 身体协调软锁：某模块用东西(吃/喝/右键)时占用，到期前其它循环让位一拍。零优先级(见 auto_use)。
+        this.bodyBusy = 0;
+
         this.init();
     }
 
@@ -83,6 +86,11 @@ class BotInstance {
             /* ignore */
         }
     }
+
+    // 身体协调：当前是否有动作占用身体（用东西时为 true）。
+    isBodyBusy() { return Date.now() < (this.bodyBusy || 0); }
+    // 占用身体 ms 毫秒（auto_use 执行一次「使用」时调用）。
+    setBodyBusy(ms) { this.bodyBusy = Date.now() + (ms || 0); }
 
     init() {
         this.cleanup();
@@ -132,7 +140,7 @@ class BotInstance {
                     'combat', 'fishing', 'scheduler', 'player_inventory',
                     'interact', 'automine', 'trash_cleaner', 'auto_farm', 'mob_hunter',
                     'scoreboard', 'script_engine', 'fishing_hotspot', 'window_gui',
-                    'custom_js', 'bot_viewer', 'message_monitor',
+                    'custom_js', 'bot_viewer', 'message_monitor', 'auto_use',
                 ];
                 for (const name of MODULE_NAMES) {
                     try {
