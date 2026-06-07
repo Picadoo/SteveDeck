@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "@/store/useStore";
-import { connect, loadSaved, tryTauriAutoConnect, isTauri } from "@/lib/engine";
+import { connect, loadSaved, tryTauriAutoConnect } from "@/lib/engine";
 import { cn } from "@/lib/cn";
 import ConnectScreen from "@/features/connect/ConnectScreen";
 import Sidebar from "@/components/Sidebar";
@@ -29,11 +29,6 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
-
-  // 桌面无边框：给 body 加标记，配合透明窗口让根容器圆角露出桌面
-  useEffect(() => {
-    if (isTauri()) document.body.classList.add("tauri-frameless");
-  }, []);
 
   useEffect(() => {
     // 内置桌面版（Tauri 内）：先向 Rust 取本地引擎地址+令牌自动连接；
@@ -67,7 +62,7 @@ export default function App() {
   const showMain = status === "online" || status === "connecting";
 
   return (
-    <div className={cn("flex h-full w-full flex-col overflow-hidden", isTauri() && "rounded-[12px] bg-bg")}>
+    <div className="flex h-full w-full flex-col overflow-hidden">
       {/* 桌面无边框：连接屏显示细标题栏；主界面的窗口控制并入 TopBar */}
       {!showMain && <TitleBar />}
 

@@ -22,8 +22,10 @@ import {
   Store,
   PawPrint,
   Circle,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Card } from "@/components/ui/primitives";
+import { loadOverviewPrefs, saveOverviewPrefs, OVERVIEW_CARDS } from "@/lib/overviewPrefs";
 import { cmd } from "@/lib/engine";
 import McText from "@/components/McText";
 import { cnMob } from "@/lib/mobNames";
@@ -45,6 +47,13 @@ const fmtHunter = (s: any) =>
 export default function OverviewTab({ bot }: { bot: BotSummary }) {
   const [obs, setObs] = useState<Observation | null>(null);
   const [stats, setStats] = useState<Record<string, any>>({});
+  const [prefs, setPrefs] = useState(loadOverviewPrefs);
+  const [cfgOpen, setCfgOpen] = useState(false);
+  const show = (k: string) => !prefs.hidden[k];
+  const updatePrefs = (p: typeof prefs) => {
+    setPrefs(p);
+    saveOverviewPrefs(p);
+  };
 
   const m = bot.modules;
 
@@ -69,13 +78,13 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
       }
     };
     poll();
-    const t = setInterval(poll, 3500);
+    const t = setInterval(poll, Math.max(1, prefs.intervalSec) * 1000);
     return () => {
       cancelled = true;
       clearInterval(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bot.id, bot.online, m.combat, m.fishing, m.automine, m.autofarm, m.mobhunter, m.trashcleaner]);
+  }, [bot.id, bot.online, prefs.intervalSec, m.combat, m.fishing, m.automine, m.autofarm, m.mobhunter, m.trashcleaner]);
 
   if (!bot.online) {
     return (
@@ -117,104 +126,159 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
 
   return (
     <div className="space-y-4">
-      {/* ===== 当前活动（核心） ===== */}
-      <Card className="p-4">
-        <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
-          <Activity className="h-4 w-4 text-accent" /> 当前活动
-        </h3>
-        {idle ? (
-          <div className="flex items-center gap-2.5 rounded-lg bg-surface-2/50 px-3 py-3 text-muted">
-            <Coffee className="h-5 w-5 shrink-0" />
-            <div>
-              <div className="text-sm font-medium text-fg">空闲待命</div>
-              <div className="text-[11px]">未运行任何自动化模块或脚本</div>
+      {/* 配置：哪些卡片显示 + 刷新间隔 */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setCfgOpen((v) => !v)}
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" /> 配置
+        </button>
+      </div>
+      {cfgOpen && (
+        <Card className="space-y-3 p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">刷新间隔</span>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={1}
+                max={30}
+                step={0.5}
+                value={prefs.intervalSec}
+                onChange={(e) =>
+                  updatePrefs({ ...prefs, intervalSec: Math.min(30, Math.max(1, Number(e.target.value) || 3.5)) })
+                }
+                className="h-8 w-16 rounded-lg border border-border bg-surface px-2 text-sm"
+              />
+              <span className="text-xs text-muted">秒</span>
             </div>
           </div>
-        ) : (
-          <div className="space-y-1.5">
-            {acts.map((a) => (
-              <ActivityRow key={a.name} icon={a.icon} name={a.name} detail={a.detail} />
-            ))}
-            {script && (
-              <ActivityRow icon={FileCode2} name={`脚本：${script}`} detail="运行中" highlight />
-            )}
+          <div>
+            <div className="mb-1.5 text-xs font-medium text-muted">显示的卡片（点亮=显示）</div>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {OVERVIEW_CARDS.map((c) => {
+                const on = !prefs.hidden[c.key];
+                return (
+                  <button
+                    key={c.key}
+                    onClick={() => updatePrefs({ ...prefs, hidden: { ...prefs.hidden, [c.key]: on } })}
+                    className={cn(
+                      "rounded-lg border px-2 py-1 text-xs transition-colors",
+                      on ? "border-accent/40 bg-accent/10 text-accent" : "border-border text-muted hover:text-fg",
+                    )}
+                  >
+                    {c.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        )}
-      </Card>
+        </Card>
+      )}
+
+      {/* ===== 当前活动（核心） ===== */}
+      {show("activity") && (
+        <Card className="p-4">
+          <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
+            <Activity className="h-4 w-4 text-accent" /> 当前活动
+          </h3>
+          {idle ? (
+            <div className="flex items-center gap-2.5 rounded-lg bg-surface-2/50 px-3 py-3 text-muted">
+              <Coffee className="h-5 w-5 shrink-0" />
+              <div>
+                <div className="text-sm font-medium text-fg">空闲待命</div>
+                <div className="text-[11px]">未运行任何自动化模块或脚本</div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {acts.map((a) => (
+                <ActivityRow key={a.name} icon={a.icon} name={a.name} detail={a.detail} />
+              ))}
+              {script && <ActivityRow icon={FileCode2} name={`脚本：${script}`} detail="运行中" highlight />}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* ===== 最近动态 ===== */}
-      <Card className="p-4">
-        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">最近动态</h3>
-        {feed.length === 0 ? (
-          <p className="text-sm text-muted">暂无消息</p>
-        ) : (
-          <div className="space-y-1">
-            {feed.map((line, i) => (
-              <div key={i} className="truncate text-[12px] leading-relaxed text-muted" title={line}>
-                {line}
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+      {show("feed") && (
+        <Card className="p-4">
+          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">最近动态</h3>
+          {feed.length === 0 ? (
+            <p className="text-sm text-muted">暂无消息</p>
+          ) : (
+            <div className="space-y-1">
+              {feed.map((line, i) => (
+                <div key={i} className="truncate text-[12px] leading-relaxed text-muted" title={line}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* ===== 状态磁贴 ===== */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <StatTile
-          icon={<Heart className={cn("h-4 w-4", healthTone(pct))} />}
-          label="生命"
-          value={`${pct}%`}
-          sub={`${hp}/${max}`}
-          bar={pct}
-          barClass={healthBar(pct)}
-        />
-        <StatTile
-          icon={<Drumstick className="h-4 w-4 text-warning" />}
-          label="饱食"
-          value={`${self?.food ?? bot.food ?? "-"}`}
-          sub={`${foodPct}%`}
-          bar={foodPct}
-          barClass="bg-warning"
-        />
-        <StatTile
-          icon={<Star className="h-4 w-4 text-accent" />}
-          label="经验等级"
-          value={`${self?.xpLevel ?? bot.level ?? 0}`}
-        />
-        <StatTile
-          icon={<Clock className="h-4 w-4 text-success" />}
-          label="在线时长"
-          value={fmtUptime(bot.uptime)}
-        />
-      </div>
+      {show("stats") && (
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <StatTile
+            icon={<Heart className={cn("h-4 w-4", healthTone(pct))} />}
+            label="生命"
+            value={`${pct}%`}
+            sub={`${hp}/${max}`}
+            bar={pct}
+            barClass={healthBar(pct)}
+          />
+          <StatTile
+            icon={<Drumstick className="h-4 w-4 text-warning" />}
+            label="饱食"
+            value={`${self?.food ?? bot.food ?? "-"}`}
+            sub={`${foodPct}%`}
+            bar={foodPct}
+            barClass="bg-warning"
+          />
+          <StatTile
+            icon={<Star className="h-4 w-4 text-accent" />}
+            label="经验等级"
+            value={`${self?.xpLevel ?? bot.level ?? 0}`}
+          />
+          <StatTile icon={<Clock className="h-4 w-4 text-success" />} label="在线时长" value={fmtUptime(bot.uptime)} />
+        </div>
+      )}
 
       {/* 位置 */}
-      <Card className="flex items-center gap-2 p-3 text-sm">
-        <MapPin className="h-4 w-4 shrink-0 text-success" />
-        <span className="text-muted">坐标</span>
-        <span className="font-mono font-medium">
-          {self?.pos
-            ? `${self.pos.x}, ${self.pos.y}, ${self.pos.z}`
-            : bot.pos
-              ? `${bot.pos.x}, ${bot.pos.y}, ${bot.pos.z}`
-              : "—"}
-        </span>
-      </Card>
+      {show("pos") && (
+        <Card className="flex items-center gap-2 p-3 text-sm">
+          <MapPin className="h-4 w-4 shrink-0 text-success" />
+          <span className="text-muted">坐标</span>
+          <span className="font-mono font-medium">
+            {self?.pos
+              ? `${self.pos.x}, ${self.pos.y}, ${self.pos.z}`
+              : bot.pos
+                ? `${bot.pos.x}, ${bot.pos.y}, ${bot.pos.z}`
+                : "—"}
+          </span>
+        </Card>
+      )}
 
       {/* 附近 */}
-      <Card className="p-4">
-        <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
-          <Users className="h-4 w-4 text-accent" /> 附近
-          <span className="ml-1 text-xs font-normal text-muted">
-            {obs?.nearbyPlayers?.length ?? 0} 玩家 · {obs?.nearbyEntities?.length ?? 0} 生物
-            {hostileCount > 0 && <span className="ml-1 text-danger">· {hostileCount} 敌对</span>}
-          </span>
-        </h3>
-        <NearbyList obs={obs} />
-      </Card>
+      {show("nearby") && (
+        <Card className="p-4">
+          <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
+            <Users className="h-4 w-4 text-accent" /> 附近
+            <span className="ml-1 text-xs font-normal text-muted">
+              {obs?.nearbyPlayers?.length ?? 0} 玩家 · {obs?.nearbyEntities?.length ?? 0} 生物
+              {hostileCount > 0 && <span className="ml-1 text-danger">· {hostileCount} 敌对</span>}
+            </span>
+          </h3>
+          <NearbyList obs={obs} />
+        </Card>
+      )}
 
       {/* Boss 血条（独立一卡，有才显示） */}
-      {obs?.serverText && obs.serverText.bossBars.length > 0 && (
+      {show("boss") && obs?.serverText && obs.serverText.bossBars.length > 0 && (
         <Card className="p-4">
           <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
             <Swords className="h-4 w-4 text-danger" /> Boss 血条
@@ -223,7 +287,9 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
             {obs.serverText.bossBars.map((b, i) => (
               <div key={i}>
                 <div className="flex justify-between text-xs">
-                  <span className="truncate pr-2 font-medium">{b.title}</span>
+                  <span className="truncate pr-2 font-medium">
+                    <McText text={b.title || ""} />
+                  </span>
                   {b.progress != null && <span className="text-muted">{Math.round(b.progress * 100)}%</span>}
                 </div>
                 {b.progress != null && (
@@ -241,7 +307,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
       )}
 
       {/* Actionbar（物品栏上方文本，PAPI 实时数据常在此；有才显示） */}
-      {obs?.serverText?.actionBar && (
+      {show("actionbar") && obs?.serverText?.actionBar && (
         <Card className="p-4">
           <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
             <Activity className="h-4 w-4 text-accent" /> 状态栏 Actionbar
@@ -250,8 +316,9 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
         </Card>
       )}
 
-      {/* Tab 列表：表头/表尾 + 在线玩家展示名（含 PAPI 前后缀；有才显示） */}
-      {obs?.serverText &&
+      {/* Tab 列表：表头/表尾 + 在线玩家展示名（含 PAPI 称号/颜色；有才显示） */}
+      {show("tablist") &&
+        obs?.serverText &&
         (obs.serverText.tablistHeader ||
           obs.serverText.tablistFooter ||
           (obs.playersDisplay?.length ?? 0) > 0) && (
@@ -261,12 +328,12 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
             </h3>
             {obs.serverText.tablistHeader && (
               <p className="whitespace-pre-line text-xs leading-relaxed text-muted">
-                {obs.serverText.tablistHeader}
+                <McText text={obs.serverText.tablistHeader} />
               </p>
             )}
             {obs.serverText.tablistFooter && (
               <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted">
-                {obs.serverText.tablistFooter}
+                <McText text={obs.serverText.tablistFooter} />
               </p>
             )}
             {(obs.playersDisplay?.length ?? 0) > 0 && (
@@ -281,7 +348,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
                       className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px]"
                       title={p.name ?? undefined}
                     >
-                      {p.display}
+                      <McText text={p.display} />
                     </span>
                   ))}
                 </div>
@@ -291,7 +358,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
         )}
 
       {/* 计分板（彩色还原；不强行分行/截断；分值为 0 的隐藏，避免噪声） */}
-      {sbItems.length > 0 && (
+      {show("scoreboard") && sbItems.length > 0 && (
         <Card className="p-4">
           <h3 className="mb-2 text-sm font-semibold">
             <McText text={sb?.sidebarTitleRaw || sb?.sidebarTitle || "计分板"} />
@@ -305,7 +372,6 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
           </div>
         </Card>
       )}
-
     </div>
   );
 }

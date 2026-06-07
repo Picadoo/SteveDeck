@@ -81,6 +81,25 @@ function txt(v: any): string | null {
   return null;
 }
 
+/** 同 txt，但保留 §/§x 颜色码（供前端 McText 彩色渲染，如 Tab 称号色）；空则 null */
+function txtC(v: any): string | null {
+  if (v == null) return null;
+  try {
+    if (typeof v === "string") return v.trim() || null;
+    if (typeof v.toMotd === "function") {
+      const s = v.toMotd();
+      if (s) return String(s).trim() || null;
+    }
+    if (typeof v.toString === "function") {
+      const s = v.toString();
+      if (s && s !== "[object Object]") return s.trim() || null;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /** 取实体的自定义名牌（去色码），无则 null */
 function entityCustomName(e: any): string | null {
   // 名牌：1.12.2 在 metadata[2]（mineflayer 不一定填 customName），其次 customName，最后 displayName 对象
@@ -300,15 +319,15 @@ export function buildObservation(id: string): any {
     const tl = bot.tablist || {};
     const bars = Object.values(bot.bossBars || {})
       .map((b: any) => ({
-        title: txt(b?.title),
+        title: txtC(b?.title),
         progress: typeof b?.health === "number" ? b.health : typeof b?.progress === "number" ? b.progress : null,
       }))
       .filter((b: any) => b.title);
     const ab = inst._actionBar && Date.now() - inst._actionBar.at < 15000 ? inst._actionBar.text : null;
     obs.serverText = {
       world: bot.game?.dimension ?? null,
-      tablistHeader: txt(tl.header),
-      tablistFooter: txt(tl.footer),
+      tablistHeader: txtC(tl.header),
+      tablistFooter: txtC(tl.footer),
       bossBars: bars,
       actionBar: ab || null,
     };
@@ -319,7 +338,7 @@ export function buildObservation(id: string): any {
   // 玩家 Tab 展示名（含 PAPI 前后缀，与原名不同才收录）
   try {
     obs.playersDisplay = Object.values(bot.players || {})
-      .map((p: any) => ({ name: p?.username, display: txt(p?.displayName) }))
+      .map((p: any) => ({ name: p?.username, display: txtC(p?.displayName) }))
       .filter((p: any) => p.name && p.display && p.display !== p.name)
       .slice(0, 12);
   } catch {
