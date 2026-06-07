@@ -187,7 +187,7 @@ export default function BotPanel() {
       </div>
 
       {/* 标签栏 */}
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4">
+      <div className="flex shrink-0 gap-1 overflow-x-auto overflow-y-hidden border-b border-border px-4 [&::-webkit-scrollbar]:hidden">
         <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>概览</TabButton>
         <TabButton active={tab === "live"} onClick={() => setTab("live")}>交互</TabButton>
         <TabButton active={tab === "modules"} onClick={() => setTab("modules")}>模块</TabButton>
