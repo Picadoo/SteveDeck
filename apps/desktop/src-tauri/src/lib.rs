@@ -67,18 +67,24 @@ fn get_engine_config(app: tauri::AppHandle) -> serde_json::Value {
 #[cfg(desktop)]
 #[tauri::command]
 fn set_engine_config(app: tauri::AppHandle, mode: String, url: String, token: String) -> Result<(), String> {
+    // DESK-4：mode 白名单校验，避免大小写/拼写错误（"Remote"）静默回退内置而无反馈
+    if mode != "builtin" && mode != "remote" {
+        return Err(format!("无效的引擎模式: {}", mode));
+    }
     let p = engine_config_path(&app).ok_or_else(|| "无法定位配置目录".to_string())?;
     if let Some(dir) = p.parent() {
-        let _ = std::fs::create_dir_all(dir);
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?; // 不再静默忽略目录创建失败
     }
     let v = serde_json::json!({ "mode": mode, "url": url, "token": token });
-    std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap_or_default()).map_err(|e| e.to_string())
+    let body = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?; // 序列化失败上抛，不写空串
+    std::fs::write(&p, body).map_err(|e| e.to_string())
 }
 
 // 重启应用（切换引擎来源后调用以生效）
 #[cfg(desktop)]
 #[tauri::command]
 fn restart_app(app: tauri::AppHandle) {
+    kill_engine(&app); // DESK-1：app.restart() 不触发 RunEvent::Exit，先显式杀内置引擎，避免旧 node 残留 + 端口竞争
     app.restart();
 }
 
@@ -88,6 +94,8 @@ fn pick_free_port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.local_addr())
         .map(|a| a.port())
+        // DESK-7：仅当绑 :0 失败(极罕见)时的兜底端口；正常路径用系统分配的随机端口并经 PORT 传给引擎。
+        // 引擎自身默认端口是协议常量 DEFAULT_ENGINE_PORT=8723（此处 8137 与之无关、无需对齐）。
         .unwrap_or(8137)
 }
 
@@ -208,8 +216,7 @@ pub fn run() {
                 let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&show, &autostart, &quit])?;
 
-                TrayIconBuilder::with_id("main")
-                    .icon(app.default_window_icon().unwrap().clone())
+                let mut tray = TrayIconBuilder::with_id("main")
                     .tooltip("mc-bot-player")
                     .menu(&menu)
                     .show_menu_on_left_click(false)
@@ -244,8 +251,12 @@ pub fn run() {
                                 let _ = w.set_focus();
                             }
                         }
-                    })
-                    .build(app)?;
+                    });
+                // DESK-5：图标缺失（打包回归/损坏）时优雅降级，不在启动路径 unwrap panic（配 panic=abort 会崩在启动）
+                if let Some(icon) = app.default_window_icon() {
+                    tray = tray.icon(icon.clone());
+                }
+                tray.build(app)?;
                 Ok(())
             })
             .on_window_event(|window, event| {
