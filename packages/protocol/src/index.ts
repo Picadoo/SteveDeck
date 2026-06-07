@@ -57,6 +57,12 @@ export interface BotSettings {
   reconnectDelay?: number;
   /** 最大重连次数，0 或未设 = 无限（7×24 挂机默认无限；ban/白名单等不可恢复断开仍自动停）。 */
   maxReconnectAttempts?: number;
+  /** Forge/FML 模组服（如龙核 DragonCore 服）：开启后用 FML 握手 + 自动 ping 探测模组连接，绕过 "requires FML/Forge" 踢出。 */
+  forge?: boolean;
+  /** Forge 模组列表（modid+version）；通常自动探测，手填作为兜底。 */
+  forgeMods?: { modid: string; version: string }[];
+  /** 直接坐标包移动：模组服里 mineflayer 物理算不动走不了路时开启，改为直接发位置包（像 MCC）。 */
+  rawMove?: boolean;
   viewDistance?: "far" | "normal" | "short" | "tiny" | number;
   /** 寻路是否允许破坏方块。默认 false（多数服务器地图受保护，挖不动会卡路径）。 */
   allowDig?: boolean;
@@ -253,7 +259,7 @@ export interface BotStatus extends BotSummary {
 export interface LogLine {
   time: string;
   text: string;
-  level?: "info" | "warn" | "error" | "chat";
+  level?: "info" | "warn" | "error" | "chat" | "actionbar";
 }
 
 export interface ConnectionInfo {

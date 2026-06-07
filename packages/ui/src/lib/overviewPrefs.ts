@@ -12,7 +12,6 @@ export const OVERVIEW_CARDS: { key: string; label: string }[] = [
   { key: "pos", label: "坐标" },
   { key: "nearby", label: "附近" },
   { key: "boss", label: "Boss 血条" },
-  { key: "actionbar", label: "Actionbar" },
   { key: "tablist", label: "Tab 列表" },
   { key: "scoreboard", label: "计分板" },
 ];

@@ -307,15 +307,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
         </Card>
       )}
 
-      {/* Actionbar（物品栏上方文本，PAPI 实时数据常在此；有才显示） */}
-      {show("actionbar") && obs?.serverText?.actionBar && (
-        <Card className="p-4">
-          <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
-            <Activity className="h-4 w-4 text-accent" /> 状态栏 Actionbar
-          </h3>
-          <p className="whitespace-pre-line text-xs leading-relaxed text-fg">{obs.serverText.actionBar}</p>
-        </Card>
-      )}
+      {/* Actionbar 已挪到「日志」页（和聊天并排显示），概览不再展示 */}
 
       {/* Tab 列表：表头/表尾 + 在线玩家展示名（含 PAPI 称号/颜色；有才显示） */}
       {show("tablist") &&

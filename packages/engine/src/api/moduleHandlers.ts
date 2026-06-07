@@ -303,6 +303,7 @@ function dispatchAction(
       try {
         inst.bot?.pathfinder?.setGoal(null);
         inst.bot?.clearControlStates?.();
+        inst.stopRawMove?.(); // 直接移动模式：停掉坐标包循环、恢复物理
       } catch {
         /* ignore */
       }
@@ -316,6 +317,15 @@ function dispatchAction(
         b.pathfinder?.setGoal(null); // 手动控制时停掉寻路，避免互相打架
       } catch {
         /* ignore */
+      }
+      // 模组服：物理算不动 → 走「直接坐标包移动」（同一套 UI 控制，引擎侧透明切换）
+      if (inst.rawMoveEnabled) {
+        try {
+          inst.setRawControl(args);
+        } catch {
+          /* ignore */
+        }
+        return ok();
       }
       for (const s of ["forward", "back", "left", "right", "jump", "sprint", "sneak"]) {
         if (s in args) {
@@ -338,6 +348,34 @@ function dispatchAction(
       );
       try {
         b.look(yaw, pitch, false);
+      } catch {
+        /* ignore */
+      }
+      return ok();
+    }
+
+    // ===== 模拟按键：一次性动作（攻击/使用/换手/丢弃/选快捷栏）。无头 bot 发对应封包，服务器可感知。 =====
+    case "move:tap": {
+      const b = inst.bot;
+      if (!b?.entity) return fail("机器人离线");
+      const act = String(args.action || "");
+      try {
+        if (act === "attack") {
+          b.swingArm?.("right"); // 左键挥手（攻击动画/命中判定由服务器处理）
+        } else if (act === "use") {
+          b.activateItem?.(); // 右键使用手持物
+          setTimeout(() => { try { b.deactivateItem?.(); } catch { /* ignore */ } }, 120);
+        } else if (act === "swap") {
+          if (typeof b.swapHandItems === "function") b.swapHandItems().catch(() => {}); // F 换手
+        } else if (act === "drop") {
+          const it = b.heldItem;
+          if (it) b.toss(it.type, it.metadata ?? null, 1).catch(() => {}); // Q 丢弃一个
+        } else if (act === "slot") {
+          const n = Math.max(0, Math.min(8, Math.floor(Number(args.slot) || 0)));
+          b.setQuickBarSlot?.(n); // 选快捷栏 0-8
+        } else {
+          return fail("未知动作");
+        }
       } catch {
         /* ignore */
       }

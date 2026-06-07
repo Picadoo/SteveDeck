@@ -25,8 +25,10 @@ export default function Console({ botId }: { botId: string }) {
   const terms = needle.split(/\s+/).filter(Boolean);
   const incl = terms.filter((t) => !t.startsWith("-"));
   const excl = terms.filter((t) => t.startsWith("-") && t.length > 1).map((t) => t.slice(1));
+  // actionbar 与聊天同归「消息」类（一起显示），「操作」里排除它俩
+  const isMsg = (lv?: string) => lv === "chat" || lv === "actionbar";
   const byLevel = logs.filter(
-    (l) => !(level === "chat" && l.level !== "chat") && !(level === "op" && l.level === "chat"),
+    (l) => !(level === "chat" && !isMsg(l.level)) && !(level === "op" && isMsg(l.level)),
   );
   const shown = byLevel.filter((l) => {
     if (!terms.length) return true;
@@ -110,6 +112,9 @@ export default function Console({ botId }: { botId: string }) {
               )}
             >
               <span className="mr-2 select-none text-muted">{l.time}</span>
+              {l.level === "actionbar" && (
+                <span className="mr-1 rounded bg-accent/15 px-1 text-[10px] text-accent">栏</span>
+              )}
               <McText text={l.text} />
             </div>
           ))

@@ -115,12 +115,14 @@ class BotManager {
     if (event === "log") {
       const cfg = this.findById(payload?._bid) ?? this.findByUsername(payload?.user);
       const isChat = !!payload?.chat;
-      if (cfg) this.pushLine(isChat ? this.recentChat : this.recentOps, cfg.id, payload?.msg);
+      const isActionBar = !!payload?.actionbar;
+      // actionbar 与聊天同归「消息」类（recentChat），不算操作日志
+      if (cfg) this.pushLine(isChat || isActionBar ? this.recentChat : this.recentOps, cfg.id, payload?.msg);
       return {
         event: ServerEvents.BOT_LOG,
         payload: {
           id: cfg?.id ?? null,
-          line: { time: payload?.time, text: payload?.msg, level: isChat ? "chat" : "info" },
+          line: { time: payload?.time, text: payload?.msg, level: isActionBar ? "actionbar" : isChat ? "chat" : "info" },
         },
       };
     }

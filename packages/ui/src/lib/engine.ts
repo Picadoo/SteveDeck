@@ -429,6 +429,9 @@ export const cmd = {
     turn: (id: string, dyaw: number, dpitch = 0) =>
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "move", action: "turn", args: { dyaw, dpitch } }),
     stop: (id: string) => emitAck(ClientCommands.MODULE_ACTION, { id, module: "move", action: "stop" }),
+    // 模拟按键的一次性动作：攻击/使用/换手/丢弃/选快捷栏
+    tap: (id: string, action: "attack" | "use" | "swap" | "drop" | "slot", slot?: number) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "move", action: "tap", args: { action, slot } }),
   },
   behavior: {
     get: (id: string) =>

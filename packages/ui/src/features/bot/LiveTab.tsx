@@ -7,6 +7,7 @@ import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import Viewer from "./Viewer";
 import ViewerModal from "./ViewerModal";
+import SimKeys from "./SimKeys";
 import type { BotSummary } from "@mcbot/protocol";
 
 type Npc = {
@@ -85,6 +86,9 @@ export default function LiveTab({ bot }: { bot: BotSummary }) {
           </Button>
         </div>
       </Card>
+
+      {/* 模拟按键：攻击/使用/换手/丢弃/选栏 + 移动姿态（无头 bot 发真封包，手机可点） */}
+      <SimKeys bot={bot} />
 
       {/* NPC / 生物 */}
       <Card className="p-4">

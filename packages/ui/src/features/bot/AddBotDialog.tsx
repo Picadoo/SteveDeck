@@ -41,6 +41,8 @@ export default function AddBotDialog({
   const pushToast = useStore((s) => s.pushToast);
   const [form, setForm] = useState({ ...EMPTY });
   const [autoReconnect, setAutoReconnect] = useState(true);
+  const [forge, setForge] = useState(false);
+  const [rawMove, setRawMove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!editId;
@@ -60,9 +62,13 @@ export default function AddBotDialog({
         reconnectDelay: String(s.reconnectDelay ?? 5),
       });
       setAutoReconnect(s.autoReconnect !== false); // 未设/true → 开
+      setForge(!!s.forge);
+      setRawMove(!!s.rawMove);
     } else {
       setForm({ ...EMPTY });
       setAutoReconnect(true);
+      setForge(false);
+      setRawMove(false);
     }
     setErr(null);
   }, [open, initial]);
@@ -91,6 +97,8 @@ export default function AddBotDialog({
         autoReconnect,
         maxReconnectAttempts: Math.max(0, Number(form.maxReconnectAttempts) || 0),
         reconnectDelay: Math.max(1, Number(form.reconnectDelay) || 5),
+        forge,
+        rawMove,
       } as BotSettings,
     };
     const res = isEdit ? await cmd.updateBot(editId!, payload) : await cmd.addBot(payload);
@@ -99,6 +107,8 @@ export default function AddBotDialog({
       if (!isEdit) {
         setForm({ ...EMPTY });
         setAutoReconnect(true);
+        setForge(false);
+        setRawMove(false);
       }
       onClose();
       pushToast(isEdit ? "已保存，正在重连…" : "机器人已添加，正在连接…", "success");
@@ -162,6 +172,29 @@ export default function AddBotDialog({
               </Field>
             </div>
           )}
+        </div>
+
+        {/* Forge 模组服 */}
+        <div className="rounded-lg border border-border/60 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Forge 模组服</div>
+              <p className="text-[11px] leading-relaxed text-muted">
+                服务器要求 Forge/FML 客户端（如龙核 DragonCore 服，登录被「requires FML/Forge」踢出）才开。开启后自动用 FML
+                握手 + ping 探测模组连接。注意：能进服做<b>原版操作</b>（挂机/走动/聊天/普通容器），但模组渲染的 GUI（R/P 菜单）仍用不了。
+              </p>
+            </div>
+            <Switch checked={forge} onChange={setForge} />
+          </div>
+          <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-border/40 pt-2.5">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">直接移动（走不动时开）</div>
+              <p className="text-[11px] leading-relaxed text-muted">
+                模组服里物理算不动、bot 走不了路时开启：改为直接发坐标包让它走（和 MCC 一个原理），不依赖物理。普通服不用开。
+              </p>
+            </div>
+            <Switch checked={rawMove} onChange={setRawMove} />
+          </div>
         </div>
 
         {err && <div className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{err}</div>}

@@ -8,6 +8,17 @@ const { isFatalKick, extractText } = require('./utils/reconnectPolicy');
 const { isChatBlocked } = require('./utils/chatSafety');
 const { Recorder } = require('./modules/recorder');
 
+// pnpm 下引擎不能直接 require 传递依赖；借 mineflayer 的解析路径拿到 minecraft-protocol（用其 ping 探测 Forge 模组表）。
+let _mcp = null;
+function getMcp() {
+    if (_mcp !== null) return _mcp || null;
+    try {
+        const mfDir = path.dirname(require.resolve('mineflayer'));
+        _mcp = require(require.resolve('minecraft-protocol', { paths: [mfDir] }));
+    } catch (e) { _mcp = false; }
+    return _mcp || null;
+}
+
 class BotInstance {
     constructor(config, io, saveCallback, loadGlobalScripts) {
         this.config = config;
@@ -92,11 +103,122 @@ class BotInstance {
     // 占用身体 ms 毫秒（auto_use 执行一次「使用」时调用）。
     setBodyBusy(ms) { this.bodyBusy = Date.now() + (ms || 0); }
 
-    init() {
+    // 推一条 per-bot 日志到前端「日志」tab：连接生命周期/错误都走这里，
+    // 避免用户连接时一片空白、不知道进没进服务器（用户明确反馈过的痛点）。
+    uiLog(msg) {
+        try {
+            this.io.to(this._room).to('admin').emit('log', {
+                user: this.config.username, ownerId: this.config.ownerId,
+                msg, time: new Date().toLocaleTimeString()
+            });
+        } catch (e) { /* ignore */ }
+    }
+
+    // ===== 直接坐标包移动（模组服）=====
+    // mineflayer 走路靠客户端物理模拟，需要"看懂"周围方块自己算；模组服（模组方块 / varint 丢的区块）算不动 → 走不了。
+    // 这里改成像 MinecraftConsoleClient 那样：关掉物理，直接发 position 包告诉服务器"我到这了"，不依赖物理。
+    // 仅 settings.rawMove 开启时生效（通用设置，不针对某个服）。
+    get rawMoveEnabled() { return !!this.config?.settings?.rawMove; }
+
+    setRawControl(states) {
+        if (!this._raw) this._raw = { forward: false, back: false, left: false, right: false, sprint: false, sneak: false };
+        for (const k of ['forward', 'back', 'left', 'right', 'sprint', 'sneak']) {
+            if (k in states) this._raw[k] = !!states[k];
+        }
+        this._startRawLoop();
+    }
+
+    _startRawLoop() {
+        if (this._rawTimer || !this.bot || !this.bot.entity) return;
+        const bot = this.bot;
+        // 诊断：开始移动时打印 bot 眼里的世界状态，确认到底是物理/区块问题还是别的
+        try {
+            const p = bot.entity.position;
+            const below = bot.blockAt(p.offset(0, -1, 0));
+            const yaw = bot.entity.yaw;
+            const fwd = bot.blockAt(p.offset(-Math.sin(yaw), 0, Math.cos(yaw)));
+            const m = `[诊断] 脚下=${below ? below.name : '未加载/空'} 前方=${fwd ? fwd.name : '未加载/空'} onGround=${bot.entity.onGround} physics=${bot.physicsEnabled}`;
+            logger.info(`[${this.config.username}] ${m}`);
+            this.uiLog(m);
+        } catch (e) { /* ignore */ }
+        try { bot.physicsEnabled = false; } catch (e) { /* ignore */ }
+        this._rawTimer = setInterval(() => this._rawTick(), 100);
+        this.timers.push(this._rawTimer);
+        this.uiLog('已切换为直接移动（模组服）');
+    }
+
+    stopRawMove() {
+        if (this._rawTimer) { clearInterval(this._rawTimer); this._rawTimer = null; }
+        this._raw = null;
+        try { if (this.bot) this.bot.physicsEnabled = true; } catch (e) { /* ignore */ }
+    }
+
+    _rawTick() {
+        const bot = this.bot;
+        if (!bot || !bot.entity) { return; }
+        const c = this._raw || {};
+        const yaw = bot.entity.yaw;
+        const sinY = Math.sin(yaw), cosY = Math.cos(yaw);
+        let mx = 0, mz = 0;
+        if (c.forward) { mx += -sinY; mz += cosY; }
+        if (c.back) { mx += sinY; mz += -cosY; }
+        if (c.left) { mx += cosY; mz += sinY; }
+        if (c.right) { mx += -cosY; mz += -sinY; }
+        const p = bot.entity.position;
+        if (mx !== 0 || mz !== 0) {
+            const len = Math.hypot(mx, mz) || 1;
+            const speed = (c.sprint ? 5.4 : 4.3) * 0.1; // 每 100ms 步长（米）
+            p.x += (mx / len) * speed;
+            p.z += (mz / len) * speed;
+            // Y 保持当前值（平地够用；复杂地形 v1 不处理高度）
+        }
+        try {
+            bot._client.write('position', { x: p.x, y: p.y, z: p.z, onGround: true });
+        } catch (e) { /* ignore */ }
+    }
+
+    // Forge 模组服：ping 一下服务器，从状态响应里拿到它的模组表（含正确 modid+version），
+    // 用于 FML 握手时声明「我有这些模组」骗过校验。任何 Forge 服都能自动适配，无需手填。失败返回 null。
+    pingForgeMods() {
+        return new Promise((resolve) => {
+            let done = false;
+            const finish = (v) => { if (!done) { done = true; resolve(v); } };
+            const mc = getMcp();
+            if (!mc || typeof mc.ping !== 'function') return finish(null);
+            try {
+                mc.ping({ host: this.config.host, port: this.config.port || 25565, version: this.config.version || '1.12.2' }, (err, res) => {
+                    if (err || !res) return finish(null);
+                    let list = null;
+                    if (res.modinfo && Array.isArray(res.modinfo.modList)) {
+                        // 1.7–1.12 FML：modinfo.modList = [{modid, version}]
+                        list = res.modinfo.modList.map((m) => ({ modid: m.modid, version: m.version }));
+                    } else if (res.forgeData && Array.isArray(res.forgeData.mods)) {
+                        // 1.13+ Forge：forgeData.mods = [{modId, modmarker}]
+                        list = res.forgeData.mods.map((m) => ({ modid: m.modId || m.modid, version: m.modmarker || m.version || '' }));
+                    }
+                    finish(list && list.length ? list : null);
+                });
+                setTimeout(() => finish(null), 8000); // 超时兜底
+            } catch (e) { finish(null); }
+        });
+    }
+
+    async init() {
         this.cleanup();
         if (this.destroyed) return;    // 已被显式停止/删除：拒绝任何（含陈旧定时器触发的）复活(CORE-1)
         this.isExplicitlyQuitting = false;
         const epoch = ++this._epoch;   // 本次连接世代，供下方延迟回调（自动登录等）比对
+        this.uiLog(`正在连接 ${this.config.host}:${this.config.port || 25565}（版本 ${this.config.version || '1.12.2'}）…`);
+
+        // Forge 模组服：首次连接前 ping 探测服务器模组表（正确 modid），缓存供 ModList 声明。
+        // 任何 1.12.2 Forge 服开启「Forge 模式」即自动适配，无需手填模组。
+        if (this.config.settings?.forge && this._forgeMods === undefined) {
+            this.uiLog('Forge：正在探测服务器模组…');
+            const detected = await this.pingForgeMods();
+            if (this._epoch !== epoch || this.destroyed) return; // ping 期间被停止/重连 → 放弃本次
+            this._forgeMods = (detected && detected.length) ? detected : (Array.isArray(this.config.settings?.forgeMods) ? this.config.settings.forgeMods : []);
+            this.uiLog(`Forge：模组 ${this._forgeMods.length} 个（${detected ? '自动探测 ✓' : '配置/空'}）`);
+        }
 
         try {
             this.bot = mineflayer.createBot({
@@ -109,6 +231,58 @@ class BotInstance {
                 viewDistance: this.config.settings?.viewDistance || 'short',
                 hideErrors: true
             });
+
+            // Forge/FML 模组服（龙核 DragonCore 等）：在握手 serverHost 后附加 \0FML\0 标记，
+            // 让服务器把我们当 Forge 客户端，否则登录阶段直接被 "requires FML/Forge" 踢。
+            // 仅对开启 forge 的 bot 生效；并监听 FML|HS 握手消息（先诊断，看走到哪一步）。
+            if (this.config.settings?.forge && this.bot._client) {
+                const client = this.bot._client;
+                client.tagHost = '\0FML\0';
+                logger.info(`[${this.config.username}] 已启用 Forge 模式（FML 握手）`);
+                this.uiLog('已启用 Forge 模式（FML 握手）');
+
+                // FML1 握手状态机（1.7–1.12）。判别符为有符号字节：
+                //   ServerHello=0 / ClientHello=1 / ModList=2 / RegistryData=3 / HandshakeAck=-1 / HandshakeReset=-2
+                // Ack 的 phase：WAITINGSERVERDATA=2 / WAITINGSERVERCOMPLETE=3 / PENDINGCOMPLETE=4 / COMPLETE=5 / START=1
+                const writeFML = (buf) => { try { client.write('custom_payload', { channel: 'FML|HS', data: buf }); } catch (e) { /* ignore */ } };
+                const ack = (phase) => writeFML(Buffer.from([0xFF, phase]));
+                // ModList：声明我们「拥有」服务器要求的模组（modid+version），骗过 Forge 的模组校验。
+                const vInt = (n) => { const o = []; do { let b = n & 0x7f; n = n >>> 7; if (n) b |= 0x80; o.push(b); } while (n); return Buffer.from(o); };
+                const vStr = (s) => { const b = Buffer.from(String(s), 'utf8'); return Buffer.concat([vInt(b.length), b]); };
+                const buildModList = (mods) => { const parts = [Buffer.from([0x02]), vInt(mods.length)]; for (const m of mods) { parts.push(vStr(m.modid || m.id || '')); parts.push(vStr(m.version || '')); } return Buffer.concat(parts); };
+                const forgeMods = Array.isArray(this._forgeMods) ? this._forgeMods : (Array.isArray(this.config.settings?.forgeMods) ? this.config.settings.forgeMods : []);
+                let regTimer = null;
+                client.on('custom_payload', (p) => {
+                    if (!p || p.channel !== 'FML|HS' || !p.data || !p.data.length) return;
+                    const disc = p.data.readInt8(0);
+                    if (disc === 0) { // ServerHello → REGISTER + ClientHello + ModList(空) + Ack(2)
+                        const fmlProto = p.data.length > 1 ? p.data[1] : 2;
+                        try { client.write('custom_payload', { channel: 'REGISTER', data: Buffer.from(['FML|HS', 'FML', 'FML|MP', 'FORGE'].join('\0'), 'utf8') }); } catch (e) { /* ignore */ }
+                        writeFML(Buffer.from([0x01, fmlProto])); // ClientHello
+                        writeFML(buildModList(forgeMods));       // ModList：声明拥有配置里的模组（空数组=不声明）
+                        ack(2);
+                        this.uiLog(`[FML] ServerHello(proto=${fmlProto}) → ClientHello/ModList(${forgeMods.length}个)/Ack(2)`);
+                    } else if (disc === 2) { // 服务器 ModList：解析出全部 modid（便于核对正确名字）
+                        try {
+                            let off = 1;
+                            const rdV = () => { let v = 0, s = 0, b; do { b = p.data[off++]; v |= (b & 0x7f) << s; s += 7; } while (b & 0x80); return v; };
+                            const cnt = rdV(); const names = [];
+                            for (let i = 0; i < cnt; i++) { const nl = rdV(); const nm = p.data.toString('utf8', off, off + nl); off += nl; const vl = rdV(); const ver = p.data.toString('utf8', off, off + vl); off += vl; names.push(`${nm}@${ver}`); }
+                            logger.info(`[${this.config.username}] [FML] 服务器模组(${cnt}): ${names.join(', ')}`);
+                            this.uiLog(`[FML] 服务器模组(${cnt}个)，详见引擎日志`);
+                        } catch (e) { this.uiLog('[FML] 收到服务器 ModList（解析失败）'); }
+                    } else if (disc === 3) { // RegistryData：可能多条，防抖后 Ack(3)
+                        if (regTimer) clearTimeout(regTimer);
+                        regTimer = setTimeout(() => { ack(3); this.uiLog('[FML] RegistryData 结束 → Ack(3)'); }, 700);
+                    } else if (disc === -1) { // 服务器 HandshakeAck
+                        const phase = p.data.length > 1 ? p.data.readInt8(1) : 0;
+                        if (phase === 2) { ack(4); this.uiLog('[FML] 服务器Ack(2) → Ack(4)'); }
+                        else if (phase === 3) { ack(5); this.uiLog('[FML] 握手完成 → Ack(5) ✅'); }
+                    } else if (disc === -2) { // HandshakeReset
+                        ack(1);
+                    }
+                });
+            }
 
             // 加载核心插件
             this.bot.loadPlugin(pathfinder);
@@ -134,6 +308,7 @@ class BotInstance {
                 }, 30000);
 
                 logger.info(`[${this.config.username}] 登录成功，正在挂载功能模块...`);
+                this.uiLog('✅ 已进入服务器');
 
                 // 2. 模块挂载：逐个 try/catch 隔离——单个模块构造抛错不再连累后续模块与状态推送
                 const MODULE_NAMES = [
@@ -269,6 +444,7 @@ class BotInstance {
         // 不可恢复的断开（被ban/白名单/版本不符等）：停止重连并通知，不消耗重试次数
         if (this._fatalReason) {
             logger.error(`[${this.config.username}] 不可恢复的断开(${this._fatalReason})，停止重连`);
+            this.uiLog(`⛔ 已停止重连（不可恢复）：${this._fatalReason}`);
             this.io.to(this._room).to('admin').emit('bot_error', {
                 user: this.config.username,
                 ownerId: this.config.ownerId,
@@ -293,6 +469,7 @@ class BotInstance {
         this.reconnectBackoff = Math.min(this.reconnectBackoff * 1.5, 10);
 
         logger.info(`[${this.config.username}] 将在 ${delay.toFixed(1)}秒后重连 (第${this.reconnectAttempts}次尝试)`);
+        this.uiLog(`将在 ${delay.toFixed(1)} 秒后重连（第 ${this.reconnectAttempts} 次）`);
 
         this.reconnectTimer = setTimeout(() => this.init(), delay * 1000);
     }
@@ -306,9 +483,21 @@ class BotInstance {
             const raw = (typeof jsonMsg.toMotd === "function" ? jsonMsg.toMotd() : jsonMsg.toString()).replace(/\u001b\[[0-9;]*m/g, '');
             if (!raw.trim()) return;
 
-            // actionbar（物品栏上方文本，position=game_info）：单独存最新值，不当聊天刷屏
+            // actionbar（物品栏上方文本，position=game_info）：存最新值（供 AI 观测），
+            // 并作为一条日志推到「日志」页和聊天并排显示。去重(文本变才发)+节流(≥1.5s)防 HUD 每 tick 刷屏。
             if (position === 'game_info') {
-                this._actionBar = { text: raw.replace(/§[0-9a-fk-orx]/gi, '').trim(), at: Date.now() };
+                const abText = raw.replace(/§[0-9a-fk-orx]/gi, '').trim();
+                this._actionBar = { text: abText, at: Date.now() };
+                if (abText && abText !== this._lastAbText && Date.now() - (this._lastAbAt || 0) > 1500) {
+                    this._lastAbText = abText;
+                    this._lastAbAt = Date.now();
+                    this.io.to(this._room).to('admin').emit('log', {
+                        user: this.config.username, ownerId: this.config.ownerId,
+                        msg: raw, // 保留 §色码供前端彩色渲染
+                        time: new Date().toLocaleTimeString(),
+                        actionbar: true
+                    });
+                }
                 return;
             }
 
@@ -337,7 +526,10 @@ class BotInstance {
             this.handleReconnect();
         });
 
-        this.bot.on('error', (err) => logger.error(`[${this.config.username}] 核心错误:`, err.message));
+        this.bot.on('error', (err) => {
+            logger.error(`[${this.config.username}] 核心错误:`, err.message);
+            this.uiLog(`连接出错: ${err && err.message ? err.message : err}`);
+        });
 
         // 解析踢出原因：命中"不可恢复"关键词则标记，handleReconnect 据此停止重连（避免无意义重连）
         this.bot.on('kicked', (reason) => {
@@ -549,6 +741,7 @@ class BotInstance {
         this.isExplicitlyQuitting = false;
         this.destroyed = false;         // 手动重连：撤销 stop() 的销毁标记
         this._fatalReason = null;       // 手动重连：清除致命标记，重新尝试
+        this._forgeMods = undefined;    // 手动重连：重新探测 Forge 模组（服务器模组可能变化）
         this.reconnectAttempts = 0;
         this.reconnectBackoff = 1;
         this.cleanup();
