@@ -25,6 +25,7 @@ import LocationsTab from "./LocationsTab";
 import ScriptsTab from "./ScriptsTab";
 import InventoryTab from "./InventoryTab";
 import AiTab from "./AiTab";
+import QuickCommands from "./QuickCommands";
 import { cn } from "@/lib/cn";
 
 type Tab = "overview" | "live" | "modules" | "scripts" | "inventory" | "locations" | "ai" | "console";
@@ -43,6 +44,7 @@ export default function BotPanel() {
   const [metricsCfg, setMetricsCfg] = useState<HeaderCfg>(defaultCfg);
   const [metricsCfgOpen, setMetricsCfgOpen] = useState(false);
   const [sbLines, setSbLines] = useState<string[]>([]);
+  const [busy, setBusy] = useState<null | "reconnect" | "stop">(null);
 
   // 顶栏指标配置按 host 加载；钉了计分板指标（或正在配置）时轮询计分板取实时数字
   const host = bot?.host;
@@ -119,6 +121,25 @@ export default function BotPanel() {
     setEdit({ open: true, initial: r.ok && r.data ? (r.data as EditInitial) : { username: bot.username, host: bot.host } });
   }
 
+  // 重连/停止改为「点击即反馈」：立刻提示 + 按钮转圈禁用，等引擎确认，失败再红字提示。
+  // （原来是 fire-and-forget，点了没任何反应，容易让人以为没生效而重复狂点）
+  async function doReconnect() {
+    if (!bot || busy) return;
+    setBusy("reconnect");
+    pushToast("已发送重连…", "info");
+    const r = await cmd.reconnect(bot.id);
+    if (!r.ok) pushToast(r.error || "重连失败", "error");
+    setBusy(null);
+  }
+  async function doStop() {
+    if (!bot || busy) return;
+    setBusy("stop");
+    pushToast("正在停止…", "info");
+    const r = await cmd.stop(bot.id);
+    if (!r.ok) pushToast(r.error || "停止失败", "error");
+    setBusy(null);
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* 状态头 */}
@@ -141,11 +162,13 @@ export default function BotPanel() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="secondary" onClick={() => cmd.reconnect(bot.id)}>
-              <RotateCw className="h-3.5 w-3.5" /> 重连
+            <Button size="sm" variant="secondary" onClick={doReconnect} disabled={busy !== null}>
+              <RotateCw className={cn("h-3.5 w-3.5", busy === "reconnect" && "animate-spin")} />
+              {busy === "reconnect" ? "重连中…" : "重连"}
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => cmd.stop(bot.id)}>
-              <Square className="h-3.5 w-3.5" /> 停止
+            <Button size="sm" variant="secondary" onClick={doStop} disabled={busy !== null}>
+              <Square className="h-3.5 w-3.5" />
+              {busy === "stop" ? "停止中…" : "停止"}
             </Button>
             <Button size="sm" variant="ghost" onClick={openEdit} title="编辑">
               <Pencil className="h-3.5 w-3.5" />
@@ -209,6 +232,9 @@ export default function BotPanel() {
         {tab === "ai" && <AiTab bot={bot} />}
         {tab === "console" && <Console botId={bot.id} />}
       </div>
+
+      {/* 快捷指令条（按键/点按钮发指令，按服务器各存各的） */}
+      <QuickCommands bot={bot} />
 
       {/* 聊天栏 */}
       <form onSubmit={sendChat} className="relative flex shrink-0 gap-2 border-t border-border p-3">

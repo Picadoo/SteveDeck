@@ -44,6 +44,9 @@ module.exports = (botInstance) => {
     const syncInventory = () => {
         if (!bot || !bot.inventory) return;
 
+        // 主手 = 当前选中的快捷栏槽位（窗口槽位 36 + quickBarSlot）。供前端在快捷栏前单独显示「手持」。
+        const heldSlot = 36 + (typeof bot.quickBarSlot === 'number' ? bot.quickBarSlot : 0);
+
         const items = bot.inventory.slots.map((item, index) => {
             if (!item) return { slot: index, name: null };
 
@@ -64,7 +67,8 @@ module.exports = (botInstance) => {
                 lore: loreLines.map((l) => String(l)).join('\n'), // 保留颜色码
                 count: item.count,
                 texture: iconId(item), // 贴图 id（染料按 metadata 分色）
-                enchants: enchantNames(item)
+                enchants: enchantNames(item),
+                held: index === heldSlot // 当前主手持有（选中的快捷栏格）
             };
         });
 

@@ -185,6 +185,8 @@ export interface InventoryItem {
   texture?: string;
   /** 附魔摘要（如 ["锋利 V", "耐久 III"]），RPG 服常见 */
   enchants?: string[];
+  /** 是否当前主手持有（选中的快捷栏槽位 36+quickBarSlot）；前端据此在快捷栏前单独显示「手持」 */
+  held?: boolean;
 }
 
 /** 窗口/GUI 中的单个槽位 */
@@ -211,6 +213,8 @@ export interface WindowState {
   /** 容器部分的槽位数；其后为玩家背包 */
   inventoryStart: number | null;
   slots: (WindowSlot | null)[];
+  /** 光标上正拿着的物品（拿起/拖动中）；空手为 null。前端据此显示「手里拿着 X，点目标格放下」 */
+  cursor?: WindowSlot | null;
 }
 
 /** 列表/看板用的精简状态 */

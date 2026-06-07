@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Hand } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import Modal from "@/components/ui/Modal";
@@ -67,9 +67,9 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
     cmd.window.close(bot.id);
     setWin(bot.id, null);
   };
-  const click = async (slot: number, button = 0) => {
+  const click = async (slot: number, button = 0, mode = 0) => {
     setHover(null);
-    const r = await cmd.window.click(bot.id, slot, button, 0);
+    const r = await cmd.window.click(bot.id, slot, button, mode);
     if (r.ok) setWin(bot.id, r.data ?? null);
   };
   const refresh = async () => {
@@ -103,8 +103,21 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
       }
     >
       <p className="mb-2.5 text-[11px] text-muted">
-        左键点击操作 · 右键 = 右键点击 · 悬浮查看完整信息（菜单按钮直接点即可）
+        左键点/拿起 · 右键拿一半/放一个 · Shift+左键快速移动 · 悬浮看详情（菜单按钮直接点即可）
       </p>
+      {/* 光标上拿着的物品：拿起后显示在此，点任意目标格即放下，可放进符文/宝石镶嵌等指定孔位 */}
+      {win.cursor && (
+        <div className="mb-2.5 flex items-center gap-2 rounded-lg border border-accent/50 bg-accent/10 px-3 py-2">
+          <Hand className="h-4 w-4 shrink-0 text-accent" />
+          <span className="shrink-0 text-[11px] font-medium text-accent">手里拿着</span>
+          <ItemIcon texture={win.cursor.id} base={texBase} size={24} />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            <McText text={win.cursor.display || win.cursor.name} />
+            {win.cursor.count > 1 && <span className="ml-1 text-[11px] text-muted">×{win.cursor.count}</span>}
+          </span>
+          <span className="hidden shrink-0 text-[10px] text-muted sm:inline">点目标格放下 · 右键放一个</span>
+        </div>
+      )}
       <SlotGrid slots={container} texBase={texBase} onClick={click} onHover={onHover} />
       {split < total && backpack.length > 0 && (
         <>
@@ -127,7 +140,7 @@ function SlotGrid({
   slots: (WindowSlot | null)[];
   base?: number;
   texBase: string;
-  onClick: (slot: number, button?: number) => void;
+  onClick: (slot: number, button?: number, mode?: number) => void;
   onHover: (h: Hover | null) => void;
 }) {
   return (
@@ -140,10 +153,10 @@ function SlotGrid({
         return (
           <button
             key={slotIdx}
-            onClick={() => onClick(slotIdx, 0)}
+            onClick={(e) => onClick(slotIdx, 0, e.shiftKey ? 1 : 0)}
             onContextMenu={(e) => {
               e.preventDefault();
-              onClick(slotIdx, 1);
+              onClick(slotIdx, 1, 0);
             }}
             onMouseMove={active ? (e) => onHover({ it: it!, x: e.clientX, y: e.clientY }) : undefined}
             onMouseLeave={active ? () => onHover(null) : undefined}

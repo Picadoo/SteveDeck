@@ -37,30 +37,33 @@ function txt(v) {
   return s || null;
 }
 
+// 单个物品 → 前端槽位结构。slot=-1 用于光标物品（不属于任何格）。
+function serItem(it, i) {
+  if (!it) return null;
+  // 深度解析 NBT：RPG 服菜单物品名/Lore 常带 §颜色码，保留原文供前端彩色渲染（McText）。
+  let rawName = it.displayName;
+  let loreLines = [];
+  if (it.nbt && it.nbt.value && it.nbt.value.display) {
+    const d = it.nbt.value.display.value;
+    if (d.Name) rawName = d.Name.value;
+    if (d.Lore && d.Lore.value && d.Lore.value.value) loreLines = d.Lore.value.value;
+  }
+  rawName = String(parseChat(rawName));
+  return {
+    slot: i,
+    name: rawName.replace(/§[0-9a-fk-orx]/gi, ""), // 纯文本（搜索/标题回退）
+    display: rawName, // 原始（含 §颜色码）
+    id: iconId(it), // 物品 id（贴图来源；染料按 metadata 分色）
+    count: it.count,
+    lore: loreLines.map((l) => String(parseChat(l))).join("\n"), // 保留颜色码
+    enchants: enchantNames(it),
+  };
+}
+
 function serialize(win) {
   if (!win) return null;
   const raw = win.slots || [];
-  const slots = raw.map((it, i) => {
-    if (!it) return null;
-    // 深度解析 NBT：RPG 服菜单物品名/Lore 常带 §颜色码，保留原文供前端彩色渲染（McText）。
-    let rawName = it.displayName;
-    let loreLines = [];
-    if (it.nbt && it.nbt.value && it.nbt.value.display) {
-      const d = it.nbt.value.display.value;
-      if (d.Name) rawName = d.Name.value;
-      if (d.Lore && d.Lore.value && d.Lore.value.value) loreLines = d.Lore.value.value;
-    }
-    rawName = String(parseChat(rawName));
-    return {
-      slot: i,
-      name: rawName.replace(/§[0-9a-fk-orx]/gi, ""), // 纯文本（搜索/标题回退）
-      display: rawName, // 原始（含 §颜色码）
-      id: iconId(it), // 物品 id（贴图来源；染料按 metadata 分色）
-      count: it.count,
-      lore: loreLines.map((l) => String(parseChat(l))).join("\n"), // 保留颜色码
-      enchants: enchantNames(it),
-    };
-  });
+  const slots = raw.map((it, i) => serItem(it, i));
   return {
     id: typeof win.id === "number" ? win.id : 0,
     type: String(win.type ?? ""),
@@ -69,6 +72,8 @@ function serialize(win) {
     // 容器部分的槽位数：之后是玩家自己的背包
     inventoryStart: typeof win.inventoryStart === "number" ? win.inventoryStart : null,
     slots,
+    // 光标上正拿着的物品（拿起/拖动中）。prismarine-windows 的 selectedItem 即「鼠标手中物」，空手为 null。
+    cursor: serItem(win.selectedItem, -1),
   };
 }
 
