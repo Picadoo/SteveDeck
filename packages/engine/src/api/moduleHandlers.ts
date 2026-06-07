@@ -233,6 +233,7 @@ function dispatchAction(
       const res = inst.saveLocation?.(
         String(args.name || ""),
         args.command ? String(args.command) : undefined,
+        Array.isArray(args.steps) ? args.steps : undefined,
       );
       if (res?.success) {
         persistLocations(id, inst);
@@ -255,6 +256,17 @@ function dispatchAction(
       inst.recorder?.note?.("goto_location", { name: loc?.name || String(args.locationId) });
       const res = inst.goToLocation?.(String(args.locationId));
       return res?.success ? ok() : fail(res?.error || "前往失败");
+    }
+    case "location:set-reach": {
+      const res = inst.setLocationReach?.(String(args.locationId), {
+        command: args.command !== undefined ? String(args.command || "") : undefined,
+        steps: Array.isArray(args.steps) ? args.steps : undefined,
+      });
+      if (res?.success) {
+        persistLocations(id, inst);
+        return ok(res.location);
+      }
+      return fail(res?.error || "更新失败");
     }
     case "npc:scan":
       return ok(inst.scanNearbyNPCs?.() ?? []);

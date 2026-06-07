@@ -134,6 +134,8 @@ export interface SavedLocation {
   z: number;
   /** 可选·前往前先执行的指令（多世界切图，如 /warp 主城） */
   command?: string;
+  /** 可选·到达脚本（开菜单→点地点等 GUI/多世界传送，回放动作序列；优先于 command/坐标） */
+  steps?: ScriptStep[];
   createdAt: number;
 }
 

@@ -522,7 +522,7 @@ class BotInstance {
     }
 
     // 地点管理功能
-    saveLocation(name, command) {
+    saveLocation(name, command, steps) {
         if (!this.bot?.entity) {
             return { success: false, error: '机器人未在线' };
         }
@@ -536,6 +536,8 @@ class BotInstance {
             id: Date.now().toString(),
             name: name,
             command: command || undefined,
+            // 到达脚本（开菜单/点格子等，多世界/GUI 传送通用）；为空则回退到 command/坐标
+            steps: Array.isArray(steps) && steps.length ? steps : undefined,
             x: Math.floor(pos.x),
             y: Math.floor(pos.y),
             z: Math.floor(pos.z),
@@ -580,7 +582,12 @@ class BotInstance {
             return { success: false, error: '地点不存在' };
         }
 
-        // 多世界：若配置了前置指令，先发指令切图，延迟后再寻路
+        // 优先：到达脚本（开菜单→点地点等，GUI/多世界传送通用，回放完整动作序列）
+        if (Array.isArray(location.steps) && location.steps.length && typeof this.runSteps === 'function') {
+            return this.runSteps(location.steps, `前往「${location.name}」`);
+        }
+
+        // 其次：前置指令切图，延迟后再寻路（多世界）
         if (location.command) {
             this.bot.chat(location.command);
             this.io.to(this._room).to('admin').emit('log', {
@@ -593,8 +600,29 @@ class BotInstance {
                 if (this.bot?.entity) this.move(location.x, location.y, location.z);
             }, 2500);
         } else {
+            // 兜底：当前世界内寻路到坐标
             this.move(location.x, location.y, location.z);
         }
+        return { success: true, location };
+    }
+
+    // 更新已存在地点的「到达方式」（前置指令 / 录制的到达脚本）
+    setLocationReach(locationId, reach = {}) {
+        const location = this.savedLocations.find(loc => loc.id === locationId);
+        if (!location) {
+            return { success: false, error: '地点不存在' };
+        }
+        if (reach.command !== undefined) location.command = reach.command || undefined;
+        if (reach.steps !== undefined) {
+            location.steps = Array.isArray(reach.steps) && reach.steps.length ? reach.steps : undefined;
+        }
+        this.saveConfig();
+        this.io.to(this._room).to('admin').emit('log', {
+            user: this.config.username,
+            ownerId: this.config.ownerId,
+            msg: `已更新地点「${location.name}」的到达方式`,
+            time: new Date().toLocaleTimeString()
+        });
         return { success: true, location };
     }
 }

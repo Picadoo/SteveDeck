@@ -1034,6 +1034,27 @@ module.exports = (botInstance) => {
 
     botInstance.getScriptVars = () => ({ ...botInstance._scriptVars });
 
+    // 运行一段临时步骤（地点「到达脚本」复用脚本引擎，含 GUI 等待/寻路/重试全套逻辑）。
+    // 与命名脚本共用单运行槽：已有脚本在跑时拒绝，避免并发抢操作。
+    botInstance.runSteps = (steps, label) => {
+        if (!Array.isArray(steps) || steps.length === 0) return { success: false, error: '没有可执行的步骤' };
+        if (botInstance._runningScript) {
+            emitLog(`已有脚本在运行 (${botInstance._runningScript.name})，无法${label || '执行'}`);
+            return { success: false, error: '已有脚本在运行，请先停止' };
+        }
+        const name = label || '临时步骤';
+        const ctx = { name, aborted: false, callDepth: 0, totalSteps: 0, loopIter: 0 };
+        botInstance._runningScript = ctx;
+        emitStatus(name, 'running');
+        emitLog(`执行: ${name}`);
+        (async () => {
+            try { await executeSteps(steps, ctx); }
+            catch (err) { emitLog(`${name} 异常: ${err.message}`); }
+            finally { botInstance._runningScript = null; emitStatus(name, 'stopped'); }
+        })();
+        return { success: true };
+    };
+
     // ==================== 启动 ====================
     botInstance._triggerTimer = setInterval(() => checkTriggers(), 2000);
     botInstance.timers = botInstance.timers || [];
