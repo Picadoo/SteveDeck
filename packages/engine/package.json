@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/bin/serve.js",
     "dev": "tsx watch src/bin/serve.ts",
-    "test": "node test/control-plane.cjs"
+    "test": "node test/control-plane.cjs",
+    "test:unit": "node --test test/auto_use.test.cjs"
   },
   "dependencies": {
     "@mcbot/protocol": "workspace:*",
