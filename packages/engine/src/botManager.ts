@@ -4,6 +4,7 @@ import {
   BotConfig,
   BotConfigInput,
   BotSummary,
+  DataBundle,
   ServerEvents,
 } from "@mcbot/protocol";
 import {
@@ -233,6 +234,59 @@ class BotManager {
   /** 供 API 层在修改 settings 后落盘。 */
   save(): void {
     this.persist();
+  }
+
+  // ============ 配置导入导出（备份 / 迁移 / 分享） ============
+  /** 导出全部配置为一个包（含明文密码——完整备份，属敏感文件）。 */
+  exportData(): DataBundle {
+    return {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      bots: this.configs,
+      scripts: this.loadScripts(),
+      customScripts: this.loadCustomScripts(),
+    };
+  }
+
+  /** 合并导入：按 用户名@host 去重加 bot、按名字加脚本，不删现有（无损）。返回各类新增数。 */
+  importData(bundle: DataBundle): { bots: number; scripts: number; customScripts: number } {
+    let bots = 0;
+    if (Array.isArray(bundle.bots)) {
+      for (const b of bundle.bots) {
+        if (!b || !b.username || !b.host) continue;
+        if (this.configs.some((c) => c.username === b.username && c.host === b.host)) continue; // 已存在则跳过
+        if (validateBotInput(b)) continue; // 非法配置(端口/长度)跳过
+        const cfg: BotConfig = { ...b, id: randomUUID() }; // 新 id，避免与现有冲突
+        this.configs.push(cfg);
+        this.spawn(cfg);
+        bots++;
+      }
+      this.persist();
+    }
+    let scripts = 0;
+    if (bundle.scripts && typeof bundle.scripts === "object") {
+      const lib = this.loadScripts();
+      for (const [name, s] of Object.entries(bundle.scripts)) {
+        if (!(name in lib)) {
+          lib[name] = s;
+          scripts++;
+        }
+      }
+      this.saveScripts(lib);
+      this.eachInstance((inst) => inst.preloadScripts && inst.preloadScripts(lib));
+    }
+    let customScripts = 0;
+    if (bundle.customScripts && typeof bundle.customScripts === "object") {
+      const lib = this.loadCustomScripts();
+      for (const [name, s] of Object.entries(bundle.customScripts)) {
+        if (!(name in lib)) {
+          lib[name] = s;
+          customScripts++;
+        }
+      }
+      this.saveCustomScripts(lib);
+    }
+    return { bots, scripts, customScripts };
   }
 
   // ============ 脚本库 ============

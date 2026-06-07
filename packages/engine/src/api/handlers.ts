@@ -109,6 +109,27 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
     ack?.(obs ? ok(obs) : fail("机器人不存在"));
   });
 
+  // ===== 配置导入导出（备份 / 迁移 / 分享） =====
+  socket.on(ClientCommands.DATA_EXPORT, (_payload: unknown, ack?: Ack) => {
+    ack?.(ok(botManager.exportData()));
+  });
+
+  socket.on(ClientCommands.DATA_IMPORT, ({ bundle }: { bundle: any }, ack?: Ack) => {
+    try {
+      if (!bundle || typeof bundle !== "object" || !Array.isArray(bundle.bots)) {
+        return ack?.(fail("无效的备份文件（缺 bots 数组）"));
+      }
+      if (bundle.schemaVersion !== 1) {
+        return ack?.(fail(`不支持的备份版本: ${bundle.schemaVersion ?? "未知"}`));
+      }
+      const res = botManager.importData(bundle);
+      broadcastSnapshot(io);
+      ack?.(ok(res));
+    } catch (e: any) {
+      ack?.(fail(String(e?.message ?? e)));
+    }
+  });
+
   registerModuleHandlers(io, socket);
   registerScriptHandlers(socket);
 }

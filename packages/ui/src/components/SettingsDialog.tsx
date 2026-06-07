@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/primitives";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
 import {
+  cmd,
   fetchConnectionInfo,
   disconnect,
   forgetConn,
@@ -82,6 +83,8 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
             <p className="text-xs text-muted">加载中… 若长期为空，可能是引擎不可达。</p>
           )}
         </Section>
+
+        <BackupSection />
 
         <Section title="其它">
           <div className="flex items-center justify-between">
@@ -218,6 +221,67 @@ function EngineSourceSection() {
         )}
         <Button size="sm" onClick={save} disabled={!dirty}>
           保存
+        </Button>
+      </div>
+    </Section>
+  );
+}
+
+// 配置备份/迁移：导出全部 bots+脚本+JS 为一个 JSON 文件下载；导入合并（不删现有）。
+function BackupSection() {
+  const pushToast = useStore((s) => s.pushToast);
+  const [busy, setBusy] = useState(false);
+
+  async function doExport() {
+    setBusy(true);
+    const r = await cmd.exportData();
+    setBusy(false);
+    if (!r.ok || !r.data) return pushToast(r.error || "导出失败", "error");
+    const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mcbot-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    pushToast(`已导出 ${r.data.bots?.length ?? 0} 个机器人配置`, "success");
+  }
+
+  function pickAndImport() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      let bundle: unknown;
+      try {
+        bundle = JSON.parse(await file.text());
+      } catch {
+        pushToast("文件不是合法 JSON", "error");
+        return;
+      }
+      setBusy(true);
+      const r = await cmd.importData(bundle);
+      setBusy(false);
+      if (!r.ok) return pushToast(r.error || "导入失败", "error");
+      const d = r.data as { bots: number; scripts: number; customScripts: number };
+      pushToast(`导入完成：+${d.bots} 机器人 · +${d.scripts} 脚本 · +${d.customScripts} JS（合并，未删现有）`, "success");
+    };
+    input.click();
+  }
+
+  return (
+    <Section title="配置备份 / 迁移">
+      <p className="rounded-lg bg-warning/10 px-2 py-1.5 text-[11px] leading-relaxed text-warning">
+        ⚠️ 导出文件含明文登录密码，请妥善保管、勿随意分享。导入为合并（按 用户名@host / 名字去重，不删现有）。
+      </p>
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" className="flex-1" disabled={busy} onClick={doExport}>
+          导出配置
+        </Button>
+        <Button size="sm" variant="secondary" className="flex-1" disabled={busy} onClick={pickAndImport}>
+          导入配置
         </Button>
       </div>
     </Section>

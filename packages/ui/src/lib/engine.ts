@@ -15,6 +15,7 @@ import {
   type WindowState,
   type MonitorRule,
   type MonitorStat,
+  type DataBundle,
 } from "@mcbot/protocol";
 import { useStore } from "@/store/useStore";
 
@@ -335,6 +336,9 @@ export const cmd = {
     emitAck(ClientCommands.MODULE_TOGGLE, { id, module, active, config }),
   configModule: (id: string, module: string, config: Record<string, unknown>) =>
     emitAck(ClientCommands.MODULE_CONFIG, { id, module, config }),
+  exportData: () => emitAck<DataBundle>(ClientCommands.DATA_EXPORT, {}),
+  importData: (bundle: unknown) =>
+    emitAck<{ bots: number; scripts: number; customScripts: number }>(ClientCommands.DATA_IMPORT, { bundle }),
   moduleAction: <T = unknown>(id: string, module: string, action: string, args?: Record<string, unknown>) =>
     emitAck<T>(ClientCommands.MODULE_ACTION, { id, module, action, args }),
   script: {

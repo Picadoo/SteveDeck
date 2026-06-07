@@ -316,6 +316,15 @@ export interface ServerToClientPayloads {
 
 // ==================== 客户端 → 服务端 命令 ====================
 
+/** 配置导入导出包（备份/迁移/分享）。schemaVersion 便于以后平滑迁移；bots 含明文 loginPassword（完整备份），属敏感文件。 */
+export interface DataBundle {
+  schemaVersion: number;
+  exportedAt: string;
+  bots: BotConfig[];
+  scripts: Record<string, unknown>;
+  customScripts: Record<string, unknown>;
+}
+
 export const ClientCommands = {
   BOT_ADD: "bot:add",
   BOT_DELETE: "bot:delete",
@@ -338,6 +347,8 @@ export const ClientCommands = {
   LOCATION_SAVE: "location:save",
   LOCATION_DELETE: "location:delete",
   LOCATION_GOTO: "location:goto",
+  DATA_EXPORT: "data:export",
+  DATA_IMPORT: "data:import",
 } as const;
 
 export interface ClientToServerPayloads {
@@ -362,6 +373,8 @@ export interface ClientToServerPayloads {
   [ClientCommands.LOCATION_SAVE]: { id: BotId; name: string };
   [ClientCommands.LOCATION_DELETE]: { id: BotId; locationId: string };
   [ClientCommands.LOCATION_GOTO]: { id: BotId; locationId: string };
+  [ClientCommands.DATA_EXPORT]: Record<string, never>;
+  [ClientCommands.DATA_IMPORT]: { bundle: DataBundle };
 }
 
 /** 命令统一 ack 回执 */
