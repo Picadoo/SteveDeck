@@ -98,7 +98,9 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
 
   async function toggle(v: boolean) {
     setOptimActive(v);
-    const r = await cmd.toggleModule(bot.id, "auto_use", v, { rules });
+    // 首次开启(还没规则)时传空 config，让引擎加载默认 auto-eat；已有规则则带上以保留。
+    // （引擎 toggleAutoUse 把「提供的 rules 数组」视为权威，传 [] 会清空规则、默认规则不加载）
+    const r = await cmd.toggleModule(bot.id, "auto_use", v, rules.length ? { rules } : {});
     if (!r.ok) {
       pushToast(r.error || "操作失败", "error");
       setOptimActive(null);
