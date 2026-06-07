@@ -135,7 +135,8 @@ function SlotGrid({
             )}
           >
             {/* 渲染所有有 id 的物品(含玻璃板边框，贴图弱化显示)；悬浮仍只给非装饰项 */}
-            {it && <ItemIcon texture={it.id} base={texBase} size={30} />}
+            {/* fill：9 列格子随屏宽缩放（手机竖屏整屏放下不溢出），桌面封顶 30px 维持原样 */}
+            {it && <ItemIcon texture={it.id} base={texBase} size={30} fill />}
             {it && it.count > 1 && (
               <span
                 className="pointer-events-none absolute -bottom-px right-0.5 text-[10px] font-bold tabular-nums text-white"

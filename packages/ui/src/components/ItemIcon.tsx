@@ -1,6 +1,7 @@
 // 物品贴图组件（背包 / GUI 窗口共用）：按 1.12.2 贴图命名尝试多个候选路径，全失败回退图标。
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Package } from "lucide-react";
+import { cn } from "@/lib/cn";
 
 // 物品 id → 贴图文件名的常见别名（1.12.2 旧命名与 id 不一致处）
 export const TEX_ALIAS: Record<string, string> = {
@@ -27,8 +28,22 @@ export const TEX_ALIAS: Record<string, string> = {
   lead: "lead",
 };
 
-/** 物品贴图：依次尝试 items/<id> → blocks/<id> → 别名，全失败回退到图标 */
-export function ItemIcon({ texture, base, size }: { texture?: string; base: string; size: number }) {
+/**
+ * 物品贴图：依次尝试 items/<id> → blocks/<id> → 别名，全失败回退到图标。
+ * fill=true：填满所在格子但不超过 size px —— 手机窄屏自动缩小、桌面维持原大小（格子大时封顶 size），
+ * 用于 GUI 的 9 列 MC 网格，保证竖屏整屏放下不溢出；列表里用固定 size（默认行为）。
+ */
+export function ItemIcon({
+  texture,
+  base,
+  size = 32,
+  fill,
+}: {
+  texture?: string;
+  base: string;
+  size?: number;
+  fill?: boolean;
+}) {
   const [stage, setStage] = useState(0);
   useEffect(() => setStage(0), [texture]);
 
@@ -42,11 +57,12 @@ export function ItemIcon({ texture, base, size }: { texture?: string; base: stri
     alias ? `${base}/blocks/${alias}.png` : null,
   ].filter(Boolean) as string[];
 
-  const box = { width: size, height: size };
+  const box: CSSProperties = fill ? { maxWidth: size, maxHeight: size } : { width: size, height: size };
+  const sizeCls = fill ? "h-full w-full" : "shrink-0";
   if (!id || stage >= candidates.length) {
     return (
       <div
-        className="flex shrink-0 items-center justify-center rounded bg-surface-2 text-muted"
+        className={cn("flex items-center justify-center rounded bg-surface-2 text-muted", sizeCls)}
         style={box}
       >
         <Package className="h-4 w-4 opacity-50" />
@@ -59,7 +75,7 @@ export function ItemIcon({ texture, base, size }: { texture?: string; base: stri
       alt=""
       draggable={false}
       style={{ ...box, imageRendering: "pixelated" }}
-      className="shrink-0 rounded bg-surface-2/60"
+      className={cn("rounded bg-surface-2/60", sizeCls)}
       onError={() => setStage((s) => s + 1)}
     />
   );
