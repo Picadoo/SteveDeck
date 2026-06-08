@@ -6,8 +6,10 @@ const FATAL_PATTERNS = [
     'whitelist', 'white-list', 'white list', '白名单',
     'outdated', 'incompatible', 'unsupported client', 'unsupported version',
     '版本不', '版本过', '版本错', '不支持的版本',
-    // 需要 Forge/FML 客户端（模组服）——原版/无头客户端连不上，重连无意义；停下并明确告知
-    'forge', 'fml', 'mods that require', 'forgemodloader',
+    // 需要 Forge/FML 客户端（模组服）——原版/无头客户端连不上，重连无意义；停下并明确告知。
+    // 只匹配明确的拒绝语，不用裸 'forge'/'fml'（否则服务器名/欢迎语含 "forge" 会被误判致命、永不重连）。
+    'mods that require', 'forgemodloader', 'require fml', 'require forge',
+    'fml/forge to be installed', 'to be installed on the client',
 ];
 
 function extractText(reason) {

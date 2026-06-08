@@ -615,9 +615,23 @@ class BotInstance {
             this.handleReconnect();
         });
 
+        // 模组服(龙核 DragonCore 等)常见：香草协议解析器读不动某些模组包/区块 → 抛 "varint is too big"
+        // 等解析错误，但这是【非致命】的——连接不断、bot 照常在线(实测登录后只报一次、随即「连接稳定」)。
+        // 故把这类良性解析错误降级：不当「连接出错」报警、每次连接只平静提示一次，避免吓人/刷屏。
+        let benignParseWarned = false;
+        const BENIGN_PARSE_ERR = /varint is too big|PartialReadError|Chunk size is|Read error for|unexpected buffer end/i;
         this.bot.on('error', (err) => {
-            logger.error(`[${this.config.username}] 核心错误:`, err.message);
-            this.uiLog(`连接出错: ${err && err.message ? err.message : err}`);
+            const msg = err && err.message ? err.message : String(err);
+            if (BENIGN_PARSE_ERR.test(msg)) {
+                logger.warn(`[${this.config.username}] 忽略良性解析错误: ${msg}`);
+                if (!benignParseWarned) {
+                    benignParseWarned = true;
+                    this.uiLog('ℹ️ 模组服部分世界数据无法解析（已忽略，不影响聊天/钓鱼/指令；走动请用「直发移动」）');
+                }
+                return;
+            }
+            logger.error(`[${this.config.username}] 核心错误:`, msg);
+            this.uiLog(`连接出错: ${msg}`);
         });
 
         // 解析踢出原因：命中"不可恢复"关键词则标记，handleReconnect 据此停止重连（避免无意义重连）
@@ -683,12 +697,11 @@ class BotInstance {
         //    平时挂机直接复用缓存，避免每拍序列化整张定时表。
         const cc = this.combatConfig;
         const ccSig = `${cc.enabled ? 1 : 0}/${cc.range}/${cc.maxTargets}/${cc.antiKb ? 1 : 0}/${cc.attackPlayers ? 1 : 0}/${cc.attackMobs ? 1 : 0}`;
+        // 定时表很小（几条 {time,command}），直接序列化即可——之前用「数组引用变化」判断会漏掉
+        // scheduler:add/remove 的原地 push/splice（引用不变→状态不刷新），故改为每次 stringify（微秒级、必定正确）。
         const schedules = this.config.settings?.schedules || [];
-        if (schedules !== this._schedulesRef) { // 引用变化才重算（定时表很少变；保证编辑后仍会推送）
-            this._schedulesRef = schedules;
-            this._schedulesSig = `${schedules.length}:${JSON.stringify(schedules)}`;
-        }
-        const modSig = `${ccSig}|${this.fishingActive ? 1 : 0}|${this.config.settings?.reconnectDelay || 5}|${this._schedulesSig}`;
+        const schedulesSig = schedules.length ? JSON.stringify(schedules) : '0';
+        const modSig = `${ccSig}|${this.fishingActive ? 1 : 0}|${this.config.settings?.reconnectDelay || 5}|${schedulesSig}`;
         const sig = `${Math.floor(pos.x)},${Math.floor(pos.y)},${Math.floor(pos.z)}|${this.bot.health}|${this.bot.food}|${this.bot.experience?.level || 0}|${pingBucket}|${this.savedLocations.length}|${modSig}`;
         const now = Date.now();
         if (sig === this._lastStatusSig && now - this._lastStatusEmitAt < 30000) return;

@@ -37,6 +37,8 @@ interface AppState {
   theme: "light" | "dark";
   /** 背包显示模式：lite 精简（纯文本）/ full 完全（贴图+彩色名+描述） */
   invMode: "lite" | "full";
+  /** 可点击聊天：开=渲染 clickEvent/hoverEvent 为可点按钮+悬浮；关=当普通文本（防误点跑指令） */
+  clickableChat: boolean;
   conn: ConnState;
   bots: BotSummary[];
   logs: Record<string, LogLine[]>;
@@ -57,6 +59,7 @@ interface AppState {
 
   setTheme: (t: "light" | "dark") => void;
   setInvMode: (m: "lite" | "full") => void;
+  setClickableChat: (v: boolean) => void;
   setModuleConfig: (botId: string, module: string, config: Record<string, unknown>) => void;
   setInventory: (user: string, items: InventoryItem[]) => void;
   setWindow: (user: string, win: WindowState | null) => void;
@@ -107,6 +110,14 @@ function initialInvMode(): "lite" | "full" {
   return "full";
 }
 
+function initialClickableChat(): boolean {
+  try {
+    return localStorage.getItem("mcbot.clickchat") !== "0"; // 默认开启
+  } catch {
+    return true;
+  }
+}
+
 const CMD_KEY = "mcbot.cmdhistory";
 function loadCmdHistory(): string[] {
   try {
@@ -121,6 +132,7 @@ function loadCmdHistory(): string[] {
 export const useStore = create<AppState>((set, get) => ({
   theme: initialTheme(),
   invMode: initialInvMode(),
+  clickableChat: initialClickableChat(),
   conn: { status: "disconnected", url: "", token: "" },
   bots: [],
   logs: {},
@@ -174,6 +186,14 @@ export const useStore = create<AppState>((set, get) => ({
       /* ignore */
     }
     set({ invMode: m });
+  },
+  setClickableChat: (v) => {
+    try {
+      localStorage.setItem("mcbot.clickchat", v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    set({ clickableChat: v });
   },
   toggleTheme: () => {
     const next = get().theme === "dark" ? "light" : "dark";

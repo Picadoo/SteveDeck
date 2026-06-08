@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Copy, ArrowDownToLine } from "lucide-react";
+import { Trash2, Copy, ArrowDownToLine, MousePointerClick } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { cn } from "@/lib/cn";
@@ -15,6 +15,8 @@ export default function Console({ botId }: { botId: string }) {
   const logs = useStore((s) => s.logs[botId]) ?? EMPTY_LOGS;
   const clearLog = useStore((s) => s.clearLog);
   const pushToast = useStore((s) => s.pushToast);
+  const clickableChat = useStore((s) => s.clickableChat);
+  const setClickableChat = useStore((s) => s.setClickableChat);
   const [filter, setFilter] = useState("");
   const [level, setLevel] = useState<"all" | "chat" | "op">("all");
   const [autoScroll, setAutoScroll] = useState(true);
@@ -84,6 +86,13 @@ export default function Console({ botId }: { botId: string }) {
             </span>
           )}
         </div>
+        <ToolBtn
+          active={clickableChat}
+          title={clickableChat ? "可点击聊天：开（点链接发指令/悬浮看物品）" : "可点击聊天：关（当普通文本，防误点）"}
+          onClick={() => setClickableChat(!clickableChat)}
+        >
+          <MousePointerClick className="h-3.5 w-3.5" />
+        </ToolBtn>
         <ToolBtn active={autoScroll} title="自动滚动" onClick={() => setAutoScroll((a) => !a)}>
           <ArrowDownToLine className="h-3.5 w-3.5" />
         </ToolBtn>
@@ -116,7 +125,7 @@ export default function Console({ botId }: { botId: string }) {
               {l.level === "actionbar" && (
                 <span className="mr-1 rounded bg-accent/15 px-1 text-[10px] text-accent">栏</span>
               )}
-              {l.segments && l.segments.length ? (
+              {l.segments && l.segments.length > 0 && clickableChat ? (
                 <SegmentLine segments={l.segments} botId={botId} />
               ) : (
                 <McText text={l.text} />

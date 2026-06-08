@@ -86,6 +86,16 @@ log("替换旧包");
 fs.rmSync(out, { recursive: true, force: true });
 fs.renameSync(tmpOut, out);
 
+// 1.5 安全：剥掉 deploy 带进来的开发态 .env（可能含测试令牌 / 指向 .test-data / ENGINE_ALLOW_JS=1 开 JS RCE）。
+//     发版包绝不自带任何凭据/开关——运行时令牌、端口、数据目录全由 Tauri 经环境变量注入。
+for (const f of [".env", ".env.local", ".env.development", ".env.production"]) {
+  const p = path.join(out, f);
+  if (fs.existsSync(p)) {
+    fs.rmSync(p, { force: true });
+    log(`已移除开发态 ${f}（凭据/开关不进发版包）`);
+  }
+}
+
 // 2. 删 bedrock 各版本数据（纯 Java 版用不到；保留 bedrock/common，minecraft-data 加载需要）
 const mdDir = pkgDir("minecraft-data");
 const dataDir = mdDir && path.join(mdDir, "minecraft-data", "data");

@@ -16,6 +16,7 @@ type Npc = {
   name: string | null;
   nameRaw?: string | null;
   realPlayer?: boolean;
+  isHologram?: boolean; // 全息文字（隐身/marker 盔甲架）：默认折叠隐藏，避免刷屏
   distance: number;
 };
 type Container = { x: number; y: number; z: number; name: string; distance: number };
@@ -27,6 +28,7 @@ export default function LiveTab({ bot }: { bot: BotSummary }) {
   const disabled = !bot.online;
   const [popout, setPopout] = useState(false);
   const [npcs, setNpcs] = useState<Npc[] | null>(null);
+  const [showHolo, setShowHolo] = useState(false); // 是否展开全息文字
   const [containers, setContainers] = useState<Container[] | null>(null);
   const [xyz, setXyz] = useState({ x: "", y: "", z: "" });
 
@@ -102,42 +104,73 @@ export default function LiveTab({ bot }: { bot: BotSummary }) {
         <Button size="sm" variant="secondary" disabled={disabled} onClick={scanNpc}>
           <RefreshCw className="h-3.5 w-3.5" /> 扫描附近 32 格
         </Button>
-        {npcs && (
-          <div className="mt-2 space-y-1">
-            {npcs.length === 0 ? (
-              <p className="text-xs text-muted">附近没有 NPC / 生物</p>
-            ) : (
-              npcs.slice(0, 14).map((n) => (
-                <div key={n.id} className="flex items-center justify-between rounded-lg bg-surface-2/50 px-2.5 py-1.5 text-sm">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate font-medium">
-                      <McText text={n.nameRaw || n.name || cnMob(n.type)} />
+        {npcs &&
+          (() => {
+            const realNpcs = npcs.filter((n) => !n.isHologram);
+            const holos = npcs.filter((n) => n.isHologram);
+            if (realNpcs.length === 0 && holos.length === 0) {
+              return <p className="mt-2 text-xs text-muted">附近没有 NPC / 生物</p>;
+            }
+            return (
+              <div className="mt-2 space-y-1">
+                {realNpcs.slice(0, 14).map((n) => (
+                  <div key={n.id} className="flex items-center justify-between rounded-lg bg-surface-2/50 px-2.5 py-1.5 text-sm">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate font-medium">
+                        <McText text={n.nameRaw || n.name || cnMob(n.type)} />
+                      </span>
+                      {n.realPlayer ? (
+                        <span className="shrink-0 rounded bg-success/15 px-1 text-[10px] text-success">真人</span>
+                      ) : n.type === "player" ? (
+                        <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] text-warning">NPC</span>
+                      ) : (
+                        n.name && <span className="shrink-0 rounded bg-surface px-1 text-[10px] text-muted">{cnMob(n.type)}</span>
+                      )}
+                      <span className="shrink-0 text-[11px] text-muted">{n.distance}m</span>
                     </span>
-                    {n.realPlayer ? (
-                      <span className="shrink-0 rounded bg-success/15 px-1 text-[10px] text-success">真人</span>
-                    ) : n.type === "player" ? (
-                      <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] text-warning">NPC</span>
-                    ) : (
-                      n.name && <span className="shrink-0 rounded bg-surface px-1 text-[10px] text-muted">{cnMob(n.type)}</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={disabled}
+                      onClick={() => {
+                        cmd.moduleAction(bot.id, "npc", "interact", { name: String(n.id) });
+                        pushToast("走过去并交互…", "info");
+                      }}
+                    >
+                      交互
+                    </Button>
+                  </div>
+                ))}
+                {realNpcs.length === 0 && (
+                  <p className="text-xs text-muted">附近没有可交互的 NPC / 生物（全息文字已折叠）</p>
+                )}
+                {holos.length > 0 && (
+                  <div className="pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowHolo((v) => !v)}
+                      className="text-[11px] text-muted hover:text-fg"
+                      title="服务器用隐身盔甲架做的悬浮文字，对交互无用，默认隐藏"
+                    >
+                      🪧 全息文字 {holos.length} 个 · {showHolo ? "收起" : "展开"}
+                    </button>
+                    {showHolo && (
+                      <div className="mt-1 space-y-0.5">
+                        {holos.slice(0, 40).map((n) => (
+                          <div key={n.id} className="flex items-center gap-1.5 rounded bg-surface-2/30 px-2 py-1 text-[11px] text-muted">
+                            <span className="min-w-0 truncate">
+                              <McText text={n.nameRaw || n.name || cnMob(n.type)} />
+                            </span>
+                            <span className="ml-auto shrink-0">{n.distance}m</span>
+                          </div>
+                        ))}
+                      </div>
                     )}
-                    <span className="shrink-0 text-[11px] text-muted">{n.distance}m</span>
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={disabled}
-                    onClick={() => {
-                      cmd.moduleAction(bot.id, "npc", "interact", { name: String(n.id) });
-                      pushToast("走过去并交互…", "info");
-                    }}
-                  >
-                    交互
-                  </Button>
-                </div>
-              ))
-            )}
-          </div>
-        )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
       </Card>
 
       {/* 容器 / 菜单 */}
