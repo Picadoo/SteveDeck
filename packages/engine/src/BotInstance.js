@@ -660,6 +660,20 @@ class BotInstance {
                 user: this.config.username, ownerId: this.config.ownerId,
                 msg: '机器人死亡，正在自动复活…', time: new Date().toLocaleTimeString()
             });
+            // 捕获死亡点（用最后一次存活坐标——death 时 entity 常已失效）：供「死亡返回」与脚本变量 {deathX/Y/Z}
+            const dp = this._lastAlivePos;
+            if (dp) {
+                this._deathPos = dp;
+                this._scriptVars = this._scriptVars || {};
+                this._scriptVars.deathX = Math.round(dp.x);
+                this._scriptVars.deathY = Math.round(dp.y);
+                this._scriptVars.deathZ = Math.round(dp.z);
+                this.io.to(this._room).to('admin').emit('log', {
+                    user: this.config.username, ownerId: this.config.ownerId,
+                    msg: `已记录死亡点 ${Math.round(dp.x)}, ${Math.round(dp.y)}, ${Math.round(dp.z)}`,
+                    time: new Date().toLocaleTimeString()
+                });
+            }
             const respawnCmd = this.config.settings?.respawnCommand?.trim();
             if (respawnCmd) {
                 const epoch = this._epoch;
@@ -677,6 +691,20 @@ class BotInstance {
                     });
                 }, 1500));
             }
+            // 死亡返回：开关开启且有死亡点 → 等重生+复活指令(若有)生效后，寻路走回死亡点。
+            // 模组服寻路可能因 varint 失败（本期不优化）；走不到不卡死（move 只设目标，后台寻路）。
+            if (this.config.settings?.returnOnDeath && dp) {
+                const epoch = this._epoch;
+                this.timers.push(setTimeout(() => {
+                    if (this._epoch !== epoch || !this.bot?.entity) return;
+                    this.io.to(this._room).to('admin').emit('log', {
+                        user: this.config.username, ownerId: this.config.ownerId,
+                        msg: `正在返回死亡点 ${Math.round(dp.x)}, ${Math.round(dp.y)}, ${Math.round(dp.z)}…`,
+                        time: new Date().toLocaleTimeString()
+                    });
+                    this.move(dp.x, dp.y, dp.z);
+                }, 3500)); // 等重生 + respawnCommand(1.5s) + 服务器传送
+            }
         });
     }
 
@@ -687,6 +715,8 @@ class BotInstance {
     updateStatus() {
         if (!this.bot?.entity) return;
         const pos = this.bot.entity.position;
+        // 持续记录存活时的最后坐标：死亡时 entity 可能已失效，用它当「死亡点」（死亡返回 / 脚本 {deathX/Y/Z}）
+        this._lastAlivePos = { x: pos.x, y: pos.y, z: pos.z };
         const modules = {
             combat: this.combatConfig.enabled,
             combatConfig: this.combatConfig,

@@ -408,6 +408,7 @@ function dispatchAction(
       return ok({
         allowDig: !!inst.config?.settings?.allowDig,
         respawnCommand: inst.config?.settings?.respawnCommand || "",
+        returnOnDeath: !!inst.config?.settings?.returnOnDeath,
       });
     case "behavior:setDig": {
       const allow = !!args.allow;
@@ -425,6 +426,13 @@ function dispatchAction(
         (s as any).respawnCommand = c || undefined;
       });
       return ok({ respawnCommand: c });
+    }
+    case "behavior:setReturnOnDeath": {
+      const on = !!args.on;
+      persistSettings(id, (s) => {
+        (s as any).returnOnDeath = on || undefined;
+      });
+      return ok({ returnOnDeath: on });
     }
     // ===== 通用消息监听统计 =====
     case "monitor:get":

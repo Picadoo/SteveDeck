@@ -81,6 +81,8 @@ export interface BotSettings {
   allowDig?: boolean;
   /** 复活后自动执行的指令（如 /back、/spawn），用于多世界 RPG 服回到原处。 */
   respawnCommand?: string;
+  /** 死亡后自动寻路走回死亡点（在 respawnCommand 之后执行）。模组服寻路可能因 varint 失效。默认 false。 */
+  returnOnDeath?: boolean;
   combat?: boolean;
   combatConfig?: CombatConfig;
   fishing?: boolean;

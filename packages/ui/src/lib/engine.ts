@@ -447,7 +447,7 @@ export const cmd = {
   },
   behavior: {
     get: (id: string) =>
-      emitAck<{ allowDig: boolean; respawnCommand: string }>(ClientCommands.MODULE_ACTION, {
+      emitAck<{ allowDig: boolean; respawnCommand: string; returnOnDeath: boolean }>(ClientCommands.MODULE_ACTION, {
         id,
         module: "behavior",
         action: "get",
@@ -465,6 +465,13 @@ export const cmd = {
         module: "behavior",
         action: "setRespawnCmd",
         args: { command },
+      }),
+    setReturnOnDeath: (id: string, on: boolean) =>
+      emitAck<{ returnOnDeath: boolean }>(ClientCommands.MODULE_ACTION, {
+        id,
+        module: "behavior",
+        action: "setReturnOnDeath",
+        args: { on },
       }),
   },
   monitor: {

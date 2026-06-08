@@ -62,6 +62,7 @@ const SETTINGS_SANITIZERS: Record<string, (v: unknown) => unknown | undefined> =
   // —— 寻路 / 行为 ——
   allowDig: (v) => (typeof v === "boolean" ? v : undefined),
   respawnCommand: (v) => (typeof v === "string" && v.length <= 256 ? v : undefined),
+  returnOnDeath: (v) => (typeof v === "boolean" ? v : undefined),
   // —— 模块开关 / 配置 ——（对象/数组按引用并入，元素形状由各模块自身防御）
   combat: (v) => (typeof v === "boolean" ? v : undefined),
   combatConfig: (v) => (v && typeof v === "object" ? v : undefined),

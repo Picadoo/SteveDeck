@@ -235,9 +235,15 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
 /** 行为设置：允许破坏方块寻路 / 复活后自动指令（从交互页移来；属持久行为配置，归「托管」） */
 function BehaviorCard({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
-  const [behavior, setBehavior] = useState<{ allowDig: boolean; respawnCommand: string } | null>(null);
+  const [behavior, setBehavior] = useState<{
+    allowDig: boolean;
+    respawnCommand: string;
+    returnOnDeath: boolean;
+  } | null>(null);
   const [respawnDraft, setRespawnDraft] = useState("");
   const disabled = !bot.online;
+  const patchBehavior = (p: Partial<NonNullable<typeof behavior>>) =>
+    setBehavior((b) => ({ allowDig: false, respawnCommand: "", returnOnDeath: false, ...b, ...p }));
 
   useEffect(() => {
     let live = true;
@@ -253,20 +259,30 @@ function BehaviorCard({ bot }: { bot: BotSummary }) {
   }, [bot.id]);
 
   async function toggleDig(allow: boolean) {
-    setBehavior((b) => ({ respawnCommand: b?.respawnCommand ?? "", allowDig: allow })); // 立即反映
+    patchBehavior({ allowDig: allow }); // 立即反映
     const r = await cmd.behavior.setDig(bot.id, allow);
     if (r.ok) {
       pushToast(allow ? "已允许破坏方块寻路" : "已切换为无破坏寻路", "success");
     } else {
       pushToast(r.error || "设置失败", "error");
-      setBehavior((b) => ({ respawnCommand: b?.respawnCommand ?? "", allowDig: !allow })); // 回滚
+      patchBehavior({ allowDig: !allow }); // 回滚
+    }
+  }
+  async function toggleReturn(on: boolean) {
+    patchBehavior({ returnOnDeath: on }); // 立即反映
+    const r = await cmd.behavior.setReturnOnDeath(bot.id, on);
+    if (r.ok) {
+      pushToast(on ? "已开启死亡后返回原位" : "已关闭死亡后返回", "success");
+    } else {
+      pushToast(r.error || "设置失败", "error");
+      patchBehavior({ returnOnDeath: !on }); // 回滚
     }
   }
   async function saveRespawn() {
     const c = respawnDraft.trim();
     const r = await cmd.behavior.setRespawnCmd(bot.id, c);
     if (r.ok) {
-      setBehavior((b) => ({ allowDig: b?.allowDig ?? false, respawnCommand: c }));
+      patchBehavior({ respawnCommand: c });
       pushToast("已保存复活后指令", "success");
     } else pushToast(r.error || "保存失败", "error");
   }
@@ -302,6 +318,16 @@ function BehaviorCard({ bot }: { bot: BotSummary }) {
             保存
           </Button>
         </div>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3 border-t border-border/40 pt-2.5">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">死亡后返回原位</div>
+          <p className="text-[11px] leading-relaxed text-muted">
+            重生后（先跑上面的复活指令）自动寻路走回死亡点。原版类服可用；模组服寻路可能失效，建议改用复活指令/脚本。
+            复杂返回（如先选副本）可在脚本里用 <code className="rounded bg-surface-2 px-1">{"{deathX} {deathY} {deathZ}"}</code> 配合 respawn 触发器。
+          </p>
+        </div>
+        <Switch checked={!!behavior?.returnOnDeath} onChange={toggleReturn} disabled={disabled} />
       </div>
     </Card>
   );
