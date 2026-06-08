@@ -32,18 +32,26 @@ module.exports = (botInstance) => {
         });
     };
 
+    // 读取作物生长阶段（兼容 getProperties 返回字符串/缺失 → 回退 metadata）
+    const cropAge = (block) => {
+        let age;
+        try {
+            const props = block.getProperties ? block.getProperties() : null;
+            age = props && props.age !== undefined ? props.age : block.metadata;
+        } catch (err) {
+            age = block.metadata;
+        }
+        return Number(age); // 字符串 "7" → 7；缺失 → NaN
+    };
+
     const isMatureCrop = (block, cropType) => {
         const cropInfo = CROP_DATABASE[cropType];
         if (!cropInfo) return false;
         if (cropInfo.isStemCrop) return block.name === cropInfo.dropName;
         if (block.name !== cropType) return false;
-        try {
-            const props = block.getProperties ? block.getProperties() : {};
-            const age = props.age !== undefined ? props.age : block.metadata;
-            return age === cropInfo.matureAge;
-        } catch (err) {
-            return block.metadata === cropInfo.matureAge;
-        }
+        // 用 >= 而非 ===：避免「getProperties 返回字符串/undefined → 严格相等恒 false → 整片静默不收割」(MODA-7)
+        const age = cropAge(block);
+        return Number.isFinite(age) && age >= cropInfo.matureAge;
     };
 
     // 合并扫描：一次遍历匹配所有作物类型
@@ -81,11 +89,17 @@ module.exports = (botInstance) => {
             const block = bot.blockAt(position);
             if (!block || !isMatureCrop(block, cropType)) return false;
 
-            // 只用 goto，不要同时调 setGoal
+            // 只用 goto，不要同时调 setGoal；加超时：某棵不可达时不挂死整轮（10s 后放弃这棵）
             const goal = new goals.GoalNear(position.x, position.y, position.z, 4);
-            await bot.pathfinder.goto(goal);
+            await Promise.race([
+                bot.pathfinder.goto(goal).catch(() => {}),
+                new Promise((r) => setTimeout(r, 10000)),
+            ]);
+            try { bot.pathfinder.setGoal(null); } catch (e) { /* 停下，别再推进 */ }
+            // 中途停了/断线 → 安全退出
+            if (!botInstance.farmTask.active || !bot.entity) return false;
 
-            // 到达后重新获取方块（可能已被其他玩家收割）
+            // 到达后重新获取方块（可能已被其他玩家收割，或没走到）
             const currentBlock = bot.blockAt(position);
             if (!currentBlock || !isMatureCrop(currentBlock, cropType)) return false;
 
@@ -167,11 +181,8 @@ module.exports = (botInstance) => {
         const immatureCrops = bot.findBlocks({
             matching: (block) => {
                 if (block.name !== cropType) return false;
-                try {
-                    const props = block.getProperties ? block.getProperties() : {};
-                    const age = props.age !== undefined ? props.age : block.metadata;
-                    return age < cropInfo.matureAge;
-                } catch (err) { return false; }
+                const age = cropAge(block);
+                return Number.isFinite(age) && age < cropInfo.matureAge;
             },
             maxDistance: botInstance.farmTask.scanRadius,
             count: 10
@@ -204,11 +215,12 @@ module.exports = (botInstance) => {
                 emitLog(`发现 ${allMatureCrops.length} 个成熟作物: ${cropList}`);
 
                 for (const crop of allMatureCrops) {
-                    if (!botInstance.farmTask.active) break;
+                    if (!botInstance.farmTask.active || !bot.entity) break; // 停了/断线即止
 
                     const harvested = await harvestCrop(crop.position, crop.cropType);
                     if (harvested) {
                         await new Promise(resolve => setTimeout(resolve, 400));
+                        if (!botInstance.farmTask.active || !bot.entity) break;
                         await replantCrop(crop.position, crop.cropType);
                         await new Promise(resolve => setTimeout(resolve, 200));
                     }
