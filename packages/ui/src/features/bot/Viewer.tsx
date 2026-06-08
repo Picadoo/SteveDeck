@@ -13,6 +13,7 @@ import {
   Maximize2,
   Play,
   ChevronDown,
+  RefreshCw,
 } from "lucide-react";
 import { Button, Input } from "@/components/ui/primitives";
 import Joystick, { HoldButton } from "@/components/Joystick";
@@ -48,13 +49,16 @@ export default function Viewer({
   const pushToast = useStore((s) => s.pushToast);
   const [started, setStarted] = useState(autoStart);
   const [url, setUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // 等待服务端 ack（启动渲染服务）
+  const [frameKey, setFrameKey] = useState(0); // iframe 重载键：变更即强制刷新画面（换端口/重载/复用都靠它必触发 onLoad）
+  const [frameLoading, setFrameLoading] = useState(false); // iframe 引导中（拿到端口→真正渲染好之间），用覆盖层盖住黑屏
   const [err, setErr] = useState(false);
-  const [nonce, setNonce] = useState(0); // 「重试」：自增触发启动 effect 重跑
+  const [nonce, setNonce] = useState(0); // 「重试」：自增触发启动 effect 重跑（重启渲染服务）
   // 默认第三人称（仿原版 F5）：看得到机器人本体，自由转镜头
   const [firstPerson, setFirstPerson] = useState(false);
   const [walk, setWalk] = useState(false); // 操控模式：显示摇杆并关掉点地寻路
   const [showMods, setShowMods] = useState(false); // 模块快速开关折叠（默认收起，不挤占视角）
+  const [showHelp, setShowHelp] = useState(false); // 操作说明默认收起，点 ? 展开
   const [cmdText, setCmdText] = useState("");
   const lastStates = useRef("");
   const dragRef = useRef<{ x: number; y: number } | null>(null);
@@ -77,8 +81,13 @@ export default function Viewer({
       if (r.ok && r.data?.port) {
         const host = connUrl.replace(/^https?:\/\//, "").replace(/:\d+$/, "");
         setUrl(`http://${host}:${r.data.port}`);
+        // 盖住「换端口/复用后 iframe 重新引导」的黑屏：升覆盖层，待 iframe onLoad 再揭开。
+        // frameKey 自增 → src 必变 → onLoad 必触发（即便服务端复用同端口也不会卡在加载态）。
+        setFrameKey((k) => k + 1);
+        setFrameLoading(true);
       } else {
         setErr(true); // 不退回占位：保留工具条与「重试」，避免抖动误伤
+        setFrameLoading(false);
         pushToast(r.error || "视角启动失败", "error");
       }
     });
@@ -181,8 +190,12 @@ export default function Viewer({
   function toggleWalk() {
     const next = !walk;
     setWalk(next);
-    if (next) setFirstPerson(true); // 操控=第一人称：走动时镜头跟机器人，不乱晃
-    else cmd.control.stop(bot.id); // 收起即停
+    if (next) {
+      setFirstPerson(true); // 操控=第一人称：走动时镜头跟机器人，不乱晃
+    } else {
+      setFirstPerson(false); // 退出操控自动回第三人称（绑定对称，不再单向卡在第一人称）
+      cmd.control.stop(bot.id); // 收起即停
+    }
   }
   // 踩点：取机器人当前精确坐标。录制中→插一条 goto；否则复制坐标（可粘到脚本/地点）
   async function markHere() {
@@ -234,10 +247,25 @@ export default function Viewer({
     <div className="space-y-2">
       <div className={cn("relative w-full overflow-hidden rounded-lg border border-border bg-black", frameClass)}>
         {url ? (
-          <iframe src={url} className="h-full w-full border-0" title="bot-view" allow="fullscreen" />
+          <iframe
+            src={`${url}?k=${frameKey}`}
+            onLoad={() => setFrameLoading(false)}
+            className="h-full w-full border-0"
+            title="bot-view"
+            allow="fullscreen"
+          />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted">
             {loading ? "正在启动视角…" : "未启动"}
+          </div>
+        )}
+
+        {/* 画面引导覆盖层：盖住换端口/重载/复用时 prismarine 重新拉区块的黑屏，iframe onLoad 后揭开。
+            z 低于工具条(z-20)，加载时仍可点人称/放大/重载。 */}
+        {url && (loading || frameLoading) && !err && (
+          <div className="pointer-events-none absolute inset-0 z-[15] flex items-center justify-center gap-2 bg-surface-2/80 text-sm text-muted backdrop-blur-sm">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            画面加载中…
           </div>
         )}
 
@@ -278,21 +306,24 @@ export default function Viewer({
 
         {/* 工具条（右上）：人称切换 + 放大（内嵌时） */}
         <div className="absolute right-2 top-2 z-20 flex items-center gap-1">
-          <button
-            onClick={() => setFirstPerson((v) => !v)}
-            title={firstPerson ? "切第三人称（自由转镜头）" : "切第一人称（机器人视线）"}
-            className="flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-[11px] text-white transition-colors hover:bg-black/75"
-          >
-            {firstPerson ? (
-              <>
-                <Users className="h-3 w-3" /> 三人称
-              </>
-            ) : (
-              <>
-                <User className="h-3 w-3" /> 一人称
-              </>
-            )}
-          </button>
+          {/* 驾驶(操控)时人称被绑定为第一人称，隐藏独立切换避免破坏绑定；观察时才可自由切看法 */}
+          {!walk && (
+            <button
+              onClick={() => setFirstPerson((v) => !v)}
+              title={firstPerson ? "切第三人称（自由转镜头）" : "切第一人称（机器人视线）"}
+              className="flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-[11px] text-white transition-colors hover:bg-black/75"
+            >
+              {firstPerson ? (
+                <>
+                  <Users className="h-3 w-3" /> 三人称
+                </>
+              ) : (
+                <>
+                  <User className="h-3 w-3" /> 一人称
+                </>
+              )}
+            </button>
+          )}
           {!popout && onPopout && (
             <button
               onClick={onPopout}
@@ -361,7 +392,7 @@ export default function Viewer({
         )}
       </div>
 
-      {/* 控制条：操控开关 + 可折叠的模块快速开关 */}
+      {/* 控制条：操控 + 踩点 + 重载画面 + 模块快速开关 + 操作说明 */}
       <div className="flex flex-wrap items-center gap-1.5">
         <Button size="sm" variant={walk ? "primary" : "ghost"} onClick={toggleWalk} disabled={!bot.online}>
           <Gamepad2 className="h-3.5 w-3.5" /> {walk ? "停操控" : "操控"}
@@ -369,11 +400,34 @@ export default function Viewer({
         <Button size="sm" variant="ghost" onClick={markHere} disabled={!bot.online} title="获取当前位置（踩点）——录制中插入 goto，否则复制坐标">
           <MapPin className="h-3.5 w-3.5 text-emerald-400" /> 踩点
         </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setFrameLoading(true);
+            setFrameKey((k) => k + 1); // 客户端重载 iframe：复位第三人称镜头 / 卡顿花屏时恢复，不重启渲染服务、不影响机器人
+          }}
+          disabled={!url}
+          title="重载画面（复位镜头 / 卡顿花屏时恢复，不影响机器人）"
+        >
+          <RefreshCw className="h-3.5 w-3.5" /> 重载
+        </Button>
         <span className="mx-0.5 h-4 w-px bg-border" />
         <Button size="sm" variant="ghost" onClick={() => setShowMods((v) => !v)}>
           模块
           <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showMods && "rotate-180")} />
         </Button>
+        <button
+          type="button"
+          onClick={() => setShowHelp((v) => !v)}
+          title="操作说明"
+          className={cn(
+            "ml-auto flex h-6 w-6 items-center justify-center rounded-full border text-[11px] transition-colors",
+            showHelp ? "border-accent/40 bg-accent/15 text-accent" : "border-border text-muted hover:text-fg",
+          )}
+        >
+          ?
+        </button>
       </div>
       {showMods && (
         <div className="flex flex-wrap gap-1.5">
@@ -405,10 +459,12 @@ export default function Viewer({
         </div>
       )}
 
-      <p className="text-[11px] leading-relaxed text-muted">
-        <span className="text-fg">第三人称</span>：拖动转相机（像 F5）、滚轮缩放、点地面寻路过去；
-        <span className="text-fg">第一人称</span>：镜头=机器人视线，拖动转视线。开「操控」后：电脑用 <span className="text-fg">WASD / 空格 / Shift</span>、手机用摇杆走动，按住左右转身。
-      </p>
+      {showHelp && (
+        <p className="rounded-lg border border-border bg-surface-2/40 px-3 py-2 text-[11px] leading-relaxed text-muted">
+          <span className="text-fg">第三人称</span>：拖动转相机（像 F5）、滚轮缩放、点地面寻路过去；
+          <span className="text-fg">第一人称</span>：镜头=机器人视线，拖动转视线。开「操控」后：电脑用 <span className="text-fg">WASD / 空格 / Shift</span>、手机用摇杆走动，按住左右转身；退出操控自动回第三人称。
+        </p>
+      )}
 
       {/* 弹出放大时：底部全局聊天栏被遮住，这里补一个边看边发指令 */}
       {popout && (
