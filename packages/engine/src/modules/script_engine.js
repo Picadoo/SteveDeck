@@ -7,6 +7,7 @@ const { goals } = require('mineflayer-pathfinder');
 const { isChatBlocked } = require('../utils/chatSafety');
 const { findMatchingSlot, slotText } = require('../utils/guiMatch');
 const { customName } = require('../utils/items');
+const { ServerEvents } = require('@mcbot/protocol'); // 事件名统一走协议常量，杜绝两端字符串漂移
 
 const MAX_CALL_DEPTH = 5;
 const GOTO_TIMEOUT = 60000;
@@ -35,21 +36,21 @@ module.exports = (botInstance) => {
     };
 
     const emitStatus = (name, status, detail) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('script_status', {
+        botInstance.io.to(botInstance._room).to('admin').emit(ServerEvents.SCRIPT_STATUS, {
             user: bot.username, ownerId: botInstance.config.ownerId,
             name, status, detail
         });
     };
 
     const emitProgress = (path, action, loopIter) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('script_progress', {
+        botInstance.io.to(botInstance._room).to('admin').emit(ServerEvents.SCRIPT_PROGRESS, {
             user: bot.username, ownerId: botInstance.config.ownerId,
             path, action, loopIter
         });
     };
 
     const emitError = (path, action, message) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('script_error', {
+        botInstance.io.to(botInstance._room).to('admin').emit(ServerEvents.SCRIPT_ERROR, {
             user: bot.username, ownerId: botInstance.config.ownerId,
             path, action, message
         });
@@ -59,7 +60,7 @@ module.exports = (botInstance) => {
         const now = Date.now();
         if (now - botInstance._lastVarsEmit < 300) return; // 节流 300ms
         botInstance._lastVarsEmit = now;
-        botInstance.io.to(botInstance._room).to('admin').emit('script_vars', {
+        botInstance.io.to(botInstance._room).to('admin').emit(ServerEvents.SCRIPT_VARS, {
             user: bot.username, ownerId: botInstance.config.ownerId,
             vars: { ...botInstance._scriptVars }
         });

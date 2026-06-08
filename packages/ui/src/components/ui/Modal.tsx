@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 const SIZES = {
@@ -25,11 +25,17 @@ export default function Modal({
   footer?: ReactNode;
   size?: keyof typeof SIZES;
 }) {
+  // onClose 存进 ref：调用方常传内联箭头，每次父级重渲都换新引用。
+  // 若把它放进下面 effect 依赖，会导致每渲染都拆/挂 keydown 监听并重置 overflow（轻微闪烁）。
+  // 用 ref 读最新回调，effect 依赖只留 [open]。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   // UICORE-4：打开时按 Esc 关闭 + 锁 body 滚动（关闭/卸载时还原）。
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
@@ -38,7 +44,7 @@ export default function Modal({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (

@@ -115,17 +115,29 @@ export async function tryTauriAutoConnect(): Promise<boolean> {
   const myEpoch = connectEpoch; // UICORE-2：记录世代，轮询期间被 disconnect 打断则放弃
   useStore.getState().setConn({ status: "connecting", error: undefined });
   // 内置引擎刚启动需 1~3s，轮询 /health 最多等 ~20s，就绪即连
+  let ready = false;
   for (let i = 0; i < 40; i++) {
     if (connectEpoch !== myEpoch) return false; // 期间用户手动断开/切走 → 不再连
     try {
       const r = await fetch(info.url + "/health", { cache: "no-store" });
-      if (r.ok) break;
+      if (r.ok) {
+        ready = true;
+        break;
+      }
     } catch {
       /* 还没起来，继续等 */
     }
     await new Promise((res) => setTimeout(res, 500));
   }
   if (connectEpoch !== myEpoch) return false; // 最终连接前再确认一次
+  // 轮询 ~20s 仍未就绪：内置引擎大概率启动失败。给出明确信号（错误态 + 提示），
+  // 否则 App 只会静默回退到手动连接界面，用户不知道为什么。仍返回 true 以阻止回退到「上次保存的远程连接」。
+  if (!ready) {
+    const msg = "内置引擎未能启动，请检查安装或手动连接";
+    useStore.getState().setConn({ status: "error", error: msg });
+    useStore.getState().pushToast(msg, "error");
+    return true;
+  }
   connect(info.url, info.token);
   return true;
 }
@@ -241,7 +253,7 @@ export function connect(url: string, token: string): void {
 
   // 脚本运行时反馈（进度/状态/报错/变量）——以前完全没订阅，脚本对用户是黑盒
   socket.on(
-    "script_status",
+    ServerEvents.SCRIPT_STATUS,
     (p: { _bid?: string; user?: string; name?: string; status?: string; detail?: string }) => {
       const key = p._bid || p.user;
       if (!key) return;
@@ -256,14 +268,14 @@ export function connect(url: string, token: string): void {
     },
   );
   socket.on(
-    "script_progress",
+    ServerEvents.SCRIPT_PROGRESS,
     (p: { _bid?: string; user?: string; path?: string; action?: string; loopIter?: number }) => {
       const key = p._bid || p.user;
       if (key) useStore.getState().mergeScriptRuntime(key, { path: p.path, action: p.action, loopIter: p.loopIter });
     },
   );
   socket.on(
-    "script_error",
+    ServerEvents.SCRIPT_ERROR,
     (p: { _bid?: string; user?: string; path?: string; action?: string; message?: string }) => {
       const key = p._bid || p.user;
       if (!key) return;
@@ -272,13 +284,13 @@ export function connect(url: string, token: string): void {
       useStore.getState().pushToast(`脚本错误：${message}`, "error");
     },
   );
-  socket.on("script_vars", (p: { _bid?: string; user?: string; vars?: Record<string, unknown> }) => {
+  socket.on(ServerEvents.SCRIPT_VARS, (p: { _bid?: string; user?: string; vars?: Record<string, unknown> }) => {
     const key = p._bid || p.user;
     if (key) useStore.getState().mergeScriptRuntime(key, { vars: p.vars || {} });
   });
   // 通用消息监听统计
   socket.on(
-    "monitor_stats",
+    ServerEvents.MONITOR_STATS,
     (p: { _bid?: string; user?: string; stats?: Record<string, MonitorStat> }) => {
       const key = p._bid || p.user;
       if (key) useStore.getState().setMonitorStats(key, p.stats || {});

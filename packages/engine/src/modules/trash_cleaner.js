@@ -50,7 +50,14 @@ module.exports = (botInstance) => {
         if (active) {
             emitLog("自动清理开启：将定期清理指定垃圾");
             // 每 10 秒扫描一次背包
-            if (botInstance.trashCleanerTask.timer) clearInterval(botInstance.trashCleanerTask.timer);
+            if (botInstance.trashCleanerTask.timer) {
+                clearInterval(botInstance.trashCleanerTask.timer);
+                // 先把旧句柄从全局 timers 摘掉，避免反复 toggle 让数组无限膨胀（参考 auto_use 的 splice 模式）
+                if (Array.isArray(botInstance.timers)) {
+                    const i = botInstance.timers.indexOf(botInstance.trashCleanerTask.timer);
+                    if (i >= 0) botInstance.timers.splice(i, 1);
+                }
+            }
             botInstance.trashCleanerTask.timer = setInterval(cleanInventory, 10000);
 
             // 修复内存泄漏: 将定时器ID添加到追踪列表

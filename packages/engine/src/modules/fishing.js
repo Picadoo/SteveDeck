@@ -1,3 +1,5 @@
+const { ServerEvents } = require('@mcbot/protocol'); // 用协议常量 emit 模块状态，避免与前端事件名漂移
+
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
     let loopTimer = null;   // 下一轮 fishingLoop 的定时器句柄
@@ -27,10 +29,11 @@ module.exports = (botInstance) => {
 
             if (typeof botInstance.saveConfig === 'function') botInstance.saveConfig();
 
-            botInstance.io.to(botInstance._room).to('admin').emit('module_states', {
-                user: bot.username,
-                ownerId: botInstance.config.ownerId,
-                states: botInstance.config.settings
+            // 用协议正确的模块状态事件通知前端（前端 engine.ts 监听 module:state），原 module_states 无人消费
+            botInstance.io.emit(ServerEvents.MODULE_STATE, {
+                id: botInstance.config.id,
+                module: 'fishing',
+                state: { active: false }
             });
             return;
         }

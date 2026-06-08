@@ -113,8 +113,10 @@ export default function Console({ botId }: { botId: string }) {
           </div>
         ) : (
           shown.map((l, i) => (
+            // 稳定复合 key：纯 index 在切级别/过滤后会让 React 复用错位 DOM（McText 记忆化下串色）。
+            // 用 时间+文本前缀 提供稳定性，末尾仍带 i 兜底，避免同时刻同文本撞 key。
             <div
-              key={i}
+              key={`${l.time}-${l.text.slice(0, 24)}-${i}`}
               className={cn(
                 "whitespace-pre-wrap break-words",
                 l.level === "error" && "text-danger",

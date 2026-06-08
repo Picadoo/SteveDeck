@@ -241,9 +241,10 @@ export default function BotPanel() {
         {showHist && chatHistory.length > 0 && (
           <div className="absolute bottom-full left-3 mb-1 max-h-56 w-72 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-lg">
             <div className="px-3 py-1 text-[10px] text-muted">最近命令（点击重发）</div>
-            {chatHistory.map((c, i) => (
+            {chatHistory.map((c) => (
+              // chatHistory 是去重 MRU 列表会重排，index key 会复用错位；命令字符串已唯一，用它当 key。
               <button
-                key={i}
+                key={c}
                 type="button"
                 onClick={() => {
                   setShowHist(false);

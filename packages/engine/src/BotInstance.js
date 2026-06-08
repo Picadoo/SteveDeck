@@ -225,7 +225,15 @@ class BotInstance {
     }
 
     stopRawMove() {
-        if (this._rawTimer) { clearInterval(this._rawTimer); this._rawTimer = null; }
+        if (this._rawTimer) {
+            clearInterval(this._rawTimer);
+            // 从 timers 数组摘掉句柄，避免反复开关 rawMove 时数组无界增长（同 splice 模式）
+            if (Array.isArray(this.timers)) {
+                const i = this.timers.indexOf(this._rawTimer);
+                if (i >= 0) this.timers.splice(i, 1);
+            }
+            this._rawTimer = null;
+        }
         this._raw = null;
         try { if (this.bot) this.bot.physicsEnabled = true; } catch (e) { /* ignore */ }
     }

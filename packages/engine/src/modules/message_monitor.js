@@ -7,6 +7,7 @@
 // 规则持久化在 settings.monitorRules（跨重启）；统计为本次引擎会话累计，跨「重连」保留、引擎重启或手动重置才清。
 
 const { validatePattern } = require("../utils/safePattern");
+const { ServerEvents } = require("@mcbot/protocol"); // 事件名统一走协议常量，杜绝两端字符串漂移
 
 const UNITS = { 千: 1e3, 万: 1e4, 亿: 1e8, 兆: 1e12, 万亿: 1e12, 京: 1e16 };
 
@@ -156,7 +157,7 @@ module.exports = (botInstance) => {
   };
 
   const pushStats = () => {
-    botInstance.io.to(botInstance._room).to("admin").emit("monitor_stats", {
+    botInstance.io.to(botInstance._room).to("admin").emit(ServerEvents.MONITOR_STATS, {
       user: bot.username,
       ownerId: botInstance.config.ownerId,
       stats: buildStatsPayload(),

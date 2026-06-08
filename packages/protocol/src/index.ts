@@ -334,6 +334,16 @@ export const ServerEvents = {
   SCRIPT_LIST: "script:list",
   /** 脚本详情 */
   SCRIPT_DETAIL: "script:detail",
+  /** 脚本运行状态（running/stopped/rejected） */
+  SCRIPT_STATUS: "script_status",
+  /** 脚本执行进度（当前步路径/动作/循环计数） */
+  SCRIPT_PROGRESS: "script_progress",
+  /** 脚本执行报错（步路径/动作/消息） */
+  SCRIPT_ERROR: "script_error",
+  /** 脚本变量快照 */
+  SCRIPT_VARS: "script_vars",
+  /** 通用消息监听统计 */
+  MONITOR_STATS: "monitor_stats",
 } as const;
 
 export interface ServerToClientPayloads {

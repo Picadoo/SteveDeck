@@ -16,7 +16,8 @@ const NUM_SHADOW = "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 
 
 /** 服务器打开的窗口/GUI（箱子、菜单）——贴图网格、悬浮看完整信息、点击即操作 */
 export default function GuiWindow({ bot }: { bot: BotSummary }) {
-  const win = useStore((s) => s.windows[bot.id]);
+  // 键优先 bot.id；回退 username 兼容无 _bid 的旧引擎（与 engine.ts 存储键、store.removeBot 双键清理一致）
+  const win = useStore((s) => s.windows[bot.id] ?? s.windows[bot.username]);
   const connUrl = useStore((s) => s.conn.url);
   const [hover, setHover] = useState<Hover | null>(null);
 
