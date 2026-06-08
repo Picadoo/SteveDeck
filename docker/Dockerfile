@@ -12,6 +12,9 @@ COPY packages/ui/package.json ./packages/ui/
 COPY apps/desktop/package.json ./apps/desktop/
 COPY apps/mobile/package.json ./apps/mobile/
 
+# 补丁文件（pnpm patchedDependencies 需要，否则 install 报 ENOENT）
+COPY patches ./patches/
+
 # 仅安装引擎及其依赖（含 protocol）
 RUN pnpm install --frozen-lockfile --filter @mcbot/engine...
 
