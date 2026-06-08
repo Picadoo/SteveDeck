@@ -19,6 +19,50 @@ function getMcp() {
     return _mcp || null;
 }
 
+// ===== 可点击 / 可悬浮聊天解析 =====
+// 把聊天 JSON 组件树展平成片段：每片段带文字 + 样式 + 可选 click(点→执行命令/开链接) / hover(悬浮→展示物品/文字)。
+function flattenChatText(c) {
+    if (c == null) return '';
+    if (typeof c === 'string') return c;
+    if (Array.isArray(c)) return c.map(flattenChatText).join('');
+    let s = c.text != null ? String(c.text) : '';
+    if (Array.isArray(c.extra)) s += c.extra.map(flattenChatText).join('');
+    return s;
+}
+function extractHoverText(h) {
+    if (!h) return undefined;
+    try {
+        const action = h.action || '';
+        const val = h.contents != null ? h.contents : h.value;
+        if (action === 'show_item') {
+            const s = (val && typeof val === 'object') ? (val.id || JSON.stringify(val)) : String(val || '');
+            const m = s.match(/(?:minecraft:)?([a-z_]{3,})/i);
+            return m ? `[物品] ${m[1]}` : '[物品]';
+        }
+        if (val == null) return undefined;
+        const flat = (typeof val === 'string' ? val : flattenChatText(val)).replace(/§[0-9a-fk-orx]/gi, '').trim();
+        return flat || undefined;
+    } catch (e) { return undefined; }
+}
+function extractChatSegments(node, inherited, out) {
+    if (node == null || out.length > 150) return;
+    if (typeof node === 'string') { if (node) out.push({ text: node, ...inherited }); return; }
+    const ce = node.clickEvent || node.click_event;
+    const he = node.hoverEvent || node.hover_event;
+    const style = {
+        color: node.color || inherited.color,
+        bold: node.bold != null ? !!node.bold : inherited.bold,
+        italic: node.italic != null ? !!node.italic : inherited.italic,
+        underlined: node.underlined != null ? !!node.underlined : inherited.underlined,
+        strikethrough: node.strikethrough != null ? !!node.strikethrough : inherited.strikethrough,
+        click: ce ? { action: String(ce.action || ''), value: String(ce.value != null ? ce.value : '') } : inherited.click,
+        hover: extractHoverText(he) || inherited.hover,
+    };
+    const text = node.text != null ? String(node.text) : '';
+    if (text) out.push({ text, ...style });
+    if (Array.isArray(node.extra)) for (const c of node.extra) extractChatSegments(c, style, out);
+}
+
 class BotInstance {
     constructor(config, io, saveCallback, loadGlobalScripts) {
         this.config = config;
@@ -102,6 +146,39 @@ class BotInstance {
     isBodyBusy() { return Date.now() < (this.bodyBusy || 0); }
     // 占用身体 ms 毫秒（auto_use 执行一次「使用」时调用）。
     setBodyBusy(ms) { this.bodyBusy = Date.now() + (ms || 0); }
+
+    // MODB-11：是否有客户端在「看」这个 bot——给周期性重活(背包NBT/计分板/监听推送)做门控，
+    // 没人看就跳过这一拍，省掉 bot 多时永久全量空转的 CPU/GC。
+    //
+    // 本工程是「单主人广播模型」：botManager 注入的 io 是一个广播壳(只有 to()/emit()，to 为空操作，
+    // emit 一律 io.emit 广播给所有已认证客户端)，因此「在看某个 bot」≡「有任意客户端连着」。
+    // 判定策略（由强到弱，永远 fail-open，宁可多干活也不藏数据）：
+    //   1) 能拿到「已连接客户端总数」(真实 IOServer 的 engine.clientsCount / namespace.sockets.size)：
+    //      —— 仅当确定为 0(无人连)才返回 false 跳过；>0 即视为有人看。
+    //   2) room 已被加入(将来若 botManager 改成真房间)：本 bot room 或 admin room 有 socket → 一定在看(只作「是」的加分，空房间绝不当「否」，避免误藏)。
+    //   3) 三者都拿不到(当前广播壳)：返回 true(fail-open)——此时门控为安全空操作，待 io 暴露真实连接数后自动生效。
+    hasWatchers() {
+        try {
+            const io = this.io;
+            if (!io) return true;
+            // 1) 已连接客户端总数（真实 IOServer 才有；广播壳没有 → 落到 fail-open）
+            let clients = null;
+            if (io.engine && typeof io.engine.clientsCount === 'number') clients = io.engine.clientsCount;
+            else if (io.sockets && io.sockets.sockets && typeof io.sockets.sockets.size === 'number') clients = io.sockets.sockets.size;
+            else if (typeof io.of === 'function') {
+                const ns = io.of('/');
+                if (ns && ns.sockets && typeof ns.sockets.size === 'number') clients = ns.sockets.size;
+            }
+            // 2) room 命中（仅作「确有人看」的加分；空 room 不当「无人」）
+            const rooms = io.sockets && io.sockets.adapter && io.sockets.adapter.rooms;
+            if (rooms && typeof rooms.get === 'function') {
+                if ((rooms.get(this._room)?.size || 0) > 0) return true;
+                if ((rooms.get('admin')?.size || 0) > 0) return true;
+            }
+            if (clients != null) return clients > 0; // 能确知连接数：0 才跳过
+        } catch (e) { /* 探测失败 → fail-open */ }
+        return true; // 拿不到任何可靠信号：保守继续下发
+    }
 
     // 推一条 per-bot 日志到前端「日志」tab：连接生命周期/错误都走这里，
     // 避免用户连接时一片空白、不知道进没进服务器（用户明确反馈过的痛点）。
@@ -501,6 +578,18 @@ class BotInstance {
                 return;
             }
 
+            // 可点击/可悬浮聊天：提取 click(点→执行命令/开链接) / hover(悬浮→展示物品/文字)。
+            // 这类通知消息立即作为独立日志发(带 segments,便于前端渲染按钮)，不进 debounce 合并。
+            const segments = [];
+            try { extractChatSegments(jsonMsg.json || jsonMsg, {}, segments); } catch (e) { /* ignore */ }
+            if (segments.some((s) => s.click || s.hover)) {
+                this.io.to(this._room).to('admin').emit('log', {
+                    user: this.config.username, ownerId: this.config.ownerId,
+                    msg: raw, time: new Date().toLocaleTimeString(), chat: true, segments,
+                });
+                return;
+            }
+
             this.msgBuffer += raw + "\n";
             if (this.msgTimeout) clearTimeout(this.msgTimeout);
             this.msgTimeout = setTimeout(() => {
@@ -588,7 +677,19 @@ class BotInstance {
         // 变化检测：坐标取整+生命+延迟(25ms 桶)+模块/存档作签名。静止挂机(钓鱼/待命)时避免每 2s 空推；
         // 无变化时也最多 30s 保活推一次，不影响前端在线显示。
         const pingBucket = ping == null ? 'x' : Math.round(ping / 25);
-        const sig = `${Math.floor(pos.x)},${Math.floor(pos.y)},${Math.floor(pos.z)}|${this.bot.health}|${this.bot.food}|${this.bot.experience?.level || 0}|${pingBucket}|${this.savedLocations.length}|${JSON.stringify(modules)}`;
+        // CORE-8：签名只取少量标量，不再每 2s 对完整 modules(含 combatConfig/schedules) 做 JSON.stringify。
+        //  · combatConfig 各关键标量直接拼接（5 个布尔/数字，配置变化时签名随之变化）；
+        //  · schedules 只在「数组引用变化」时重算指纹（编辑定时会经 updateBot 换成新数组，引用即变），
+        //    平时挂机直接复用缓存，避免每拍序列化整张定时表。
+        const cc = this.combatConfig;
+        const ccSig = `${cc.enabled ? 1 : 0}/${cc.range}/${cc.maxTargets}/${cc.antiKb ? 1 : 0}/${cc.attackPlayers ? 1 : 0}/${cc.attackMobs ? 1 : 0}`;
+        const schedules = this.config.settings?.schedules || [];
+        if (schedules !== this._schedulesRef) { // 引用变化才重算（定时表很少变；保证编辑后仍会推送）
+            this._schedulesRef = schedules;
+            this._schedulesSig = `${schedules.length}:${JSON.stringify(schedules)}`;
+        }
+        const modSig = `${ccSig}|${this.fishingActive ? 1 : 0}|${this.config.settings?.reconnectDelay || 5}|${this._schedulesSig}`;
+        const sig = `${Math.floor(pos.x)},${Math.floor(pos.y)},${Math.floor(pos.z)}|${this.bot.health}|${this.bot.food}|${this.bot.experience?.level || 0}|${pingBucket}|${this.savedLocations.length}|${modSig}`;
         const now = Date.now();
         if (sig === this._lastStatusSig && now - this._lastStatusEmitAt < 30000) return;
         this._lastStatusSig = sig;

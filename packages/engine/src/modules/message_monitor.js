@@ -163,9 +163,11 @@ module.exports = (botInstance) => {
     });
   };
 
-  // 节流推送（1.5s 内有匹配才推一次）
+  // 节流推送（1.5s 内有匹配才推一次）。
+  // MODB-11：无人观看时跳过这一拍的「构造 payload + 广播」重活——统计仍在 onMessage 里照常累计(_monitorStats，
+  // 跨重连保留)，dirty 保持置位，待有人看时下一拍即把最新累计值补推；getMonitor() 也随时按需返回当前值。
   const pushTimer = setInterval(() => {
-    if (dirty) {
+    if (dirty && botInstance.hasWatchers()) {
       dirty = false;
       pushStats();
     }

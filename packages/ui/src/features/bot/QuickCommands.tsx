@@ -1,19 +1,13 @@
-// 快捷指令条：底部一排可点按钮 + 键盘触发（按绑定键即发对应指令）+ 齿轮里编辑。
+// 快捷指令条：底部一排可点按钮（点了就发对应指令）+ 齿轮里编辑。
 // 通用可配置（按 host 存）；发送复用引擎的 chat 通道（聊天框发 /指令 就是它）。
+// 只提供指令、不提供快捷键（安卓收不到按键；客户端菜单键无头 bot 也按不出来）。
 import { useEffect, useState } from "react";
-import { Zap, Settings2, Plus, Trash2, Sparkles, X } from "lucide-react";
+import { Zap, Settings2, Plus, Trash2 } from "lucide-react";
 import { Button, Input } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
-import {
-  loadQuickCmds,
-  saveQuickCmds,
-  newQuickCmdId,
-  sanitizeKey,
-  MCLY_TEMPLATE,
-  type QuickCmd,
-} from "@/lib/quickCommands";
+import { loadQuickCmds, saveQuickCmds, newQuickCmdId, type QuickCmd } from "@/lib/quickCommands";
 import { cn } from "@/lib/cn";
 import type { BotSummary } from "@mcbot/protocol";
 
@@ -75,11 +69,6 @@ export default function QuickCommands({ bot }: { bot: BotSummary }) {
                 )}
               >
                 <span className="max-w-[8rem] truncate">{qc.name || qc.command}</span>
-                {qc.key && (
-                  <kbd className="rounded bg-surface px-1 text-[9px] font-bold uppercase text-muted">
-                    {qc.key}
-                  </kbd>
-                )}
               </button>
             ))}
             <button
@@ -108,7 +97,7 @@ export default function QuickCommands({ bot }: { bot: BotSummary }) {
   );
 }
 
-/** 编辑器：增删行、改名字/触发键/指令、可一键载入 mcly 示例骨架。 */
+/** 编辑器：增删行、改名字/指令。只配「名字 + 指令」，不再有触发键。 */
 function QuickCmdEditor({
   initial,
   onClose,
@@ -120,23 +109,10 @@ function QuickCmdEditor({
 }) {
   const [rows, setRows] = useState<QuickCmd[]>(() => initial.map((r) => ({ ...r })));
 
-  const setField = (id: string, field: "name" | "key" | "command", val: string) =>
-    setRows((rs) =>
-      rs.map((r) => (r.id === id ? { ...r, [field]: field === "key" ? sanitizeKey(val.slice(-1)) : val } : r)),
-    );
-  const addRow = () => setRows((rs) => [...rs, { id: newQuickCmdId(), name: "", key: "", command: "" }]);
+  const setField = (id: string, field: "name" | "command", val: string) =>
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
+  const addRow = () => setRows((rs) => [...rs, { id: newQuickCmdId(), name: "", command: "" }]);
   const removeRow = (id: string) => setRows((rs) => rs.filter((r) => r.id !== id));
-  const loadTemplate = () =>
-    setRows((rs) => {
-      const have = new Set(rs.map((r) => r.name));
-      const add = MCLY_TEMPLATE.filter((t) => !have.has(t.name)).map((t) => ({
-        id: newQuickCmdId(),
-        name: t.name,
-        key: t.key.toLowerCase(),
-        command: "",
-      }));
-      return [...rs, ...add];
-    });
 
   const save = () => {
     // 丢弃完全空白的行（没指令也没名字）
@@ -164,7 +140,7 @@ function QuickCmdEditor({
       }
     >
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
-        每行 = 一个快捷按钮：<b>名字</b> 是按钮文字，<b>键</b> 只是显示提示（标注你在游戏里按的键、方便记忆，可留空），
+        每行 = 一个快捷按钮：<b>名字</b> 是按钮文字（留空就用指令本身），
         <b>指令</b> 是点按钮后发给服务器的内容（如 <code className="rounded bg-surface-2 px-1">/menu</code>、
         <code className="rounded bg-surface-2 px-1">/kill</code>）。点按钮即发指令（手机也能点）；具体指令以你的服务器为准。
       </p>
@@ -172,13 +148,12 @@ function QuickCmdEditor({
       <div className="space-y-2">
         <div className="flex gap-2 px-1 text-[10px] font-medium text-muted">
           <span className="flex-1">名字</span>
-          <span className="w-12 text-center">键</span>
           <span className="flex-[2]">指令</span>
           <span className="w-7" />
         </div>
         {rows.length === 0 && (
           <div className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted">
-            还没有快捷指令。点下面「添加一行」或「载入 mcly 示例」。
+            还没有快捷指令。点下面「添加一行」，填上名字和指令即可。
           </div>
         )}
         {rows.map((r) => (
@@ -188,13 +163,6 @@ function QuickCmdEditor({
               onChange={(e) => setField(r.id, "name", e.target.value)}
               placeholder="官方杀戮"
               className="flex-1"
-            />
-            <Input
-              value={r.key.toUpperCase()}
-              onChange={(e) => setField(r.id, "key", e.target.value)}
-              placeholder="R"
-              maxLength={1}
-              className="w-12 text-center uppercase"
             />
             <Input
               value={r.command}
@@ -218,14 +186,7 @@ function QuickCmdEditor({
         <Button size="sm" variant="secondary" onClick={addRow}>
           <Plus className="h-3.5 w-3.5" /> 添加一行
         </Button>
-        <Button size="sm" variant="ghost" onClick={loadTemplate}>
-          <Sparkles className="h-3.5 w-3.5" /> 载入 mcly 示例
-        </Button>
       </div>
-      <p className="mt-2 flex items-start gap-1 text-[10px] leading-relaxed text-muted">
-        <X className="mt-px h-3 w-3 shrink-0" />
-        示例只预填名字+按键，<b>指令需你自己补</b>（不同服务器指令不同，未填的项点了会提示）。
-      </p>
     </Modal>
   );
 }

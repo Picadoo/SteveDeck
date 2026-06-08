@@ -325,7 +325,7 @@ export const cmd = {
       host: string;
       port: number;
       version: string;
-      loginPassword?: string;
+      hasLoginPassword?: boolean; // 不回传明文密码（API-10）：仅告知是否已存，编辑态据此显示占位
       note?: string;
       settings: any;
     }>(ClientCommands.BOT_CONFIG, { id }),

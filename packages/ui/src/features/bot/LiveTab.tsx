@@ -58,7 +58,11 @@ export default function LiveTab({ bot }: { bot: BotSummary }) {
 
   return (
     <div className="space-y-4">
-      {/* 实时视角（内嵌，可放大）。放大时内嵌让位，避免同一机器人开两个视角实例 */}
+      {/* 实时视角（内嵌，可放大）。放大时内嵌让位，避免同一机器人开两个视角实例。
+          放大/收起的 swap 会让内嵌 Viewer 卸载（cleanup 发 stop）、弹窗 Viewer 挂载（发 start）。
+          React 保证同一提交里「先跑卸载 effect 的 cleanup、再跑新挂载 effect」，socket 又保序，
+          故服务端收到顺序必为 stop→start；服务端 startViewer 会取消尚未落地的延迟 stop（幂等+代际化），
+          新实例不会被这条 stop 拆掉（UIFEAT-3）。因此这里无需额外编排。 */}
       {!popout ? (
         <Viewer bot={bot} onPopout={() => setPopout(true)} />
       ) : (

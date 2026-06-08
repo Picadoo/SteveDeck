@@ -44,6 +44,18 @@ const fmtHunter = (s: any) =>
       : `击杀 ${s.totalKills ?? 0}${s.currentTarget ? ` · 目标 ${s.currentTarget}` : ""}`
     : "搜寻怪物中…";
 
+// UIFEAT-5：这些列表周期性重取（玩家/计分板/bossBar/最近动态），用数组下标当 key 会在重排时
+// 把 DOM/非受控态串到错行。改用内容做稳定 key；同内容多行时附加出现次序后缀，保证唯一。
+function stableKeys<T>(items: T[], idOf: (item: T) => string): string[] {
+  const seen = new Map<string, number>();
+  return items.map((it) => {
+    const base = idOf(it) || "·"; // 空文本兜底，避免空字符串键碰撞
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return n === 0 ? base : `${base}#${n + 1}`;
+  });
+}
+
 export default function OverviewTab({ bot }: { bot: BotSummary }) {
   const [obs, setObs] = useState<Observation | null>(null);
   const [stats, setStats] = useState<Record<string, any>>({});
@@ -121,6 +133,11 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
     .filter(Boolean)
     .slice(-8)
     .reverse();
+  const feedKeys = stableKeys(feed, (line) => line); // 行文本做稳定 key（重复行加序号后缀）
+  // 计分板行/ Boss 血条同样按内容生成稳定 key（无唯一 id，用文本+序号）
+  const sbKeys = stableKeys(sbItems, (it) => String((it as any).raw || it.name || ""));
+  const bossBarKeys = stableKeys(obs?.serverText?.bossBars ?? [], (b) => b.title || "boss");
+  const playerDisplayKeys = stableKeys(obs?.playersDisplay ?? [], (p) => p.name); // 玩家名做稳定 key
   const hostileCount = (obs?.nearbyEntities ?? []).filter(
     (e) => classifyNearby({ id: (e as { id?: string }).id, name: e.name, hostile: e.hostile }) === "hostile",
   ).length;
@@ -212,7 +229,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
           ) : (
             <div className="space-y-1">
               {feed.map((line, i) => (
-                <div key={i} className="truncate text-[12px] leading-relaxed text-muted" title={line}>
+                <div key={feedKeys[i]} className="truncate text-[12px] leading-relaxed text-muted" title={line}>
                   {line}
                 </div>
               ))}
@@ -286,7 +303,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
           </h3>
           <div className="space-y-1.5">
             {obs.serverText.bossBars.map((b, i) => (
-              <div key={i}>
+              <div key={bossBarKeys[i]}>
                 <div className="flex justify-between text-xs">
                   <span className="truncate pr-2 font-medium">
                     <McText text={b.title || ""} />
@@ -337,7 +354,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
                 <div className="flex flex-wrap gap-1">
                   {obs.playersDisplay!.map((p, i) => (
                     <span
-                      key={i}
+                      key={playerDisplayKeys[i]}
                       className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px]"
                       title={p.name ?? undefined}
                     >
@@ -358,7 +375,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
           </h3>
           <div className="space-y-0.5">
             {sbItems.map((it, i) => (
-              <div key={i} className="break-words text-[13px] leading-relaxed">
+              <div key={sbKeys[i]} className="break-words text-[13px] leading-relaxed">
                 <McText text={(it as any).raw || it.name || ""} />
               </div>
             ))}

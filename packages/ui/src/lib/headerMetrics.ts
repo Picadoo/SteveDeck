@@ -64,6 +64,14 @@ export function labelKey(clean: string): string {
   return txt.replace(/[:：|>\-\s]+$/, "").replace(/^[\s>|:-]+/, "").trim();
 }
 
+// UICORE-6：两行文本相同 → labelKey 相同。给同键的第二、三…行附加行位后缀消歧，
+// 保证不同物理行不会塌成一个键（首行保持裸键，向后兼容已存的钉选）。空 labelKey 仍跳过（由调用方处理）。
+function disambiguate(base: string, seen: Map<string, number>): string {
+  const n = seen.get(base) ?? 0;
+  seen.set(base, n + 1);
+  return n === 0 ? base : `${base}#${n + 1}`;
+}
+
 const LS = (host: string) => `mcbot.headerMetrics.${host}`;
 export function loadCfg(host: string): HeaderCfg {
   try {
@@ -88,15 +96,15 @@ export function saveCfg(host: string, cfg: HeaderCfg): void {
 /** 把计分板行解析成「可勾选的候选指标」（含数字的去重行），供配置面板列出。 */
 export function detectFromScoreboard(lines: string[]): { labelKey: string; label: string; value: string; clean: string }[] {
   const out: { labelKey: string; label: string; value: string; clean: string }[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   for (const raw of lines) {
     const clean = cleanLine(raw);
     const n = extractNumber(clean);
     if (!n) continue;
-    const key = labelKey(clean);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push({ labelKey: key, label: key, value: fmtBig(n.value), clean });
+    const base = labelKey(clean);
+    if (!base) continue; // 纯数字行 → 空键，跳过
+    const key = disambiguate(base, seen); // 同文本多行 → 第2行起加 #n 后缀，不再静默丢弃
+    out.push({ labelKey: key, label: base, value: fmtBig(n.value), clean });
   }
   return out;
 }
@@ -107,14 +115,16 @@ export function computeMetrics(bot: BotSummary, scoreboardLines: string[], cfg: 
   for (const b of BUILTINS) {
     if (cfg.builtins[b.id]) chips.push({ key: `b:${b.id}`, label: b.label, value: b.get(bot), icon: b.icon, iconClass: b.iconClass });
   }
+  // 与 detectFromScoreboard 用同一套消歧规则，保证钉选时存下的 key（含 #n 后缀）能取回对应物理行的值。
   const byKey = new Map<string, number>();
+  const seen = new Map<string, number>();
   for (const raw of scoreboardLines) {
     const clean = cleanLine(raw);
     const n = extractNumber(clean);
-    if (n) {
-      const k = labelKey(clean);
-      if (k && !byKey.has(k)) byKey.set(k, n.value);
-    }
+    if (!n) continue;
+    const base = labelKey(clean);
+    if (!base) continue;
+    byKey.set(disambiguate(base, seen), n.value);
   }
   for (const p of cfg.pinned) {
     const v = byKey.get(p.labelKey);

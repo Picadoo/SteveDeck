@@ -24,7 +24,7 @@ COPY packages/engine ./packages/engine
 RUN pnpm --filter @mcbot/protocol build && pnpm --filter @mcbot/engine build
 
 # 生成自包含部署目录（仅生产依赖）
-RUN pnpm --filter @mcbot/engine deploy --prod /app/deploy
+RUN pnpm --filter @mcbot/engine deploy --prod --legacy /app/deploy
 
 # ===================== 运行阶段 =====================
 FROM node:22-slim AS runtime

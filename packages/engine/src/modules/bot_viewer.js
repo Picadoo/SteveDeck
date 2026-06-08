@@ -41,8 +41,14 @@ module.exports = (botInstance) => {
     return botInstance._viewerClickWalk;
   };
 
-  // 关闭当前视角服务；端口延迟回收，避免紧接着的重启在同端口 rebind 触发 EADDRINUSE
-  botInstance.stopViewer = () => {
+  // per-bot 代际计数（UIFEAT-2/3）：每次 startViewer 自增并记为「当前代」。
+  // stopViewer 延迟落地，并只在「调度它时的那一代仍是当前代」才真正释放——
+  // 若期间又来一次 start（代际前进），这条 stop 即变 no-op，避免晚到/乱序的 stop 拆掉新实例。
+  if (botInstance._viewerGen === undefined) botInstance._viewerGen = 0;
+  botInstance._viewerStopTimer = botInstance._viewerStopTimer || null;
+
+  // 立即关闭当前视角服务（内部用）；端口延迟回收，避免紧接着的重启在同端口 rebind 触发 EADDRINUSE
+  function closeViewerNow() {
     try {
       if (bot.viewer && bot.viewer.close) bot.viewer.close();
     } catch {
@@ -54,16 +60,45 @@ module.exports = (botInstance) => {
       portOwners.delete(p); // 立即解除归属（端口本身仍延迟 2s 回收，避免同端口 rebind 触发 EADDRINUSE）
       setTimeout(() => usedPorts.delete(p), 2000);
     }
+  }
+
+  // 取消一个已排程但尚未落地的延迟 stop（被新的 start 抢先时调用）
+  function cancelPendingStop() {
+    if (botInstance._viewerStopTimer) {
+      clearTimeout(botInstance._viewerStopTimer);
+      botInstance._viewerStopTimer = null;
+    }
+  }
+
+  // 关闭「当前属于该 bot」的视角实例。代际化 + 延迟落地：
+  //  - 记录调用时的「代」gen；微小延迟后再真正释放（让紧随其后的 start 有机会抢先取消）。
+  //  - 落地前再校验：仅当 _viewerGen 仍等于 gen（期间没有新的 start）才关闭；否则 no-op。
+  // 这样「先 stop 后 start」（前端 cleanup 先于新 effect、socket FIFO 保序）时，新的 start 会
+  // cancelPendingStop()，旧 stop 永不落地 → 新实例存活；而真正最后一次 stop（无后继 start）仍会关闭。
+  botInstance.stopViewer = () => {
+    const gen = botInstance._viewerGen;
+    cancelPendingStop(); // 合并连续 stop：只保留最后一次的排程
+    if (!botInstance._viewerPort) return true; // 本就没有实例，直接 no-op
+    botInstance._viewerStopTimer = setTimeout(() => {
+      botInstance._viewerStopTimer = null;
+      // 过期 stop（期间已有新的 start 推进代际）→ 不动新实例
+      if (botInstance._viewerGen !== gen) return;
+      closeViewerNow();
+    }, 0);
     return true;
   };
 
   botInstance.startViewer = (firstPerson = false) => {
     firstPerson = !!firstPerson;
-    // 已在运行且人称一致 → 直接复用，避免无谓重启
+    // 抢占：取消任何尚未落地的延迟 stop（否则它可能稍后拆掉本次要起/复用的实例）。
+    // 并自增代际：让此刻之前排程的 stop 落地时因「代际已变」而成为 no-op（幂等 + 代际化的核心）。
+    cancelPendingStop();
+    botInstance._viewerGen++;
+    // 已在运行且人称一致 → 原地复用，避免无谓重启（端口不变）
     if (botInstance._viewerPort && botInstance._viewerFirstPerson === firstPerson)
       return { port: botInstance._viewerPort, reused: true, firstPerson };
-    // 切人称：先关旧服务（其端口进入 2s 延迟回收，新服务必然换端口）
-    if (botInstance._viewerPort) botInstance.stopViewer();
+    // 切人称：先就地关旧服务（其端口进入 2s 延迟回收，新服务必然换端口）
+    if (botInstance._viewerPort) closeViewerNow();
 
     const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
     // viewDistance：3 区块≈48格，足够看清周围又省带宽/显存/CPU；ENGINE_VIEWER_DISTANCE 可覆盖（2~8）
@@ -105,6 +140,10 @@ module.exports = (botInstance) => {
     throw new Error('视角启动失败：' + (lastErr && lastErr.message ? lastErr.message : lastErr));
   };
 
+  // 实例销毁（断线/清理）：无条件立即关闭并释放端口，不走代际化延迟（此时不会再有新 start）
   botInstance.cleanupHooks = botInstance.cleanupHooks || [];
-  botInstance.cleanupHooks.push(() => botInstance.stopViewer());
+  botInstance.cleanupHooks.push(() => {
+    cancelPendingStop();
+    closeViewerNow();
+  });
 };

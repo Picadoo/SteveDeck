@@ -17,6 +17,54 @@ interface EditScript {
   steps: any[];
 }
 
+// UIFEAT-5：给每个步骤分配稳定 id 当 React key——编辑/上下移动/嵌套重排时 key 不随下标漂移，
+// 避免输入焦点/非受控态串到错行。仅用于编辑期，保存前用 stripKeys 全部剔除（见 toScript），
+// 因此不会进入下发给引擎的 payload（引擎按 step.do 派发并会遍历步骤字段，不应见到 __key）。
+const STEP_KEY = "__key";
+let stepKeySeq = 0;
+const newStepKey = () => `s${++stepKeySeq}`;
+
+// 仅把「步骤对象」(纯对象，区别于数组/标量) 当作要打/剔 key 的目标；
+// 嵌套容器(then/else/steps)是「步骤对象数组」，递归进去。其它数组(如某些标量数组字段)原样保留，
+// 避免对字符串元素跑 Object.keys 把 "abc" 拆成 {0:'a',...} 破坏数据。
+const isStepObj = (v: any): boolean => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** 递归给步骤及其嵌套容器步骤补上稳定 __key（已有则保留）。 */
+function assignKeys(steps: any[]): any[] {
+  if (!Array.isArray(steps)) return [];
+  return steps.map((st) => {
+    if (!isStepObj(st)) return st; // 非对象元素（异常 JSON）原样保留
+    const out = { ...st };
+    if (typeof out[STEP_KEY] !== "string") out[STEP_KEY] = newStepKey();
+    for (const k of Object.keys(out)) {
+      // 只递归「对象数组」(嵌套子步骤)；标量数组/标量字段不动
+      if (k !== STEP_KEY && Array.isArray(out[k]) && out[k].some(isStepObj)) out[k] = assignKeys(out[k]);
+    }
+    return out;
+  });
+}
+
+/** 递归剔除 __key，得到对外（保存/引擎）干净的步骤数组。 */
+function stripKeys(steps: any[]): any[] {
+  if (!Array.isArray(steps)) return [];
+  return steps.map((st) => {
+    if (!isStepObj(st)) return st;
+    const out: any = {};
+    for (const k of Object.keys(st)) {
+      if (k === STEP_KEY) continue;
+      out[k] = Array.isArray(st[k]) && st[k].some(isStepObj) ? stripKeys(st[k]) : st[k];
+    }
+    return out;
+  });
+}
+
+// UIFEAT-8：最小脚本形状校验——对象 + 字符串 name + 数组 steps。
+// visual↔JSON 切换、JSON 模式保存都复用它，挡住「合法 JSON 但非合规脚本」（如缺 steps / steps 非数组），
+// 不再静默回退默认 steps:[] 丢用户内容，也不下发畸形脚本。
+function isValidScriptShape(x: any): x is BotScript {
+  return !!x && typeof x === "object" && !Array.isArray(x) && typeof x.name === "string" && Array.isArray(x.steps);
+}
+
 function toEdit(s: BotScript | null, defaultServer = ""): EditScript {
   if (!s)
     return { name: "新脚本", loop: false, server: defaultServer, category: "", trigger: { type: "manual" }, steps: [] };
@@ -26,13 +74,13 @@ function toEdit(s: BotScript | null, defaultServer = ""): EditScript {
     server: s.server ?? "",
     category: s.category ?? "",
     trigger: { type: s.trigger?.type || "manual", value: s.trigger?.value },
-    steps: Array.isArray(s.steps) ? JSON.parse(JSON.stringify(s.steps)) : [],
+    steps: Array.isArray(s.steps) ? assignKeys(JSON.parse(JSON.stringify(s.steps))) : [],
   };
 }
 function toScript(e: EditScript): BotScript {
   const trigger: any = { type: e.trigger.type };
   if (e.trigger.value !== undefined && e.trigger.value !== "") trigger.value = e.trigger.value;
-  const out: any = { name: e.name.trim(), loop: e.loop, trigger, steps: e.steps };
+  const out: any = { name: e.name.trim(), loop: e.loop, trigger, steps: stripKeys(e.steps) };
   if (e.server) out.server = e.server;
   if (e.category.trim()) out.category = e.category.trim();
   return out as BotScript;
@@ -97,21 +145,34 @@ export default function ScriptEditor({
       setJson(JSON.stringify(toScript(s), null, 2));
       setMode("json");
     } else {
+      let parsed: any;
       try {
-        setS(toEdit(JSON.parse(json)));
-        setMode("visual");
+        parsed = JSON.parse(json);
       } catch (e: any) {
-        setErr("JSON 解析失败：" + e.message);
+        return setErr("JSON 解析失败：" + e.message); // 语法错误：停在 JSON 模式，不丢内容
       }
+      // UIFEAT-8：合法 JSON 但不是合规脚本 → 明确报错并停留，绝不静默回退默认 steps:[]。
+      if (!isValidScriptShape(parsed)) {
+        return setErr("不是合规脚本：需要对象且含字符串 name 与数组 steps");
+      }
+      setS(toEdit(parsed, bot?.host || ""));
+      setMode("visual");
     }
   }
   function save() {
     if (mode === "json") {
+      let parsed: any;
       try {
-        onSave(JSON.parse(json));
+        parsed = JSON.parse(json);
       } catch (e: any) {
-        setErr("JSON 解析失败：" + e.message);
+        return setErr("JSON 解析失败：" + e.message);
       }
+      // UIFEAT-8：保存前做同一套形状校验，不把畸形脚本下发给引擎。
+      if (!isValidScriptShape(parsed)) {
+        return setErr("不是合规脚本：需要对象且含字符串 name 与数组 steps");
+      }
+      if (!parsed.name.trim()) return setErr("脚本名称不能为空");
+      onSave({ ...parsed, steps: stripKeys(parsed.steps) }); // 保险：剔除用户可能手写进来的 __key，保持 payload 干净
     } else {
       if (!s.name.trim()) return setErr("脚本名称不能为空");
       onSave(toScript(s));
@@ -219,7 +280,7 @@ export default function ScriptEditor({
 function StepList({ steps, onChange, depth }: { steps: any[]; onChange: (s: any[]) => void; depth: number }) {
   function add(doType: string) {
     const def = STEP_MAP[doType];
-    const step: any = { do: doType };
+    const step: any = { do: doType, [STEP_KEY]: newStepKey() }; // UIFEAT-5：新增即分配稳定 key
     def?.fields.forEach((f) => {
       step[f.k] =
         f.type === "number" ? 0 : f.type === "bool" ? false : f.type === "select" ? f.options?.[0]?.value ?? "" : "";
@@ -248,7 +309,7 @@ function StepList({ steps, onChange, depth }: { steps: any[]; onChange: (s: any[
       )}
       {steps.map((step, i) => (
         <StepCard
-          key={i}
+          key={step[STEP_KEY] ?? i}
           step={step}
           index={i}
           total={steps.length}
@@ -264,7 +325,11 @@ function StepList({ steps, onChange, depth }: { steps: any[]; onChange: (s: any[
         className="h-8 w-full rounded-lg border border-dashed border-border bg-surface px-2 text-xs text-muted outline-none focus:ring-2 focus:ring-accent/50"
       >
         <option value="">+ 添加步骤…</option>
-        {STEP_TYPES.map((t) => <option key={t.do} value={t.do}>{t.label}</option>)}
+        {/* 常用步骤在前；不切实际/易错的（advanced）收进「高级」分组，不删除以兼容老脚本 */}
+        {STEP_TYPES.filter((t) => !t.advanced).map((t) => <option key={t.do} value={t.do}>{t.label}</option>)}
+        <optgroup label="高级（不常用）">
+          {STEP_TYPES.filter((t) => t.advanced).map((t) => <option key={t.do} value={t.do}>{t.label}</option>)}
+        </optgroup>
       </select>
     </div>
   );
@@ -355,7 +420,7 @@ function StepCard({
           ))}
         </>
       ) : (
-        <pre className="overflow-x-auto rounded bg-surface-2 p-2 text-[10px] text-muted">{JSON.stringify(step)}（请用 JSON 模式编辑）</pre>
+        <pre className="overflow-x-auto rounded bg-surface-2 p-2 text-[10px] text-muted">{JSON.stringify(stripKeys([step])[0])}（请用 JSON 模式编辑）</pre>
       )}
     </div>
   );

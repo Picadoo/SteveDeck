@@ -36,19 +36,38 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.id, bot.online]);
 
-  // UIFEAT-6：hover 每像素 setState（+ItemTip 重算布局）→ rAF 合并到每帧最多一次；离开立即应用。
+  // UIFEAT-6：hover 每像素 setState（+ItemTip 重算布局）→ rAF 合并到每帧最多一次。
   const hoverRafRef = useRef<number | null>(null);
   const hoverRef = useRef<Hover | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const doClose = () => {
+    if (hoverRafRef.current != null) {
+      cancelAnimationFrame(hoverRafRef.current);
+      hoverRafRef.current = null;
+    }
+    setHover(null);
+  };
+  const cancelClose = () => {
+    if (closeTimerRef.current != null) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+  // 离开物品 150ms 后才关：留出把鼠标移到提示框上的宽限期，长 lore 可悬停滚动看全。
+  const scheduleClose = () => {
+    if (closeTimerRef.current != null) return;
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      doClose();
+    }, 150);
+  };
   const onHover = (h: Hover | null) => {
     hoverRef.current = h;
     if (h === null) {
-      if (hoverRafRef.current != null) {
-        cancelAnimationFrame(hoverRafRef.current);
-        hoverRafRef.current = null;
-      }
-      setHover(null);
+      scheduleClose();
       return;
     }
+    cancelClose(); // 移到物品上：取消待关闭
     if (hoverRafRef.current != null) return;
     hoverRafRef.current = requestAnimationFrame(() => {
       hoverRafRef.current = null;
@@ -57,6 +76,7 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
   };
   useEffect(() => () => {
     if (hoverRafRef.current != null) cancelAnimationFrame(hoverRafRef.current);
+    if (closeTimerRef.current != null) clearTimeout(closeTimerRef.current);
   }, []);
 
   if (!win) return null;
@@ -125,7 +145,7 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
           <SlotGrid slots={backpack} base={split} texBase={texBase} onClick={click} onHover={onHover} />
         </>
       )}
-      {hover && <ItemTip hover={hover} />}
+      {hover && <ItemTip hover={hover} onEnter={cancelClose} onLeave={doClose} />}
     </Modal>
   );
 }
@@ -189,7 +209,7 @@ function SlotGrid({
 }
 
 /** MC 风格悬浮看板：彩色名 + 附魔 + 完整 Lore + 物品 id；跟随光标、自适应不被截断 */
-function ItemTip({ hover }: { hover: Hover }) {
+function ItemTip({ hover, onEnter, onLeave }: { hover: Hover; onEnter: () => void; onLeave: () => void }) {
   const { it } = hover;
   const ref = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<CSSProperties>({ left: -9999, top: -9999 });
@@ -213,7 +233,9 @@ function ItemTip({ hover }: { hover: Hover }) {
   return (
     <div
       ref={ref}
-      className="pointer-events-none fixed z-[100] max-w-[18rem] overflow-hidden rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      className="fixed z-[100] max-w-[18rem] overflow-y-auto overscroll-contain rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
       style={style}
     >
       <div className="text-sm font-semibold leading-snug">

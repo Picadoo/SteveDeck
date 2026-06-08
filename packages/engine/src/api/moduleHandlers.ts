@@ -14,6 +14,26 @@ function persistSettings(id: string, mutate: (s: BotSettings) => void): void {
   }
 }
 
+// 战斗配置：把客户端传来的 config 按「已知键白名单 + 类型校验」逐字段拷进引擎状态(API-7)。
+// 之前用 { ...inst.combatConfig, ...config } 直接 spread 原始客户端对象，会让任意键混入引擎运行态
+// （污染/覆盖内部字段、塞进巨型对象等）。这里只接受 combat.js / BotInstance.js 定义的合法字段，
+// 类型不符的键静默忽略；range 额外做范围夹取，避免 0/负数/超大值算出异常的攻击半径。
+function sanitizeCombatConfig(prev: any, config: any): any {
+  const out = { ...(prev || {}) };
+  if (!config || typeof config !== "object") return out;
+  if (typeof config.enabled === "boolean") out.enabled = config.enabled;
+  if (typeof config.antiKb === "boolean") out.antiKb = config.antiKb;
+  if (typeof config.attackPlayers === "boolean") out.attackPlayers = config.attackPlayers;
+  if (typeof config.attackMobs === "boolean") out.attackMobs = config.attackMobs;
+  if (typeof config.range === "number" && Number.isFinite(config.range)) {
+    out.range = Math.max(1, Math.min(6, config.range)); // 攻击半径夹到合理区间(原版手够≈3-6)
+  }
+  if (typeof config.maxTargets === "number" && Number.isFinite(config.maxTargets)) {
+    out.maxTargets = Math.max(1, Math.min(10, Math.floor(config.maxTargets)));
+  }
+  return out;
+}
+
 /** 注册全部功能模块的命令（开关 / 配置 / 动作）。 */
 export function registerModuleHandlers(io: IOServer, socket: Socket): void {
   socket.on(
@@ -79,7 +99,8 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
       if (!inst) return ack?.(fail("机器人不存在"));
       try {
         if (module === "combat") {
-          inst.combatConfig = { ...inst.combatConfig, ...config };
+          // 白名单逐字段拷贝 + 类型校验，不把原始客户端对象 spread 进引擎状态(API-7)
+          inst.combatConfig = sanitizeCombatConfig(inst.combatConfig, config);
           persistSettings(id, (s) => (s.combatConfig = inst.combatConfig));
         } else if (module === "auto_farm") {
           persistSettings(id, (s) => (s.autoFarm = { ...(s.autoFarm as object), ...config }));

@@ -38,7 +38,7 @@ export interface BotConfigInput {
   settings?: BotSettings;
 }
 
-/** 持久化的机器人配置（含运行设置） */
+/** 持久化的机器人配置（含运行设置）。loginPassword 仅在「存储」层保留——写入登录用，绝不回传前端。 */
 export interface BotConfig extends Required<Pick<BotConfigInput, "username" | "host">> {
   id: BotId;
   port: number;
@@ -48,6 +48,19 @@ export interface BotConfig extends Required<Pick<BotConfigInput, "username" | "h
   note?: string;
   settings: BotSettings;
 }
+
+/**
+ * BOT_CONFIG 命令的回传响应（读回前端用，编辑表单回填）。
+ * API-10：刻意 Omit 掉明文 loginPassword（开源后明文回传属泄露），改用布尔 hasLoginPassword 表示「是否已设密码」，
+ * 前端据此决定占位提示；真正的密码只存在于引擎存储层（BotConfig），不出网。
+ */
+export type BotConfigResponse = Pick<
+  BotConfig,
+  "username" | "host" | "port" | "version" | "note" | "settings"
+> & {
+  /** 是否已保存登录密码（不回传明文）。前端用它决定密码框占位文案与是否提交新密码。 */
+  hasLoginPassword?: boolean;
+};
 
 /** 机器人运行设置（各模块开关与参数、定时任务、地点等） */
 export interface BotSettings {
@@ -256,10 +269,26 @@ export interface BotStatus extends BotSummary {
   schedules?: Schedule[];
 }
 
+/** 可点击/可悬浮聊天的一个片段（服务器聊天 JSON 里的 clickEvent/hoverEvent）。 */
+export interface ChatSegment {
+  text: string;
+  color?: string;
+  bold?: boolean;
+  italic?: boolean;
+  underlined?: boolean;
+  strikethrough?: boolean;
+  /** 点击动作：run_command(执行命令)/suggest_command(填入)/open_url(开链接)/copy_to_clipboard(复制) */
+  click?: { action: string; value: string };
+  /** 悬浮提示文本（show_text 的文字 / show_item 的物品名） */
+  hover?: string;
+}
+
 export interface LogLine {
   time: string;
   text: string;
   level?: "info" | "warn" | "error" | "chat" | "actionbar";
+  /** 服务器聊天的可点击/可悬浮片段；有则前端渲染成可点按钮/悬浮提示 */
+  segments?: ChatSegment[];
 }
 
 export interface ConnectionInfo {

@@ -1,6 +1,7 @@
 import http from "http";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { Server as IOServer } from "socket.io";
@@ -18,6 +19,16 @@ import { registerHandlers } from "./api/handlers";
 import { buildObservation } from "./ai/observe";
 
 export const ENGINE_VERSION = "0.1.0";
+
+// 令牌比较走常量时间(CORE-6)：明文 `!==` 会因「首个不同字节即返回」泄漏比较耗时，
+// 可被用于逐字节侧信道爆破令牌。timingSafeEqual 要求等长缓冲区，长度不同会抛错——
+// 故先判长度（长度本身非敏感），再用 utf8 字节做常量时间比较。
+function safeEqualToken(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 export interface EngineOptions {
   port?: number;
@@ -41,9 +52,12 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
   app.use(cors());
   app.use(express.json());
 
+  // 鉴权限流(CORE-6)：挂在所有「需要令牌」的 HTTP 路由前，按来源 IP 限速令牌尝试，
+  // 给暴力猜令牌设上界。阈值放宽到 120/min——正常前端轮询(快照/感知/视角)远低于此，
+  // 但仍能挡住每秒数十次的爆破。仅对鉴权路由生效，不影响 /health 与公开贴图。
   const authLimiter = rateLimit({
     windowMs: 60_000,
-    max: 30,
+    max: 120,
     standardHeaders: true,
     legacyHeaders: false,
   });
@@ -51,12 +65,17 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
   function requireToken(req: Request, res: Response, next: NextFunction): void {
     const header = String(req.headers["authorization"] || "");
     const bearer = header.startsWith("Bearer ") ? header.slice(7) : "";
-    if (bearer !== token) {
+    // 常量时间比较，避免按比较耗时侧信道爆破令牌
+    if (!safeEqualToken(bearer, token)) {
       res.status(401).json({ error: "unauthorized" });
       return;
     }
     next();
   }
+
+  // 鉴权路由统一守卫：先限流(挡爆破)再校验令牌。所有需令牌的 HTTP 端点都挂这一组，
+  // 避免逐个路由漏挂限流（之前仅 /api/connection-info 有限流）。
+  const authGuard: express.RequestHandler[] = [authLimiter, requireToken];
 
   app.get("/health", (_req: Request, res: Response): void => {
     res.json({ status: "ok", uptime: Math.floor(process.uptime()), version: ENGINE_VERSION });
@@ -64,14 +83,13 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
 
   app.get(
     "/api/connection-info",
-    authLimiter,
-    requireToken,
+    authGuard,
     async (_req: Request, res: Response): Promise<void> => {
       res.json(await buildConnectionInfo({ version: ENGINE_VERSION, port, token }));
     },
   );
 
-  app.get("/api/bots", requireToken, (_req: Request, res: Response): void => {
+  app.get("/api/bots", authGuard, (_req: Request, res: Response): void => {
     res.json({ bots: botManager.buildSnapshot() });
   });
 
@@ -250,7 +268,7 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
   }
 
   // ===== AI 接口：感知世界状态 + 提交脚本 =====
-  app.get("/api/observe/:id", requireToken, (req: Request, res: Response): void => {
+  app.get("/api/observe/:id", authGuard, (req: Request, res: Response): void => {
     const obs = buildObservation(String(req.params.id));
     if (!obs) {
       res.status(404).json({ error: "bot not found" });
@@ -261,7 +279,7 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
 
   // 主动探索：用背包里某个名字的物品打开 GUI，抓取完整内容后关闭，返回结构（AI 可据此搞清服务器定制菜单）。
   // GET /api/explore/:id?item=自助菜单   或不带 item → 列出可探查的菜单候选物品
-  app.post("/api/explore/:id", requireToken, async (req: Request, res: Response): Promise<void> => {
+  app.post("/api/explore/:id", authGuard, async (req: Request, res: Response): Promise<void> => {
     const inst: any = botManager.getInstance(String(req.params.id));
     if (!inst) {
       res.status(404).json({ error: "bot not found" });
@@ -283,7 +301,7 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     }
   });
 
-  app.post("/api/ai/script/:id", requireToken, (req: Request, res: Response): void => {
+  app.post("/api/ai/script/:id", authGuard, (req: Request, res: Response): void => {
     const id = String(req.params.id);
     const body = req.body || {};
     const script = body.script ?? body;
@@ -314,10 +332,42 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
   const server = http.createServer(app);
   const io = new IOServer(server, { cors: { origin: "*" } });
 
-  // 令牌握手鉴权
+  // socket 握手失败限流(CORE-6)：express-rate-limit 只管 HTTP，握手得自己挡爆破。
+  // 按来源 IP 计「失败」次数的滑动窗口；成功握手不计数，故正常配对/重连不受影响。
+  // 同窗口内失败超阈值则直接拒绝握手（含正确令牌也先挡住，逼退每秒猛试令牌的攻击者）。
+  const HANDSHAKE_FAIL_MAX = 30; // 每窗口允许的失败次数
+  const HANDSHAKE_WINDOW_MS = 60_000;
+  const handshakeFails = new Map<string, { count: number; resetAt: number }>();
+  function handshakeRateExceeded(ip: string): boolean {
+    const now = Date.now();
+    const rec = handshakeFails.get(ip);
+    if (!rec || now >= rec.resetAt) return false; // 窗口已过则不算超限（下次失败时重置）
+    return rec.count >= HANDSHAKE_FAIL_MAX;
+  }
+  function noteHandshakeFail(ip: string): void {
+    const now = Date.now();
+    const rec = handshakeFails.get(ip);
+    if (!rec || now >= rec.resetAt) {
+      handshakeFails.set(ip, { count: 1, resetAt: now + HANDSHAKE_WINDOW_MS });
+    } else {
+      rec.count++;
+    }
+    // 顺手清理过期条目，避免 Map 随陌生 IP 无界增长
+    if (handshakeFails.size > 1024) {
+      for (const [k, v] of handshakeFails) if (now >= v.resetAt) handshakeFails.delete(k);
+    }
+  }
+
+  // 令牌握手鉴权（常量时间比较 + 失败限流）
   io.use((socket, next) => {
+    const ip = socket.handshake.address || "unknown";
+    if (handshakeRateExceeded(ip)) {
+      next(new Error("too many attempts"));
+      return;
+    }
     const auth = socket.handshake.auth as HandshakeAuth;
-    if (!auth || auth.token !== token) {
+    if (!auth || typeof auth.token !== "string" || !safeEqualToken(auth.token, token)) {
+      noteHandshakeFail(ip);
       next(new Error("unauthorized"));
       return;
     }
@@ -334,8 +384,10 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     registerHandlers(io, socket);
   });
 
-  // 默认绑 0.0.0.0（Docker/远程引擎需对外可达）；内置桌面版会传 ENGINE_HOST=127.0.0.1 收紧为仅本机回环
-  const host = process.env.ENGINE_HOST || "0.0.0.0";
+  // 默认绑 127.0.0.1（仅本机回环，最小暴露面，CORE-6）：默认安全，不主动把带令牌的引擎
+  // 挂到局域网/公网。需对外可达的场景（Docker、远程引擎、手机扫码连）显式设
+  // ENGINE_HOST=0.0.0.0（或指定网卡 IP）即可放开。内置桌面版本就传 ENGINE_HOST=127.0.0.1，行为不变。
+  const host = process.env.ENGINE_HOST || "127.0.0.1";
   await new Promise<void>((resolve) => {
     server.listen(port, host, () => resolve());
   });

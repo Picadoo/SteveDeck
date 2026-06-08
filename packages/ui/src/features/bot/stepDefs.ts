@@ -22,6 +22,9 @@ export interface StepTypeDef {
   fields: StepFieldDef[];
   /** 含子步骤的控制块（if/repeat/while） */
   containers?: StepContainerDef[];
+  /** 收进「高级（不常用）」分组：手填坐标、单脉冲跳跃等不切实际/易错的步骤。
+   *  引擎 case 仍保留，老脚本照常运行；只是不在常用调色板里推荐。 */
+  advanced?: boolean;
 }
 
 export const STEP_TYPES: StepTypeDef[] = [
@@ -50,6 +53,11 @@ export const STEP_TYPES: StepTypeDef[] = [
   { do: "equip", label: "装备物品", fields: [{ k: "item", label: "物品名", type: "text" }] },
   { do: "equip_best_weapon", label: "装备最强武器", fields: [] },
   {
+    do: "equip_best_tool",
+    label: "装备最佳工具",
+    fields: [{ k: "block", label: "目标方块名(空=准星方块)", type: "text" }],
+  },
+  {
     do: "drop",
     label: "丢弃物品",
     fields: [
@@ -57,10 +65,60 @@ export const STEP_TYPES: StepTypeDef[] = [
       { k: "count", label: "数量", type: "number" },
     ],
   },
+  {
+    do: "drop_all",
+    label: "清空背包(保留…)",
+    fields: [{ k: "keep", label: "保留关键词(逗号分隔,空=全丢)", type: "text" }],
+  },
+  {
+    do: "deposit",
+    label: "存入最近箱子",
+    fields: [{ k: "item", label: "物品名关键词(空=除装备全部)", type: "text" }],
+  },
   { do: "use_item", label: "使用手持物品", fields: [] },
   { do: "attack", label: "攻击实体", fields: [{ k: "entity", label: "实体名", type: "text" }] },
-  { do: "jump", label: "跳跃", fields: [] },
-  { do: "swap_hands", label: "切换副手", fields: [] },
+  {
+    do: "look_at",
+    label: "看向最近的人/生物",
+    fields: [{ k: "target", label: "目标(空=玩家/mob/名字)", type: "text" }],
+  },
+  {
+    do: "goto_nearest",
+    label: "走向最近的人/生物",
+    fields: [
+      { k: "target", label: "目标(空=玩家/mob/名字)", type: "text" },
+      { k: "distance", label: "停下距离(默2)", type: "number" },
+    ],
+  },
+  {
+    do: "hold",
+    label: "按住键N秒(潜行/前进…)",
+    fields: [
+      {
+        k: "key",
+        label: "控制键",
+        type: "select",
+        options: [
+          { value: "forward", label: "前进" },
+          { value: "back", label: "后退" },
+          { value: "left", label: "左移" },
+          { value: "right", label: "右移" },
+          { value: "jump", label: "跳跃" },
+          { value: "sneak", label: "潜行" },
+          { value: "sprint", label: "疾跑" },
+        ],
+      },
+      { k: "s", label: "秒数", type: "number" },
+    ],
+  },
+  {
+    do: "sneak",
+    label: "潜行开/关",
+    fields: [{ k: "active", label: "开启(取消勾选=停止)", type: "bool" }],
+  },
+  // ↓↓↓ 高级（不常用）：手填坐标、单脉冲跳跃、切副手——易错或很少需要，收进折叠分组。
+  { do: "jump", label: "跳一下", fields: [], advanced: true },
+  { do: "swap_hands", label: "切换副手", fields: [], advanced: true },
   {
     do: "look",
     label: "看向坐标",
@@ -69,6 +127,7 @@ export const STEP_TYPES: StepTypeDef[] = [
       { k: "y", label: "Y", type: "number" },
       { k: "z", label: "Z", type: "number" },
     ],
+    advanced: true,
   },
   // ===== GUI / 界面交互（服务器定制菜单：开菜单 → 等界面 → 找物品点击 → 关界面）=====
   {
@@ -90,12 +149,14 @@ export const STEP_TYPES: StepTypeDef[] = [
     ],
   },
   {
+    // 固定槽位号在不同服务器/翻页菜单里很容易点错——推荐用上面「界面找物品并点击」。保留备用，归入高级。
     do: "click_slot",
-    label: "点击界面槽位",
+    label: "点击界面槽位(按号,易错)",
     fields: [
       { k: "slot", label: "槽位号", type: "number" },
       { k: "button", label: "按键", type: "select", options: BTN_OPTS },
     ],
+    advanced: true,
   },
   { do: "close_gui", label: "关闭界面", fields: [] },
   // ===== 等待 / 变量 / 地点 =====
@@ -121,6 +182,26 @@ export const STEP_TYPES: StepTypeDef[] = [
     fields: [
       { k: "name", label: "变量名", type: "text" },
       { k: "value", label: "值($health/$x..)", type: "text" },
+    ],
+  },
+  {
+    do: "math_var",
+    label: "变量运算(计数器)",
+    fields: [
+      { k: "name", label: "变量名", type: "text" },
+      {
+        k: "op",
+        label: "运算",
+        type: "select",
+        options: [
+          { value: "+", label: "+ 加" },
+          { value: "-", label: "- 减" },
+          { value: "*", label: "× 乘" },
+          { value: "/", label: "÷ 除" },
+          { value: "%", label: "% 取余" },
+        ],
+      },
+      { k: "value", label: "操作数", type: "number" },
     ],
   },
   {

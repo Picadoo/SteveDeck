@@ -1,3 +1,5 @@
+const { isChatBlocked } = require('../utils/chatSafety'); // 与脚本引擎/复活指令一致：定时指令也过安全过滤，防黑名单旁路
+
 module.exports = (botInstance) => {
     let lastMinute = ""; // 记录上一次执行的分钟，防止在一分钟内重复触发
 
@@ -22,6 +24,16 @@ module.exports = (botInstance) => {
             if (s.time === currentTime) {
                 const command = s.command || s.cmd; // UI 发 command；兼容旧数据 cmd
                 if (!command) return;
+                // 安全过滤：定时指令同样不得绕过命令黑名单（与 script_engine/respawnCommand 一致）
+                if (isChatBlocked(command)) {
+                    botInstance.io.to(botInstance._room).to('admin').emit('log', {
+                        user: botInstance.config.username,
+                        ownerId: botInstance.config.ownerId,
+                        msg: `[定时任务] 指令被安全策略拦截: ${command}`,
+                        time: now.toLocaleTimeString()
+                    });
+                    return;
+                }
                 bot.chat(command);
                 botInstance.io.to(botInstance._room).to('admin').emit('log', {
                     user: botInstance.config.username,

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Trash2, Copy, ArrowDownToLine } from "lucide-react";
 import { useStore } from "@/store/useStore";
+import { cmd } from "@/lib/engine";
 import { cn } from "@/lib/cn";
 import McText from "@/components/McText";
 import MonitorPanel from "./MonitorPanel";
 import { mcPlain } from "@/lib/format";
-import type { LogLine } from "@mcbot/protocol";
+import type { LogLine, ChatSegment } from "@mcbot/protocol";
 
 // 模块级稳定空数组：避免 zustand v5 选择器返回新引用导致无限重渲染
 const EMPTY_LOGS: LogLine[] = [];
@@ -115,12 +116,102 @@ export default function Console({ botId }: { botId: string }) {
               {l.level === "actionbar" && (
                 <span className="mr-1 rounded bg-accent/15 px-1 text-[10px] text-accent">栏</span>
               )}
-              <McText text={l.text} />
+              {l.segments && l.segments.length ? (
+                <SegmentLine segments={l.segments} botId={botId} />
+              ) : (
+                <McText text={l.text} />
+              )}
             </div>
           ))
         )}
       </div>
     </div>
+  );
+}
+
+// MC 颜色名 → CSS（JSON 聊天的 color 是 "red"/"gold" 或 "#RRGGBB"）
+const MC_COLOR: Record<string, string> = {
+  black: "#000000", dark_blue: "#5555FF", dark_green: "#00AA00", dark_aqua: "#00AAAA",
+  dark_red: "#FF5555", dark_purple: "#AA00AA", gold: "#FFAA00", gray: "#AAAAAA",
+  dark_gray: "#888888", blue: "#5555FF", green: "#55FF55", aqua: "#55FFFF",
+  red: "#FF5555", light_purple: "#FF55FF", yellow: "#FFFF55", white: "#FFFFFF",
+};
+const colorOf = (c?: string) => (!c ? undefined : c.startsWith("#") ? c : MC_COLOR[c]);
+
+/** 渲染可点击/可悬浮聊天：clickEvent → 点击执行命令/开链接/复制；hoverEvent → 悬浮提示。 */
+function SegmentLine({ segments, botId }: { segments: ChatSegment[]; botId: string }) {
+  const pushToast = useStore((s) => s.pushToast);
+  async function fire(seg: ChatSegment) {
+    const c = seg.click;
+    if (!c) return;
+    if (c.action === "run_command") {
+      const r = await cmd.chat(botId, c.value);
+      pushToast(r.ok ? `已执行：${c.value}` : r.error || "执行失败", r.ok ? "success" : "error");
+    } else if (c.action === "suggest_command") {
+      try {
+        await navigator.clipboard.writeText(c.value);
+        pushToast(`已复制命令：${c.value}（粘贴到聊天框发送）`, "info");
+      } catch {
+        pushToast(c.value, "info");
+      }
+    } else if (c.action === "open_url") {
+      try {
+        window.open(c.value, "_blank", "noopener");
+      } catch {
+        /* ignore */
+      }
+    } else if (c.action === "copy_to_clipboard") {
+      try {
+        await navigator.clipboard.writeText(c.value);
+        pushToast("已复制", "success");
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return (
+    <>
+      {segments.map((s, i) => {
+        // 片段文字里可能内嵌 §/& 旧版颜色码（部分服务器把色码塞进 JSON 组件的 text）：
+        // 交给 McText 渲染成颜色，避免「§e§4」原样显示。自带颜色（JSON color 或 §码）时不强加 accent。
+        const hasOwnColor = !!s.color || /[§&]/.test(s.text);
+        const baseStyle: React.CSSProperties = {
+          color: hasOwnColor ? colorOf(s.color) : undefined,
+          fontWeight: s.bold ? 700 : undefined,
+          fontStyle: s.italic ? "italic" : undefined,
+          textDecoration:
+            [s.underlined && "underline", s.strikethrough && "line-through"].filter(Boolean).join(" ") || undefined,
+        };
+        const body = <McText text={s.text} />;
+        if (s.click) {
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => fire(s)}
+              title={s.hover || `点击：${s.click.value}`}
+              className={cn(
+                "cursor-pointer rounded px-0.5 font-medium underline decoration-dotted underline-offset-2 hover:bg-accent/15",
+                !hasOwnColor && "text-accent",
+              )}
+              style={{ color: baseStyle.color, fontWeight: baseStyle.fontWeight, fontStyle: baseStyle.fontStyle }}
+            >
+              {body}
+            </button>
+          );
+        }
+        return (
+          <span
+            key={i}
+            title={s.hover || undefined}
+            className={s.hover ? "cursor-help underline decoration-dotted decoration-muted underline-offset-2" : undefined}
+            style={baseStyle}
+          >
+            {body}
+          </span>
+        );
+      })}
+    </>
   );
 }
 

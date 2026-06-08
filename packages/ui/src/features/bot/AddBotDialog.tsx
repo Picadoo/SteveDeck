@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent, type ReactNode } from "react";
+import { useState, useEffect, useMemo, type FormEvent, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import { Button, Input, Switch } from "@/components/ui/primitives";
@@ -22,7 +22,8 @@ export interface EditInitial {
   host: string;
   port?: number;
   version?: string;
-  loginPassword?: string;
+  /** API-10：后端不再回传明文密码，仅回布尔「是否已设密码」，用于占位提示与「留空＝不改」逻辑 */
+  hasLoginPassword?: boolean;
   note?: string;
   settings?: BotSettings;
 }
@@ -43,9 +44,36 @@ export default function AddBotDialog({
   const [autoReconnect, setAutoReconnect] = useState(true);
   const [forge, setForge] = useState(false);
   const [rawMove, setRawMove] = useState(false);
+  // 编辑态：后端只告诉我们「是否已设密码」（不回明文）。据此给密码框占位提示并实现「留空＝不改」。
+  const [hasSavedPassword, setHasSavedPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!editId;
+  const bots = useStore((s) => s.bots);
+  // 已有服务器去重（按 host）：加多个号时一键复用服务器信息，省得反复输地址/端口/版本/Forge 等
+  const servers = useMemo(() => {
+    const seen = new Map<string, { id: string; label: string }>();
+    for (const b of bots) {
+      if (!b.host || seen.has(b.host)) continue;
+      seen.set(b.host, { id: b.id, label: b.note || b.host });
+    }
+    return [...seen.values()];
+  }, [bots]);
+  async function fillFromServer(botId: string) {
+    const r = await cmd.getBotConfig(botId);
+    if (!r.ok || !r.data) return;
+    const c = r.data as EditInitial;
+    setForm((f) => ({
+      ...f,
+      host: c.host || "",
+      port: String(c.port ?? 25565),
+      version: c.version || f.version,
+      note: c.note || "",
+    }));
+    setForge(!!c.settings?.forge);
+    setRawMove(!!c.settings?.rawMove);
+    setAutoReconnect(c.settings?.autoReconnect !== false);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -56,16 +84,18 @@ export default function AddBotDialog({
         host: initial.host || "",
         port: String(initial.port ?? 25565),
         version: initial.version || "1.20.1",
-        loginPassword: initial.loginPassword || "",
+        loginPassword: "", // 编辑态密码框始终留空：后端不回明文，留空＝不修改
         note: initial.note || "",
         maxReconnectAttempts: String(s.maxReconnectAttempts ?? 0),
         reconnectDelay: String(s.reconnectDelay ?? 5),
       });
+      setHasSavedPassword(!!initial.hasLoginPassword);
       setAutoReconnect(s.autoReconnect !== false); // 未设/true → 开
       setForge(!!s.forge);
       setRawMove(!!s.rawMove);
     } else {
       setForm({ ...EMPTY });
+      setHasSavedPassword(false);
       setAutoReconnect(true);
       setForge(false);
       setRawMove(false);
@@ -90,7 +120,8 @@ export default function AddBotDialog({
       host: form.host.trim(),
       port: Number(form.port) || 25565,
       version: form.version.trim() || undefined,
-      loginPassword: form.loginPassword || undefined,
+      // 仅当用户输入了新密码才提交；留空＝不带该字段（配合引擎「空＝保留旧密码」契约，编辑态不会误清密码）
+      loginPassword: form.loginPassword ? form.loginPassword : undefined,
       note: form.note.trim() || undefined,
       // 只传重连相关键；引擎侧 merge，不会覆盖模块配置/定时等其它设置
       settings: {
@@ -120,6 +151,23 @@ export default function AddBotDialog({
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? "编辑机器人" : "添加机器人"}>
       <form onSubmit={submit} className="space-y-3.5">
+        {!isEdit && servers.length > 0 && (
+          <div className="rounded-lg border border-border/60 bg-surface-2/30 p-2.5">
+            <div className="mb-1.5 text-[11px] font-medium text-muted">复用已有服务器（点一下自动填好地址/版本/Forge 等，只需再填账号）</div>
+            <div className="flex flex-wrap gap-1.5">
+              {servers.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => fillFromServer(s.id)}
+                  className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] transition-colors hover:border-accent hover:bg-accent/10"
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <Field label="用户名（MC 登录名）">
           <Input value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="例如 MyBot" autoFocus />
         </Field>
@@ -139,7 +187,12 @@ export default function AddBotDialog({
             <Input value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="1.20.1" />
           </Field>
           <Field label="登录密码（可选）">
-            <Input type="password" value={form.loginPassword} onChange={(e) => set("loginPassword", e.target.value)} placeholder="/login 用" />
+            <Input
+              type="password"
+              value={form.loginPassword}
+              onChange={(e) => set("loginPassword", e.target.value)}
+              placeholder={isEdit && hasSavedPassword ? "已保存，留空＝不修改" : "/login 用"}
+            />
           </Field>
         </div>
 

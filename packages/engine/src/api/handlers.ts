@@ -1,5 +1,5 @@
 import { Server as IOServer, Socket } from "socket.io";
-import { ClientCommands, ServerEvents, BotConfigInput } from "@mcbot/protocol";
+import { ClientCommands, ServerEvents, BotConfigInput, BotConfigResponse } from "@mcbot/protocol";
 import { botManager } from "../botManager";
 import { Ack, ok, fail } from "./ack";
 import { registerModuleHandlers } from "./moduleHandlers";
@@ -91,17 +91,18 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
   socket.on(ClientCommands.BOT_CONFIG, ({ id }: { id: string }, ack?: Ack) => {
     const cfg = botManager.getConfig(id);
     if (!cfg) return ack?.(fail("机器人不存在"));
-    ack?.(
-      ok({
-        username: cfg.username,
-        host: cfg.host,
-        port: cfg.port,
-        version: cfg.version,
-        loginPassword: cfg.loginPassword,
-        note: cfg.note,
-        settings: cfg.settings,
-      }),
-    );
+    // API-10：不回传明文 loginPassword（开源后明文出网属泄露）。
+    // 只回布尔 hasLoginPassword，前端据此决定密码框占位文案；密码留在引擎存储层，编辑时留空＝不修改。
+    const resp: BotConfigResponse = {
+      username: cfg.username,
+      host: cfg.host,
+      port: cfg.port,
+      version: cfg.version,
+      hasLoginPassword: !!cfg.loginPassword,
+      note: cfg.note,
+      settings: cfg.settings,
+    };
+    ack?.(ok(resp));
   });
 
   socket.on(ClientCommands.AI_OBSERVE, ({ id }: { id: string }, ack?: Ack) => {

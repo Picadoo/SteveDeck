@@ -440,13 +440,16 @@ module.exports = (botInstance) => {
                 });
                 if (!entity) throw new Error(`未找到实体: ${targetName}`);
                 await gotoWithTimeout(new goals.GoalFollow(entity, 2));
+                if (ctx.aborted || !bot.entity) return; // 寻路途中断连/停止：bot 已销毁，勿再 lookAt
                 await bot.lookAt(entity.position.offset(0, (entity.height || 1.8) * 0.8, 0), true);
+                if (ctx.aborted || !bot.entity) return; // lookAt 后复检，避免对已销毁 bot swingArm/activateEntity
                 bot.swingArm('right');
                 if (bot.activateEntity) {
                     await bot.activateEntity(entity);
                 } else if (bot.activateEntityAt) {
                     await bot.activateEntityAt(entity, entity.position);
                 }
+                if (ctx.aborted || !bot.entity) return; // activate 后复检，再访问 currentWindow
                 await sleep(GUI_WAIT_MS);
                 if (bot.currentWindow) await waitForGuiReady(ctx);
                 break;
@@ -457,8 +460,10 @@ module.exports = (botInstance) => {
                 const button = Number(step.button) || 0;
                 if (!bot.currentWindow) { emitLog(`没有打开界面，跳过`); break; }
                 await waitForGuiReady(ctx);
+                if (ctx.aborted || !bot.entity) return; // GUI 等待期间可能断连
                 emitLog(`点击槽位 ${slot}`);
                 await bot.clickWindow(slot, button, 0);
+                if (ctx.aborted || !bot.entity) return; // clickWindow 后复检，再访问 currentWindow
                 await sleep(300);
                 if (bot.currentWindow) await waitForGuiReady(ctx);
                 break;
@@ -507,6 +512,69 @@ module.exports = (botInstance) => {
                 break;
             }
 
+            case 'equip_best_tool': {
+                // 为「将要挖的方块」装备最合适的工具（镐/斧/锹…）。
+                // 优先按关键词找最近的目标方块，没填关键词就用准星指向的方块；
+                // 再用 pathfinder.bestHarvestTool 选最优工具（与 automine 同款写法）。
+                let block = null;
+                const kw = String(step.block || step.item || '').toLowerCase();
+                if (kw) {
+                    try {
+                        const mc = botInstance.getMcData();
+                        const ids = Object.values(mc.blocksByName || {})
+                            .filter(b => b.name.toLowerCase().includes(kw))
+                            .map(b => b.id);
+                        if (ids.length) {
+                            const pos = bot.findBlock ? bot.findBlock({ matching: ids, maxDistance: 32 }) : null;
+                            if (pos) block = pos;
+                        }
+                    } catch (e) { /* 忽略，落到准星方块 */ }
+                }
+                if (!block && bot.blockAtCursor) block = bot.blockAtCursor(5);
+                if (!block) { emitLog('没有可参照的方块（填方块名或先看向方块）'); break; }
+                let tool = null;
+                try { tool = bot.pathfinder.bestHarvestTool(block); } catch (e) { /* 无可用工具 */ }
+                if (tool) {
+                    emitLog(`为 ${block.name} 装备工具: ${tool.name}`);
+                    await bot.equip(tool, 'hand');
+                } else {
+                    emitLog(`无需工具或背包没有合适工具（${block.name}）`);
+                }
+                break;
+            }
+
+            case 'deposit': {
+                // 把背包物品存入最近的箱子/容器（按名字关键词；留空=除装备外全部）。
+                // 复用 window_gui 暴露的 scanContainers / openContainerAt（含寻路靠近 + 开窗），不写死坐标。
+                const kw = String(step.item || '').toLowerCase();
+                const containers = botInstance.scanContainers ? botInstance.scanContainers() : [];
+                if (!containers.length) { emitLog('附近没有可用容器'); break; }
+                const near = containers[0];
+                emitLog(`前往容器 (${near.x}, ${near.y}, ${near.z}) 存物`);
+                try {
+                    // openContainerAt 内部寻路靠近并开窗；返回序列化快照，存物用 bot.currentWindow 这个活窗口
+                    await botInstance.openContainerAt(near.x, near.y, near.z);
+                } catch (e) { emitLog(`打开容器失败: ${e.message}`); break; }
+                if (ctx.aborted || !bot.entity) return; // 寻路/开窗期间断连
+                const window = bot.currentWindow;
+                if (!window) { emitLog('容器未打开'); break; }
+                // 仅存玩家背包里的物品；按关键词过滤，留空则全部
+                const toDeposit = bot.inventory.items().filter(
+                    i => !kw || i.name.toLowerCase().includes(kw) || customName(i).toLowerCase().includes(kw)
+                );
+                let n = 0;
+                for (const item of toDeposit) {
+                    if (ctx.aborted || !bot.entity) break;
+                    try {
+                        await window.deposit(item.type, item.metadata, item.count);
+                        n++;
+                    } catch (e) { emitLog(`存入失败 ${item.name}: ${e.message}`); }
+                }
+                emitLog(`已存入 ${n} 种物品`);
+                try { if (bot.currentWindow) await bot.closeWindow(bot.currentWindow); } catch (e) { /* ignore */ }
+                break;
+            }
+
             case 'drop': {
                 const itemName = String(step.item || '').toLowerCase();
                 const item = bot.inventory.items().find(i => i.name.toLowerCase().includes(itemName));
@@ -550,6 +618,91 @@ module.exports = (botInstance) => {
                 break;
             }
 
+            case 'drop_all': {
+                // 清空背包，保留关键词命中的物品（多个关键词用逗号/空格分隔；留空=全丢）。
+                // 比单物品 drop 更实用：刷怪/挖矿满包时一键倒垃圾，保留工具/武器。
+                const keepKws = String(step.keep || '')
+                    .toLowerCase().split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+                const isKept = (item) => keepKws.some(
+                    k => item.name.toLowerCase().includes(k) || customName(item).toLowerCase().includes(k)
+                );
+                const items = bot.inventory.items().filter(i => !isKept(i));
+                if (!items.length) { emitLog('没有可丢弃的物品'); break; }
+                let n = 0;
+                for (const item of items) {
+                    if (ctx.aborted || !bot.entity) break;
+                    try { await bot.toss(item.type, item.metadata, item.count); n++; }
+                    catch (e) { /* 个别失败不阻塞 */ }
+                }
+                emitLog(`已丢弃 ${n} 种物品${keepKws.length ? `（保留: ${keepKws.join('/')}）` : ''}`);
+                break;
+            }
+
+            case 'look_at': {
+                // 看向最近的玩家/生物（通用版「look」，不必手填坐标）。
+                // target: 留空=最近玩家；'mob'/'entity'=最近非玩家生物；其它=按名字关键词匹配实体。
+                const t = String(step.target || '').toLowerCase().trim();
+                let entity = null;
+                if (!t || t === 'player') {
+                    entity = bot.nearestEntity(e => e.type === 'player' && e.username !== bot.username);
+                } else if (t === 'mob' || t === 'entity') {
+                    entity = bot.nearestEntity(e =>
+                        e !== bot.entity && e.type !== 'player' && e.type !== 'object' && e.type !== 'item');
+                } else {
+                    entity = bot.nearestEntity(e => {
+                        if (e === bot.entity) return false;
+                        const name = (e.customName || e.username || e.name || '').toString().toLowerCase();
+                        return name.includes(t);
+                    });
+                }
+                if (!entity) { emitLog(`没有可看向的目标: ${t || '玩家'}`); break; }
+                emitLog(`看向 ${entity.username || entity.name || entity.id}`);
+                await bot.lookAt(entity.position.offset(0, (entity.height || 1.6) * 0.85, 0), true);
+                break;
+            }
+
+            case 'goto_nearest': {
+                // 走向最近的玩家/生物（target 同 look_at）；distance=停下的距离（默认 2）。
+                const t = String(step.target || '').toLowerCase().trim();
+                let entity = null;
+                if (!t || t === 'player') {
+                    entity = bot.nearestEntity(e => e.type === 'player' && e.username !== bot.username);
+                } else if (t === 'mob' || t === 'entity') {
+                    entity = bot.nearestEntity(e =>
+                        e !== bot.entity && e.type !== 'player' && e.type !== 'object' && e.type !== 'item');
+                } else {
+                    entity = bot.nearestEntity(e => {
+                        if (e === bot.entity) return false;
+                        const name = (e.customName || e.username || e.name || '').toString().toLowerCase();
+                        return name.includes(t);
+                    });
+                }
+                if (!entity) { emitLog(`没有可前往的目标: ${t || '玩家'}`); break; }
+                emitLog(`走向 ${entity.username || entity.name || entity.id}`);
+                await gotoWithTimeout(new goals.GoalFollow(entity, parseFloat(step.distance) || 2), Number(step.timeout) * 1000);
+                break;
+            }
+
+            case 'hold': {
+                // 持续按住某个控制键 N 秒（如潜行过桥、长按前进走进传送门）。
+                // key: forward/back/left/right/jump/sneak/sprint；s: 秒数。结束/中止时务必松开。
+                const allowed = ['forward', 'back', 'left', 'right', 'jump', 'sneak', 'sprint'];
+                const key = String(step.key || 'forward').toLowerCase();
+                if (!allowed.includes(key)) { emitLog(`不支持的控制键: ${key}`); break; }
+                const ms = (Number(step.s) || Number(step.seconds) || 1) * 1000;
+                emitLog(`按住 ${key} ${ms / 1000}秒`);
+                try {
+                    bot.setControlState(key, true);
+                    const end = Date.now() + ms;
+                    while (Date.now() < end && !ctx.aborted && bot.entity) {
+                        await sleep(Math.min(200, end - Date.now()));
+                    }
+                } finally {
+                    try { bot.setControlState(key, false); } catch (e) { /* bot 可能已销毁 */ }
+                }
+                break;
+            }
+
             case 'use_item': {
                 emitLog('使用物品');
                 bot.activateItem();
@@ -571,7 +724,8 @@ module.exports = (botInstance) => {
                 const rp = botInstance.mobHunterTask?.returnPoint;
                 if (!rp) { emitLog('未设置归家点'); break; }
                 emitLog(`回家 (${Math.floor(rp.x)}, ${Math.floor(rp.y)}, ${Math.floor(rp.z)})`);
-                await bot.pathfinder.goto(new goals.GoalBlock(
+                // 统一走带超时的寻路助手：杜绝不可达归家点无限挂起 + 孤立 goto 的 unhandled reject(MODA-3)
+                await gotoWithTimeout(new goals.GoalBlock(
                     Math.floor(rp.x), Math.floor(rp.y), Math.floor(rp.z)
                 ));
                 break;
@@ -663,6 +817,7 @@ module.exports = (botInstance) => {
                 const button = Number(step.button) || 0;
                 if (!bot.currentWindow) { emitLog(`没有打开界面`); break; }
                 await waitForGuiReady(ctx);
+                if (ctx.aborted || !bot.entity || !bot.currentWindow) return; // GUI 等待期间断连/界面关闭，勿读 currentWindow.slots
                 // 增强匹配：matchLore 同时搜 lore；slotFrom/slotTo 限定槽位范围；save_slot 把命中槽位存入变量。
                 // 全部可选，老脚本(只填 item)行为不变。
                 const opts = {
@@ -675,6 +830,7 @@ module.exports = (botInstance) => {
                     if (step.save_slot) { botInstance._scriptVars[step.save_slot] = targetSlot; emitVars(); }
                     emitLog(`点击「${step.item}」@ 槽位${targetSlot}`);
                     await bot.clickWindow(targetSlot, button, 0);
+                    if (ctx.aborted || !bot.entity) return; // clickWindow 后复检，再访问 currentWindow
                     await sleep(300);
                     if (bot.currentWindow) await waitForGuiReady(ctx);
                 } else {

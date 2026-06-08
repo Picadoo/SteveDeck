@@ -44,11 +44,62 @@ function validateBotInput(input: Partial<BotConfigInput> | undefined): string | 
   return null;
 }
 
+// API-7：settings 白名单。客户端传入的 settings 不再「整对象浅 spread 原样并入并落盘」，
+// 而是只挑出引擎实际读取的已知键 + 做基本类型校验后再合并，避免任意客户端键灌进引擎状态/持久化。
+// 键集合 = BotSettings 接口里引擎各处实际消费的字段（含历史遗留 scripts/trash_cleaner）。
+// 校验策略：基本类型挡明显类型混淆；复杂结构（数组/对象）只校验「是数组/是对象」，元素形状交由各模块自身防御。
+const SETTINGS_SANITIZERS: Record<string, (v: unknown) => unknown | undefined> = {
+  // —— 连接 / 重连 ——
+  autoReconnect: (v) => (typeof v === "boolean" ? v : undefined),
+  reconnectDelay: (v) => (typeof v === "number" && Number.isFinite(v) ? v : undefined),
+  maxReconnectAttempts: (v) => (typeof v === "number" && Number.isFinite(v) ? v : undefined),
+  // —— Forge / 移动 ——
+  forge: (v) => (typeof v === "boolean" ? v : undefined),
+  forgeMods: (v) => (Array.isArray(v) ? v : undefined),
+  rawMove: (v) => (typeof v === "boolean" ? v : undefined),
+  viewDistance: (v) =>
+    typeof v === "string" || (typeof v === "number" && Number.isFinite(v)) ? v : undefined,
+  // —— 寻路 / 行为 ——
+  allowDig: (v) => (typeof v === "boolean" ? v : undefined),
+  respawnCommand: (v) => (typeof v === "string" && v.length <= 256 ? v : undefined),
+  // —— 模块开关 / 配置 ——（对象/数组按引用并入，元素形状由各模块自身防御）
+  combat: (v) => (typeof v === "boolean" ? v : undefined),
+  combatConfig: (v) => (v && typeof v === "object" ? v : undefined),
+  fishing: (v) => (typeof v === "boolean" ? v : undefined),
+  autoFarm: (v) => (v && typeof v === "object" ? v : undefined),
+  autoMine: (v) => (v && typeof v === "object" ? v : undefined),
+  mobHunter: (v) => (v && typeof v === "object" ? v : undefined),
+  trash_cleaner: (v) => (v && typeof v === "object" ? v : undefined),
+  autoUse: (v) => (v && typeof v === "object" ? v : undefined),
+  // —— 定时 / 脚本 / 地点 / 监听 ——
+  schedules: (v) => (Array.isArray(v) ? v : undefined),
+  savedLocations: (v) => (Array.isArray(v) ? v : undefined),
+  activeScript: (v) => (typeof v === "string" || v === null ? v : undefined),
+  monitorRules: (v) => (Array.isArray(v) ? v : undefined),
+  scripts: (v) => (v && typeof v === "object" ? v : undefined), // 历史遗留：旧版脚本库回退源
+};
+
+/** 按白名单 + 基本类型校验，从客户端 patch.settings 中挑出合法键，返回可安全合并的子对象。 */
+function sanitizeSettingsPatch(input: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!input || typeof input !== "object") return out;
+  const src = input as Record<string, unknown>;
+  for (const key of Object.keys(SETTINGS_SANITIZERS)) {
+    if (!(key in src)) continue; // 只合并显式传入的键（未传保留旧值）
+    const cleaned = SETTINGS_SANITIZERS[key](src[key]);
+    if (cleaned !== undefined) out[key] = cleaned;
+  }
+  return out;
+}
+
 /** 广播链：兼容被复用模块的 io.to(room).to(room).emit() 调用形态。
  *  单主人模型下「所有已认证客户端」即目标，故忽略 room 一律广播。 */
 interface EmitChain {
   to(room?: string): EmitChain;
   emit(event: string, payload: unknown): void;
+  // 暴露真实 IOServer 的 engine（含 clientsCount）给 BotInstance.hasWatchers()：
+  // 无客户端连接时模块可跳过周期性重活（MODB-11 门控）。广播壳本身不持连接，故借真实 io。
+  engine?: { clientsCount?: number };
 }
 
 class BotManager {
@@ -101,6 +152,10 @@ class BotManager {
         if (t) self.io.emit(t.event, t.payload);
         else self.io.emit(event, p); // 模块专属事件原样透传（Phase 4 UI 消费）
       },
+      // 借真实 IOServer 暴露连接数：广播壳本身不持连接，hasWatchers() 据此判断「是否有人在看」。
+      get engine() {
+        return self.io?.engine;
+      },
     };
     return chain;
   }
@@ -122,7 +177,12 @@ class BotManager {
         event: ServerEvents.BOT_LOG,
         payload: {
           id: cfg?.id ?? null,
-          line: { time: payload?.time, text: payload?.msg, level: isActionBar ? "actionbar" : isChat ? "chat" : "info" },
+          line: {
+            time: payload?.time,
+            text: payload?.msg,
+            level: isActionBar ? "actionbar" : isChat ? "chat" : "info",
+            segments: payload?.segments, // 可点击/可悬浮聊天片段（有则前端渲染按钮/悬浮）
+          },
         },
       };
     }
@@ -331,8 +391,9 @@ class BotManager {
       auth: input.auth ?? "offline",
       loginPassword: input.loginPassword,
       note: input.note,
-      // 合并默认值：即便前端只传了重连相关键，也保留 combat/fishing/schedules 等默认，不被整体替换
-      settings: { combat: false, fishing: false, reconnectDelay: 5, schedules: [], ...(input.settings ?? {}) },
+      // 合并默认值：即便前端只传了重连相关键，也保留 combat/fishing/schedules 等默认，不被整体替换。
+      // API-7：客户端 settings 同样走白名单挑键 + 类型校验，避免新增机器人时把任意键灌进引擎状态/持久化。
+      settings: { combat: false, fishing: false, reconnectDelay: 5, schedules: [], ...sanitizeSettingsPatch(input.settings) },
     };
     this.configs.push(cfg);
     this.persist();
@@ -375,12 +436,17 @@ class BotManager {
     chg("host", patch.host as any);
     chg("port", patch.port as any);
     chg("version", patch.version as any);
-    chg("loginPassword", patch.loginPassword as any);
+    // 密码保留契约：仅当传入「非空字符串」才更新；空串/undefined＝不修改，保留已存旧密码
+    // （前端编辑态不再回填明文，留空表示「保持不变」，绝不能用空覆盖掉真实密码）。
+    if (typeof patch.loginPassword === "string" && patch.loginPassword.length > 0) {
+      chg("loginPassword", patch.loginPassword as any);
+    }
     // 备注是纯展示字段，改它不必重连
     if (patch.note !== undefined) cfg.note = patch.note;
-    // settings 合并：只覆盖传入的键，保留模块配置/定时/地点等其它设置（避免整体替换抹掉）
+    // settings 合并：API-7——只按白名单挑出引擎已知键 + 基本类型校验后再覆盖，
+    // 既保留模块配置/定时/地点等其它设置（避免整体替换抹掉），也挡任意客户端键灌进引擎状态/持久化。
     if (patch.settings && typeof patch.settings === "object") {
-      cfg.settings = { ...cfg.settings, ...patch.settings };
+      cfg.settings = { ...cfg.settings, ...sanitizeSettingsPatch(patch.settings) };
       // 重连相关设置热生效：更新运行中实例，无需重建连接
       const live: any = this.bots.get(id);
       if (live) {

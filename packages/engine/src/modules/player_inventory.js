@@ -41,6 +41,9 @@ module.exports = (botInstance) => {
     };
 
     // 封装同步函数
+    // 注：不做「签名相同就跳过」的变更检测——那会把「新连接/刷新后的前端需要一份快照」也掐掉
+    //（引擎背包没变→签名相同→连 10s 兜底都跳过→重连前端永远空）。事件驱动已有 150ms 防抖合并、
+    // 无人观看由 hasWatchers 门控跳过，已足够省；正确性优先。
     const syncInventory = () => {
         if (!bot || !bot.inventory) return;
 
@@ -228,9 +231,14 @@ module.exports = (botInstance) => {
     bot.on('playerCollect', scheduleSync);
     bot.inventory.on('updateSlot', scheduleSync);
 
-    // 每 10 秒强制全量同步一次，防止漏包
+    // 每 10 秒强制全量同步一次，防止漏包。
+    // MODB-11：无人观看时跳过这一拍兜底——背包改动本就由 updateSlot/playerCollect 事件实时驱动同步，
+    // 兜底只为补漏包；没人看就不必周期性触发全量解析。有人看时照常兜底（且 syncInventory 内已有变更检测，无变化也只是廉价空跑）。
     botInstance.timers = botInstance.timers || [];
-    const inventoryTimer = setInterval(syncInventory, 10000);
+    const inventoryTimer = setInterval(() => {
+        if (!botInstance.hasWatchers()) return; // 无人看：跳过兜底全量同步
+        syncInventory();
+    }, 10000);
     botInstance.timers.push(inventoryTimer);
 
     // 添加清理钩子（包含事件监听器清理）

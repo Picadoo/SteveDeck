@@ -58,15 +58,21 @@ export default function Viewer({
   const [cmdText, setCmdText] = useState("");
   const lastStates = useRef("");
   const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const startGen = useRef(0); // 本地「代际」：每次启动 effect 自增，过期 ack 直接丢弃
 
-  // 启动 / 切人称：重启视角服务（prismarine 限制），就绪再换 src
+  // 启动 / 切人称：服务端 startViewer 对同一 bot 幂等 + 原地重启（人称变才换端口），
+  // 所以这里**不再先 stop 后 start**（那是 UIFEAT-2/3 黑屏的根因：晚到的 stop 拆掉新实例）。
+  // 直接调 start，靠本地代际丢弃过期 ack → iframe 必定指向「最后一次 start」的端口。
+  // 真正卸载时才 stop（见下方独立 effect），且服务端代际化会忽略被新 start 取代的过期 stop。
   useEffect(() => {
     if (!started) return;
+    const gen = ++startGen.current;
     let cancelled = false;
     setLoading(true);
     setErr(false);
     cmd.viewer.start(bot.id, firstPerson).then((r) => {
-      if (cancelled) return;
+      // 已卸载，或已被更晚的一次 start 取代 → 丢弃本次结果，避免把 iframe 切回旧端口
+      if (cancelled || gen !== startGen.current) return;
       setLoading(false);
       if (r.ok && r.data?.port) {
         const host = connUrl.replace(/^https?:\/\//, "").replace(/:\d+$/, "");
@@ -78,10 +84,20 @@ export default function Viewer({
     });
     return () => {
       cancelled = true;
-      cmd.viewer.stop(bot.id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [started, firstPerson, bot.id, nonce]);
+
+  // 仅在组件真正卸载时停视角服务（切人称/重试不触发，避免误杀刚起的实例）。
+  // 服务端代际化保证：若卸载的同一瞬间另一个 Viewer（如放大窗口）已对同 bot start，
+  // 这条 stop 会被更晚的 start 取代而成为 no-op，不会拆掉新实例。
+  useEffect(() => {
+    if (!started) return;
+    return () => {
+      cmd.viewer.stop(bot.id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [started, bot.id]);
 
   // 卸载时停一切操控，避免机器人继续走
   useEffect(() => {

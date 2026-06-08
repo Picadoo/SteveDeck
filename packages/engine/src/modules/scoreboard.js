@@ -111,8 +111,13 @@ module.exports = (botInstance) => {
         }
     }
 
-    // 定期刷新（兜底，有些服务器不触发事件）
-    const refreshTimer = setInterval(updateSidebar, 5000);
+    // 定期刷新（兜底，有些服务器不触发事件）。
+    // MODB-11：这只是「兜底重解析」——事件(scoreUpdated 等)已实时维护缓存，getScoreboard() 也会按需强刷，
+    // 故无人观看时跳过这一拍的全量走板，省 CPU；有人看才兜底刷新。
+    const refreshTimer = setInterval(() => {
+        if (!botInstance.hasWatchers()) return; // 无人看：跳过兜底重解析（缓存仍由事件维护）
+        updateSidebar();
+    }, 5000);
     botInstance.timers = botInstance.timers || [];
     botInstance.timers.push(refreshTimer);
 

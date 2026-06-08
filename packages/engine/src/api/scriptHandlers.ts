@@ -33,8 +33,10 @@ export function registerScriptHandlers(socket: Socket): void {
     // API-9：基本形状/规模校验，挡畸形脚本入盘并广播到所有在线实例（之前只验 steps 是数组）
     if (script.name.length > 80) return ack?.(fail("脚本名过长(>80)"));
     if (script.steps.length > 2000) return ack?.(fail("脚本步数过多(>2000)"));
-    if (!script.steps.every((s: any) => s && typeof s === "object" && typeof s.type === "string")) {
-      return ack?.(fail("脚本步骤格式不正确（每步需含 type 字段）"));
+    // 步骤动作字段是 `do`（script_engine 用 step.do 派发），不是 type——
+    // 之前 API-9 误校验 type 会让编辑器保存任何脚本都失败。
+    if (!script.steps.every((s: any) => s && typeof s === "object" && typeof s.do === "string")) {
+      return ack?.(fail("脚本步骤格式不正确（每步需含 do 字段）"));
     }
     const lib = botManager.loadScripts();
     lib[script.name] = script;

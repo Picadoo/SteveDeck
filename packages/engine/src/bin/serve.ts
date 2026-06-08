@@ -1,4 +1,5 @@
 import "dotenv/config";
+import crypto from "crypto";
 import { startEngine, ENGINE_VERSION } from "../server";
 import { buildConnectionInfo } from "../net/connectionInfo";
 import { botManager } from "../botManager";
@@ -65,12 +66,25 @@ async function main(): Promise<void> {
 
   const info = await buildConnectionInfo({ version: ENGINE_VERSION, port, token });
 
+  // 令牌打印策略(API-5)：默认只打「指纹」(sha256 前 12 位)，不把明文令牌写进 stdout——
+  // 容器/CI 会把 stdout 永久收进日志，明文令牌等于永久凭据泄漏。完整连接串/令牌请走带鉴权的
+  // GET /api/connection-info 获取。仅在「交互式终端(TTY)」或显式设 ENGINE_PRINT_TOKEN=1 时才打明文，
+  // 方便本地裸跑调试时直接复制。内置桌面版不读 stdout 取令牌（由 Tauri 经 ENGINE_TOKEN 注入、
+  // 前端走 engine_info 命令获取），故此变更不影响桌面配对 UX。
+  const tokenFingerprint = crypto.createHash("sha256").update(token).digest("hex").slice(0, 12);
+  const showPlainToken = process.env.ENGINE_PRINT_TOKEN === "1" || Boolean(process.stdout.isTTY);
+
   console.log("\n================ mc-bot-player 引擎已启动 ================");
   console.log(`版本: ${ENGINE_VERSION}   监听端口: ${port}`);
-  console.log(`访问令牌: ${token}`);
+  if (showPlainToken) {
+    console.log(`访问令牌: ${token}`);
+    console.log(`连接串: ${info.connectionString}`);
+  } else {
+    console.log(`访问令牌指纹: sha256:${tokenFingerprint}（明文不打印；设 ENGINE_PRINT_TOKEN=1 可显示）`);
+    console.log("完整令牌/连接串：请向带鉴权的 GET /api/connection-info 获取");
+  }
   console.log("可用地址:");
   for (const a of info.addresses) console.log(`  - http://${a}:${port}`);
-  console.log(`连接串: ${info.connectionString}`);
   console.log("移动端：扫描 GET /api/connection-info 返回的二维码即可配对");
   console.log("==========================================================\n");
 }
