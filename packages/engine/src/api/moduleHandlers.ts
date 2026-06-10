@@ -67,6 +67,10 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
             inst.toggleMobHunter?.(active, config || {});
             persistSettings(id, (s) => (s.mobHunter = { active, config: config || {} }));
             break;
+          case "follow":
+            inst.toggleFollow?.(active, config || {});
+            persistSettings(id, (s) => ((s as any).follow = { active, config: config || {} }));
+            break;
           case "trash_cleaner": {
             const items = (config && config.items) || config || [];
             inst.toggleTrashCleaner?.(active, items);

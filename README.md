@@ -46,3 +46,15 @@ pnpm start:engine   # 本地启动引擎
 docker compose -f docker/docker-compose.yml up -d --build   # 引擎 24/7（需 Docker）
 pnpm -C apps/desktop tauri build                            # Windows 安装包（需 Rust）
 ```
+
+## 服务器/公网部署要点
+
+- Docker 镜像自带**网页客户端**：手机/电脑浏览器打开 `http://<服务器>:8723/` 即是完整界面（支持 PWA 添加到主屏幕）。
+- 公网部署设 `ENGINE_PUBLIC_HOST=<公网IP或域名>`（compose 经 `.engine-env` 注入）——连接串/二维码/扫码直连都用它。
+- 防火墙放行 **8723**（主端口）与 **8800-8853**（实时视角端口池）。
+- 自动化部署参考 `docker/deploy-tencent.ps1`：服务器清单放 `docker/deploy-targets.local.json`（已 gitignore，复制 `deploy-targets.example.json` 改名填写）。
+- 环境变量清单见 [.env.example](.env.example)。
+
+## License
+
+[MIT](LICENSE)

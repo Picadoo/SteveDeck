@@ -209,6 +209,7 @@ export interface ModuleFlags {
   automine?: boolean;
   autofarm?: boolean;
   mobhunter?: boolean;
+  follow?: boolean;
   trashcleaner?: boolean;
   script?: string | null;
 }

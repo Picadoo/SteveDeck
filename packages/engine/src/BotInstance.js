@@ -406,7 +406,7 @@ class BotInstance {
                 const MODULE_NAMES = [
                     'combat', 'fishing', 'scheduler', 'player_inventory',
                     'interact', 'automine', 'trash_cleaner', 'auto_farm', 'mob_hunter',
-                    'scoreboard', 'script_engine', 'window_gui',
+                    'follow', 'scoreboard', 'script_engine', 'window_gui',
                     'custom_js', 'bot_viewer', 'message_monitor', 'auto_use',
                 ];
                 for (const name of MODULE_NAMES) {
@@ -499,6 +499,9 @@ class BotInstance {
                     const active = settings.mobHunter.active !== undefined ? !!settings.mobHunter.active : true;
                     const cfg = settings.mobHunter.config || settings.mobHunter;
                     if (active) this.toggleMobHunter(true, cfg);
+                }
+                if (settings.follow && settings.follow.active && this.toggleFollow) {
+                    this.toggleFollow(true, settings.follow.config || {});
                 }
                 if (settings.autoMine && settings.autoMine.active && this.toggleAutoMine) {
                     this.toggleAutoMine(true, settings.autoMine.config || {});

@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Swords, Fish, Pickaxe, Wheat, Crosshair, Trash2 } from "lucide-react";
+import { Swords, Fish, Pickaxe, Wheat, Crosshair, Trash2, Footprints } from "lucide-react";
 import type { ModuleFlags } from "@mcbot/protocol";
 
 export type FieldType = "switch" | "number" | "tags" | "select" | "multiselect";
@@ -125,6 +125,36 @@ export const MODULES: ModuleDef[] = [
       { key: "safetyEnabled", label: "检测到玩家暂停", type: "switch", default: true },
       { key: "canDig", label: "允许破坏方块", type: "switch", default: false },
       { key: "canPlace", label: "允许放置方块", type: "switch", default: false },
+    ],
+  },
+  {
+    key: "follow",
+    name: "跟随",
+    icon: Footprints,
+    desc: "持续跟随玩家或指定目标（类 Baritone follow）",
+    activeFlag: "follow",
+    applyVia: "toggle",
+    fields: [
+      {
+        key: "mode",
+        label: "匹配方式",
+        type: "select",
+        default: "nearest_player",
+        options: [
+          { value: "nearest_player", label: "最近的玩家" },
+          { value: "player", label: "按玩家名" },
+          { value: "keyword", label: "按名字关键词（怪/NPC，含全息名牌）" },
+        ],
+      },
+      {
+        key: "target",
+        label: "目标（玩家名/关键词，「最近的玩家」可留空）",
+        type: "tags",
+        default: [],
+        placeholder: "Steve 或 庄稼汉",
+        hint: "按看到的名字填即可，颜色码自动忽略；目标丢失会原地待命并自动重找",
+      },
+      { key: "distance", label: "跟随距离（格）", type: "number", default: 3, min: 1, max: 10 },
     ],
   },
   {

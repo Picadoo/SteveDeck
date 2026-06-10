@@ -86,6 +86,7 @@ const SETTINGS_SANITIZERS: Record<string, (v: unknown) => unknown | undefined> =
   autoFarm: (v) => (v && typeof v === "object" ? v : undefined),
   autoMine: (v) => (v && typeof v === "object" ? v : undefined),
   mobHunter: (v) => (v && typeof v === "object" ? v : undefined),
+  follow: (v) => (v && typeof v === "object" ? v : undefined),
   trash_cleaner: (v) => (v && typeof v === "object" ? v : undefined),
   autoUse: (v) => (v && typeof v === "object" ? v : undefined),
   // —— 定时 / 脚本 / 地点 / 监听 ——
@@ -287,6 +288,7 @@ class BotManager {
             automine: !!(inst.autoMineTask && inst.autoMineTask.active),
             autofarm: !!(inst.farmTask && inst.farmTask.active),
             mobhunter: !!(inst.mobHunterTask && inst.mobHunterTask.active),
+            follow: !!(inst.followTask && inst.followTask.active),
             trashcleaner: !!(inst.trashCleanerTask && inst.trashCleanerTask.active),
             script:
               (inst._runningScript && inst._runningScript.name) ||

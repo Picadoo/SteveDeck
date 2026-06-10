@@ -41,3 +41,6 @@ Thumbs.db
 
 # 测试
 coverage/
+
+# 部署目标（个人服务器 IP/密钥路径，不入库）
+docker/deploy-targets.local.json

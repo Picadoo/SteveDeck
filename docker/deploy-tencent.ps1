@@ -1,22 +1,31 @@
-﻿# 部署 mc-bot-player 引擎(含网页客户端)到腾讯云服务器 — 在仓库根目录运行
-# 用法: .\docker\deploy-tencent.ps1             # 默认广东服务器，服务器上构建（增量最快）
-#       .\docker\deploy-tencent.ps1 -LocalBuild # 本地构建镜像传上去（2核云机太慢/大改动时用，需先启动 Docker Desktop）
-#       .\docker\deploy-tencent.ps1 -Server seoul
+﻿# 部署 mc-bot-player 引擎(含网页客户端)到自己的服务器 — 在仓库根目录运行
+# 用法: .\docker\deploy-tencent.ps1             # 默认第一台服务器，服务器上构建（增量最快）
+#       .\docker\deploy-tencent.ps1 -LocalBuild # 本地构建镜像传上去（小核云机太慢/大改动时用，需先启动 Docker Desktop）
+#       .\docker\deploy-tencent.ps1 -Server <名字>
+#
+# 服务器清单放在 docker/deploy-targets.local.json（已 gitignore，IP/密钥路径等个人信息不入库），
+# 首次使用复制 docker/deploy-targets.example.json 改名填好即可。
 #
 # 打包用 git archive：只含已跟踪文件 → 自动排除 .test-data(明文密码)/.env/node_modules/dist。
 # 首次部署在服务器生成强随机 ENGINE_TOKEN 存入 ~/mc-bot-player/.engine-env(chmod 600)，重复部署沿用。
 param(
-  [ValidateSet("guangdong", "seoul")] [string]$Server = "guangdong",
+  [string]$Server = "",
   [switch]$LocalBuild
 )
 $ErrorActionPreference = "Stop"
 
-$cfg = @{
-  guangdong = @{ HostIp = "119.91.120.244"; User = "ubuntu"; Key = "$env:USERPROFILE\.ssh\tencent_cloud" }
-  seoul     = @{ HostIp = "43.128.143.73";  User = "root";   Key = "$env:USERPROFILE\.ssh\tencent_seoul" }
-}[$Server]
+$targetsFile = Join-Path $PSScriptRoot "deploy-targets.local.json"
+if (-not (Test-Path $targetsFile)) {
+  throw "缺少 $targetsFile —— 复制 docker/deploy-targets.example.json 为 deploy-targets.local.json 并填入你的服务器信息"
+}
+$targets = Get-Content $targetsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+$names = @($targets.PSObject.Properties.Name)
+if ($names.Count -eq 0) { throw "deploy-targets.local.json 里没有任何服务器条目" }
+if (-not $Server) { $Server = $names[0] }
+$cfg = $targets.$Server
+if (-not $cfg) { throw "未找到服务器「$Server」，可用：$($names -join ', ')" }
 $ssh = "$($cfg.User)@$($cfg.HostIp)"
-$key = $cfg.Key
+$key = [Environment]::ExpandEnvironmentVariables($cfg.Key)
 # keepalive：构建期 ssh 长时间无输出，没有心跳的话断线/半开连接会无限挂起
 $sshOpts = @("-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8")
 
