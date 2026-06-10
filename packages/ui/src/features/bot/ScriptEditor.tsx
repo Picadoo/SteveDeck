@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, ArrowUp, ArrowDown, Trash2, Code2, Blocks } from "lucide-react";
 import { Button, Input, Switch } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
@@ -116,10 +116,38 @@ export default function ScriptEditor({
   const [entities, setEntities] = useState<string[]>([]);
   const [players, setPlayers] = useState<string[]>([]);
   const bot = useStore((st) => st.bots.find((b) => b.id === botId));
+  // 脏判断快照：打开时的脚本序列化结果；遮罩点击关闭前与当前比对，有改动先确认（防录制草稿一点蒸发）
+  const baselineRef = useRef("");
+
+  function requestClose() {
+    let now: string;
+    if (mode === "json") {
+      // JSON 模式显示的是 pretty-print，先归一成紧凑形态再与基线比；解析不了视作有改动
+      try { now = JSON.stringify(JSON.parse(json)); } catch { now = "__invalid__"; }
+    } else {
+      now = JSON.stringify(toScript(s));
+    }
+    if (now !== baselineRef.current && !window.confirm("有未保存的修改，确定丢弃并关闭？")) return;
+    onClose();
+  }
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
+
+  // 自建弹窗容器（没用共享 Modal）：补 Esc 关闭，与其他弹窗行为一致（同样走丢稿确认）
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") requestCloseRef.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    setS(toEdit(initial, bot?.host || ""));
+    const init = toEdit(initial, bot?.host || "");
+    setS(init);
+    baselineRef.current = JSON.stringify(toScript(init));
     setMode("visual");
     setErr(null);
     let cancelled = false; // UIFEAT-9：关闭/切 bot 后不再 setState
@@ -183,7 +211,7 @@ export default function ScriptEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={requestClose} aria-hidden />
       <div className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
           <h2 className="text-sm font-semibold">脚本编辑器</h2>
@@ -194,7 +222,7 @@ export default function ScriptEditor({
             <button onClick={() => switchMode("json")} className={cn("rounded-md px-2.5 py-1 text-xs", mode === "json" ? "bg-surface-2 text-fg" : "text-muted")}>
               <Code2 className="mr-1 inline h-3.5 w-3.5" />JSON
             </button>
-            <button onClick={onClose} className="ml-1 text-muted hover:text-fg"><X className="h-4 w-4" /></button>
+            <button onClick={requestClose} aria-label="关闭" className="ml-1 text-muted hover:text-fg"><X className="h-4 w-4" /></button>
           </div>
         </div>
 

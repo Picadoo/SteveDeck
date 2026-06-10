@@ -19,7 +19,9 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
   // 键优先 bot.id；回退 username 兼容无 _bid 的旧引擎（与 engine.ts 存储键、store.removeBot 双键清理一致）
   const win = useStore((s) => s.windows[bot.id] ?? s.windows[bot.username]);
   const connUrl = useStore((s) => s.conn.url);
+  const pushToast = useStore((s) => s.pushToast);
   const [hover, setHover] = useState<Hover | null>(null);
+  const [clicking, setClicking] = useState(false);
 
   // 刷新/切换账号后自动恢复：若服务端此刻有打开的窗口，拉回来重新弹出
   // （预览是静态构建包，刷新会丢失前端窗口状态；服务端的窗口仍在）
@@ -89,13 +91,18 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
     setWin(bot.id, null);
   };
   const click = async (slot: number, button = 0, mode = 0) => {
+    if (clicking) return; // 防连点：上一次点击在途时直接吞掉（并发 click 会让服务端 GUI 状态错乱）
     setHover(null);
+    setClicking(true);
     const r = await cmd.window.click(bot.id, slot, button, mode);
+    setClicking(false);
     if (r.ok) setWin(bot.id, r.data ?? null);
+    else pushToast(r.error || "点击失败", "error");
   };
   const refresh = async () => {
     const r = await cmd.window.get(bot.id);
     if (r.ok) setWin(bot.id, r.data ?? null);
+    else pushToast(r.error || "刷新失败", "error");
   };
 
   const total = win.slotCount;

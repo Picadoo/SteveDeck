@@ -34,16 +34,18 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [obs, setObs] = useState<Observation | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [goal, setGoal] = useState("");
   const [jsonExpanded, setJsonExpanded] = useState(false);
 
   async function refresh(alive?: () => boolean) {
     setLoading(true);
+    setLoadErr(null);
     const r = await cmd.observe(bot.id);
     if (alive && !alive()) return;
     setLoading(false);
     if (r.ok) setObs(r.data as Observation);
-    else pushToast(r.error || "获取感知失败", "error");
+    else setLoadErr(r.error || "获取感知失败"); // 失败显示错误态而非永远转圈
   }
   useEffect(() => {
     let cancelled = false;
@@ -74,7 +76,14 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
         </div>
       </div>
 
-      {!obs ? (
+      {!obs && loadErr ? (
+        <Card className="flex flex-col items-center justify-center gap-3 p-8">
+          <span className="text-sm text-danger">{loadErr}</span>
+          <Button size="sm" variant="secondary" onClick={() => refresh()}>
+            <RefreshCw className="h-3.5 w-3.5" /> 重试
+          </Button>
+        </Card>
+      ) : !obs ? (
         <Card className="flex items-center justify-center gap-2 p-8">
           <Loader2 className="h-5 w-5 animate-spin text-accent" />
           <span className="text-sm text-muted">正在获取机器人感知…</span>

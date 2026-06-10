@@ -150,12 +150,14 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
   }, [bot.modules, pinned]);
 
   const checkedOf = (def: ModuleDef) => (def.key in optim ? optim[def.key] : isActive(def));
-  function onSaveConfig(def: ModuleDef, cfg: Record<string, unknown>) {
+  async function onSaveConfig(def: ModuleDef, cfg: Record<string, unknown>) {
     setModuleConfig(bot.id, def.key, cfg);
-    if (def.applyVia === "config") cmd.configModule(bot.id, def.key, cfg);
-    else if (isActive(def)) cmd.toggleModule(bot.id, def.key, true, cfg);
     setEditing(null);
-    pushToast("配置已保存", "success");
+    // 等引擎确认再报成功——原来是 fire-and-forget 无条件弹「已保存」，失败也假装成功
+    let r: { ok: boolean; error?: string } = { ok: true };
+    if (def.applyVia === "config") r = await cmd.configModule(bot.id, def.key, cfg);
+    else if (isActive(def)) r = await cmd.toggleModule(bot.id, def.key, true, cfg);
+    pushToast(r.ok ? "配置已保存" : (r.error || "保存失败"), r.ok ? "success" : "error");
   }
 
   return (

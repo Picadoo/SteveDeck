@@ -75,7 +75,7 @@ export default function LiveTab({ bot }: { bot: BotSummary }) {
       {!popout ? (
         <Viewer bot={bot} onPopout={() => setPopout(true)} />
       ) : (
-        <div className="flex h-[46vh] items-center justify-center rounded-lg border border-border bg-surface-2/40 text-sm text-muted">
+        <div className="flex h-[clamp(260px,46vh,560px)] items-center justify-center rounded-lg border border-border bg-surface-2/40 text-sm text-muted">
           实时画面已在放大窗口中
         </div>
       )}
@@ -139,9 +139,10 @@ export default function LiveTab({ bot }: { bot: BotSummary }) {
                       size="sm"
                       variant="ghost"
                       disabled={disabled}
-                      onClick={() => {
-                        cmd.moduleAction(bot.id, "npc", "interact", { name: String(n.id) });
+                      onClick={async () => {
                         pushToast("走过去并交互…", "info");
+                        const r = await cmd.moduleAction(bot.id, "npc", "interact", { name: String(n.id) });
+                        if (!r.ok) pushToast(r.error || "交互失败", "error");
                       }}
                     >
                       交互

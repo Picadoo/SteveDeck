@@ -60,7 +60,18 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
         <Section title="当前引擎">
           <Row k="地址" v={conn.url.replace(/^https?:\/\//, "") || "—"} />
           <Row k="版本" v={conn.engine?.version ? "v" + conn.engine.version : "—"} />
-          <Row k="状态" v={conn.status === "online" ? "已连接" : "连接中"} />
+          <Row
+            k="状态"
+            v={
+              conn.status === "online"
+                ? "已连接"
+                : conn.status === "connecting"
+                  ? "连接中"
+                  : conn.status === "error"
+                    ? `连接出错${conn.error ? `：${conn.error}` : ""}`
+                    : "未连接"
+            }
+          />
         </Section>
 
         {isTauri() && <EngineSourceSection />}

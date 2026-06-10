@@ -311,14 +311,14 @@ export function disconnect(): void {
   useStore.getState().setConn({ status: "disconnected" });
 }
 
-function emitAck<T = unknown>(event: string, payload: unknown): Promise<CommandAck<T>> {
+function emitAck<T = unknown>(event: string, payload: unknown, timeoutMs = 8000): Promise<CommandAck<T>> {
   return new Promise((resolve) => {
     if (!socket || !socket.connected) {
       resolve({ ok: false, error: "未连接到引擎" });
       return;
     }
     socket
-      .timeout(8000)
+      .timeout(timeoutMs)
       .emit(event, payload, (err: unknown, res: CommandAck<T>) => {
         if (err) resolve({ ok: false, error: "请求超时" });
         else resolve(res);
@@ -375,12 +375,13 @@ export const cmd = {
     close: (id: string) =>
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "window", action: "close" }),
     openAt: (id: string, x: number, y: number, z: number) =>
-      emitAck<WindowState | null>(ClientCommands.MODULE_ACTION, {
-        id,
-        module: "window",
-        action: "openAt",
-        args: { x, y, z },
-      }),
+      // 开远处箱子要先寻路走过去（引擎侧寻路超时 15s）：默认 8s ack 会在机器人还在走时
+      // 误报「请求超时」——给 30s，覆盖寻路+开箱全程
+      emitAck<WindowState | null>(
+        ClientCommands.MODULE_ACTION,
+        { id, module: "window", action: "openAt", args: { x, y, z } },
+        30000,
+      ),
     explore: (id: string, item: string, clickPath?: string[]) =>
       emitAck<{ usedItem: string; trail?: { keyword: string; slot?: number; found?: boolean }[]; window: WindowState }>(
         ClientCommands.MODULE_ACTION,

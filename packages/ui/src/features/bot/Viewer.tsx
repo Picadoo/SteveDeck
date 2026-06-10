@@ -36,7 +36,7 @@ export default function Viewer({
   bot,
   popout = false,
   autoStart = false,
-  frameClass = "h-[46vh]",
+  frameClass = "h-[clamp(260px,46vh,560px)]",
   onPopout,
 }: {
   bot: BotSummary;
@@ -47,6 +47,7 @@ export default function Viewer({
 }) {
   const connUrl = useStore((s) => s.conn.url);
   const pushToast = useStore((s) => s.pushToast);
+  const pushCmd = useStore((s) => s.pushCmd);
   const [started, setStarted] = useState(autoStart);
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false); // 等待服务端 ack（启动渲染服务）
@@ -201,7 +202,9 @@ export default function Viewer({
     const m = cmdText.trim();
     if (!m) return;
     setCmdText("");
-    await cmd.chat(bot.id, m);
+    pushCmd(m); // 记入命令历史（与聊天框一致，↑ 可翻）
+    const r = await cmd.chat(bot.id, m);
+    if (!r.ok) pushToast(r.error || "发送失败", "error");
   }
   function toggleWalk() {
     const next = !walk;

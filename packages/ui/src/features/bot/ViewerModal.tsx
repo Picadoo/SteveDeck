@@ -15,7 +15,7 @@ export default function ViewerModal({
   if (!open) return null;
   return (
     <Modal open={open} onClose={onClose} title={`${bot.username} · 实时视角`} size="full">
-      <Viewer bot={bot} popout autoStart frameClass="h-[68vh]" />
+      <Viewer bot={bot} popout autoStart frameClass="h-[clamp(300px,68vh,820px)]" />
     </Modal>
   );
 }

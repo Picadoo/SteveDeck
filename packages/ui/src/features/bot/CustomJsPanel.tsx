@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Play, Square, Save, Trash2, FileCode2, AlertTriangle, Pin } from "lucide-react";
 import { Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
@@ -23,6 +23,11 @@ export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
   const [list, setList] = useState<{ name: string; pinned: boolean; updatedAt: number | null }[]>([]);
   const [name, setName] = useState("");
   const [code, setCode] = useState(SAMPLE);
+  // 删除两段确认：记录「待确认删除」的脚本名，2.5s 内再点才删（hook 不能进 map 循环，用单状态）
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 脏判断基线：上次 load/save 时的代码（初始为示例代码）；与当前不同即「有未保存修改」
+  const baseline = useRef<string | null>(SAMPLE);
 
   const running = !!bot.modules.script && bot.modules.script.startsWith("JS:");
   const runningName = running ? bot.modules.script!.slice(3) : null;
@@ -42,10 +47,17 @@ export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
   }, [bot.id]);
 
   async function load(n: string) {
+    // 覆盖未保存的修改前先确认（编辑了半天点别的脚本一键蒸发是重灾区）
+    if (baseline.current !== null && code !== baseline.current) {
+      if (!window.confirm(`当前代码有未保存的修改，加载「${n}」会丢弃这些修改。继续？`)) return;
+    }
     const r = await cmd.js.get(bot.id, n);
     if (r.ok && r.data) {
       setName(r.data.name);
       setCode(r.data.code);
+      baseline.current = r.data.code;
+    } else {
+      pushToast(r.error || `加载「${n}」失败`, "error");
     }
   }
   async function save() {
@@ -53,6 +65,7 @@ export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
     const r = await cmd.js.save(bot.id, name.trim(), code);
     if (r.ok) {
       pushToast("已保存", "success");
+      baseline.current = code;
       refresh();
     } else pushToast(r.error || "保存失败", "error");
   }
@@ -63,10 +76,22 @@ export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
   async function stop() {
     await cmd.js.stop(bot.id);
   }
-  async function del(n: string) {
-    await cmd.js.del(bot.id, n);
-    if (n === name) setName("");
-    refresh();
+  function requestDel(n: string) {
+    if (confirmDel !== n) {
+      setConfirmDel(n);
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+      confirmTimer.current = setTimeout(() => setConfirmDel(null), 2500);
+      return;
+    }
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    setConfirmDel(null);
+    void (async () => {
+      const r = await cmd.js.del(bot.id, n);
+      if (!r.ok) return pushToast(r.error || "删除失败", "error");
+      pushToast(`已删除「${n}」`, "success");
+      if (n === name) setName("");
+      refresh();
+    })();
   }
   async function togglePin(n: string, pinned: boolean) {
     const r = await cmd.js.pin(bot.id, n, pinned);
@@ -96,8 +121,12 @@ export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
               <button onClick={() => togglePin(s.name, !s.pinned)} title={s.pinned ? "取消置顶" : "置顶到模块页一键开关"}>
                 <Pin className={cn("h-3 w-3", s.pinned ? "fill-accent text-accent" : "text-muted opacity-50 hover:opacity-100")} />
               </button>
-              <button onClick={() => del(s.name)} title="删除">
-                <Trash2 className="h-3 w-3 text-danger opacity-50 hover:opacity-100" />
+              <button onClick={() => requestDel(s.name)} title={confirmDel === s.name ? "再点一次确认删除" : "删除"}>
+                {confirmDel === s.name ? (
+                  <span className="text-[10px] font-medium text-danger">确认?</span>
+                ) : (
+                  <Trash2 className="h-3 w-3 text-danger opacity-50 hover:opacity-100" />
+                )}
               </button>
             </span>
           ))}

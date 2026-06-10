@@ -16,9 +16,12 @@ export interface Toast {
   id: number;
   message: string;
   tone: ToastTone;
+  /** 相同文案合并计数（≥2 时显示 ×N） */
+  count?: number;
 }
 let toastSeq = 0;
 const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const MAX_TOASTS = 5;
 
 const MAX_LOG_LINES = 500;
 // 日志渲染序号：单调递增，给 React 当稳定 key。满 500 条后 appendLog 是滑动窗口，
@@ -152,10 +155,29 @@ export const useStore = create<AppState>((set, get) => ({
   toasts: [],
 
   pushToast: (message, tone = "info") => {
-    const existing = get().toasts;
-    if (existing.some((t) => t.message === message && t.tone === (tone ?? "info"))) return;
+    // 相同文案+类型 → 合并为 ×N 并重置消失计时（连点失败不再静默吞掉，也不堆叠刷屏）
+    const dup = get().toasts.find((t) => t.message === message && t.tone === tone);
+    if (dup) {
+      set((s) => ({
+        toasts: s.toasts.map((t) => (t.id === dup.id ? { ...t, count: (t.count ?? 1) + 1 } : t)),
+      }));
+      const old = toastTimers.get(dup.id);
+      if (old) clearTimeout(old);
+      toastTimers.set(dup.id, setTimeout(() => get().dismissToast(dup.id), 4000));
+      return;
+    }
     const id = ++toastSeq;
-    set((s) => ({ toasts: [...s.toasts, { id, message, tone }] }));
+    set((s) => {
+      let toasts = [...s.toasts, { id, message, tone }];
+      // 上限 5 条：挤掉最旧的（其计时器一并清理）
+      while (toasts.length > MAX_TOASTS) {
+        const drop = toasts.shift()!;
+        const t = toastTimers.get(drop.id);
+        if (t) clearTimeout(t);
+        toastTimers.delete(drop.id);
+      }
+      return { toasts };
+    });
     const timer = setTimeout(() => get().dismissToast(id), 4000);
     toastTimers.set(id, timer);
   },

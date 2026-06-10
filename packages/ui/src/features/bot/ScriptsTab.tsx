@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import Modal from "@/components/ui/Modal";
 import ScriptEditor from "./ScriptEditor";
 import CustomJsPanel from "./CustomJsPanel";
+import { TRIGGER_TYPES } from "./stepDefs";
 import type { BotSummary, ScriptSummary, BotScript } from "@mcbot/protocol";
 
 export default function ScriptsTab({ bot }: { bot: BotSummary }) {
@@ -49,7 +50,8 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
   async function stopRec() {
     const r = await cmd.moduleAction<{ steps: unknown[]; count: number }>(bot.id, "recording", "stop");
     setRec({ active: false, count: 0 });
-    const steps = (r.ok && Array.isArray(r.data?.steps) ? r.data!.steps : []) as BotScript["steps"];
+    if (!r.ok) { pushToast(r.error || "停止录制失败", "error"); return; } // 失败别伪装成「没录到」
+    const steps = (Array.isArray(r.data?.steps) ? r.data!.steps : []) as BotScript["steps"];
     if (!steps.length) { pushToast("没录到任何操作", "info"); return; }
     const draft = {
       name: "录制 " + new Date().toLocaleTimeString().slice(0, 5),
@@ -77,7 +79,12 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
   }
   async function openEdit(name: string) {
     const r = await cmd.script.detail(name);
-    setEditing({ open: true, initial: (r.ok ? (r.data as BotScript) : null) ?? null });
+    if (!r.ok || !r.data) {
+      // 拉不到详情就不开编辑器——以 initial:null 打开是「新建」，用户以为在编辑实际会另存空白
+      pushToast(r.error || `打开「${name}」失败`, "error");
+      return;
+    }
+    setEditing({ open: true, initial: r.data as BotScript });
   }
   async function handleSave(script: BotScript) {
     const r = await cmd.script.save(script);
@@ -100,8 +107,8 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
   }
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   async function remove(name: string) {
-    await cmd.script.remove(name);
-    pushToast("脚本已删除", "success");
+    const r = await cmd.script.remove(name);
+    pushToast(r.ok ? "脚本已删除" : (r.error || "删除失败"), r.ok ? "success" : "error");
     refresh();
   }
 
@@ -153,7 +160,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
           ) : null}
         </div>
         <div className="text-[11px] text-muted">
-          触发：{s.trigger?.type ?? "manual"} · {s.stepCount} 步
+          触发：{TRIGGER_TYPES.find((t) => t.type === (s.trigger?.type ?? "manual"))?.label ?? s.trigger?.type ?? "手动触发"} · {s.stepCount} 步
         </div>
       </div>
       <div className="flex shrink-0 gap-1.5">

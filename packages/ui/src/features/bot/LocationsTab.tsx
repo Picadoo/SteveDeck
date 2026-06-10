@@ -24,6 +24,7 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
   const [recCount, setRecCount] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState<SavedLocationSummary | null>(null);
   const locs = bot.savedLocations ?? [];
+  const atCap = locs.length >= 5; // 引擎上限 5 个（BotInstance 强制）；满了禁用而不是让保存报错
 
   // 录制中：轮询步数；引擎侧若停了则收起横幅
   useEffect(() => {
@@ -66,6 +67,8 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
     if (r.ok) {
       setRecCount(0);
       setRec(target);
+    } else {
+      pushToast(r.error || "无法开始录制", "error");
     }
   }
 
@@ -75,11 +78,21 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
     const r = await cmd.moduleAction<{ steps: unknown[] }>(bot.id, "recording", "stop");
     if (!save || !target) return;
     const steps = (r.ok && r.data?.steps) || [];
+    // 录制成果的保存必须接结果——静默失败=录了半天一键蒸发
     if (target.kind === "new") {
-      await cmd.moduleAction(bot.id, "location", "save", { name: target.name, steps });
-      setName("");
+      const sr = await cmd.moduleAction(bot.id, "location", "save", { name: target.name, steps });
+      if (sr.ok) {
+        setName("");
+        pushToast(`地点「${target.name}」已保存（${steps.length} 步到达脚本）`, "success");
+      } else {
+        pushToast(sr.error || "保存地点失败（录制的步骤未能存下）", "error");
+      }
     } else if (target.id) {
-      await cmd.moduleAction(bot.id, "location", "set-reach", { locationId: target.id, steps });
+      const sr = await cmd.moduleAction(bot.id, "location", "set-reach", { locationId: target.id, steps });
+      pushToast(
+        sr.ok ? `到达脚本已更新（${steps.length} 步）` : (sr.error || "更新到达脚本失败"),
+        sr.ok ? "success" : "error",
+      );
     }
   }
 
@@ -108,16 +121,21 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
 
       {/* 新增地点 */}
       <Card className="p-4">
-        <h3 className="mb-3 text-sm font-semibold">新增地点（最多 5 个）</h3>
+        <h3 className="mb-3 flex items-center justify-between text-sm font-semibold">
+          <span>新增地点</span>
+          <span className={cn("text-[11px] font-normal tabular-nums", atCap ? "text-danger" : "text-muted")}>
+            {locs.length}/5
+          </span>
+        </h3>
         <form onSubmit={saveHere} className="space-y-2">
           <div className="flex gap-2">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="地点名，如：主城"
-              disabled={!bot.online || !!rec}
+              placeholder={atCap ? "已达上限，删除旧地点后再添加" : "地点名，如：主城"}
+              disabled={!bot.online || !!rec || atCap}
             />
-            <Button type="submit" variant="primary" disabled={!bot.online || !name.trim() || !!rec}>
+            <Button type="submit" variant="primary" disabled={!bot.online || !name.trim() || !!rec || atCap}>
               <Plus className="h-4 w-4" /> 存当前位置
             </Button>
           </div>
@@ -136,7 +154,7 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
             size="sm"
             variant="secondary"
             className="shrink-0"
-            disabled={!bot.online || !name.trim() || !!rec}
+            disabled={!bot.online || !name.trim() || !!rec || atCap}
             title="录制到达此地点的动作序列（GUI/多世界通用）"
             onClick={() => startRecord({ kind: "new", name: name.trim() })}
           >

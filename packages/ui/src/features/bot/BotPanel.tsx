@@ -121,7 +121,12 @@ export default function BotPanel() {
   async function openEdit() {
     if (!bot) return;
     const r = await cmd.getBotConfig(bot.id);
-    setEdit({ open: true, initial: r.ok && r.data ? (r.data as EditInitial) : { username: bot.username, host: bot.host } });
+    if (!r.ok || !r.data) {
+      // 拉不到完整配置就不开编辑框——拿骨架数据打开再保存会把端口/版本/密码占位覆盖掉
+      pushToast(r.error || "获取机器人配置失败，请重试", "error");
+      return;
+    }
+    setEdit({ open: true, initial: r.data as EditInitial });
   }
 
   // 重连/停止改为「点击即反馈」：立刻提示 + 按钮转圈禁用，等引擎确认，失败再红字提示。
@@ -296,7 +301,8 @@ export default function BotPanel() {
               variant="danger"
               onClick={async () => {
                 setConfirmDel(false);
-                await cmd.deleteBot(bot.id);
+                const r = await cmd.deleteBot(bot.id);
+                if (!r.ok) pushToast(r.error || "删除失败", "error");
               }}
             >
               删除

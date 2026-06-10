@@ -4,6 +4,7 @@ import { Button, Badge, Input } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
+import { useConfirmClick } from "@/lib/useConfirmClick";
 import { fmtBig } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { MONITOR_PRESETS, instantiatePreset, blankRule } from "./monitorPresets";
@@ -109,9 +110,12 @@ export default function MonitorPanel({ botId }: { botId: string }) {
     pushToast(`已应用预设「${p.name}」（新增 ${fresh.length} 条）`, fresh.length ? "success" : "info");
   }
   async function resetStats() {
-    await cmd.monitor.reset(botId);
-    pushToast("统计已重置", "info");
+    const r = await cmd.monitor.reset(botId);
+    pushToast(r.ok ? "统计已重置" : (r.error || "重置失败"), r.ok ? "info" : "error");
   }
+  // 两段式确认：累计数据一键清零不可恢复，第一次点变「确认?」，2.5s 内再点才执行
+  const resetHeader = useConfirmClick(resetStats);
+  const resetDialog = useConfirmClick(resetStats);
 
   const enabled = rules.filter((r) => r.enabled);
 
@@ -139,11 +143,14 @@ export default function MonitorPanel({ botId }: { botId: string }) {
         </button>
         {enabled.length > 0 && (
           <button
-            onClick={resetStats}
-            className="shrink-0 rounded p-1 text-muted hover:bg-surface hover:text-fg"
-            title="清零统计数值"
+            onClick={resetHeader.onClick}
+            className={cn(
+              "shrink-0 rounded p-1 transition-colors",
+              resetHeader.arming ? "bg-danger/15 text-danger" : "text-muted hover:bg-surface hover:text-fg",
+            )}
+            title={resetHeader.arming ? "再点一次确认清零" : "清零统计数值"}
           >
-            <RotateCcw className="h-3.5 w-3.5" />
+            {resetHeader.arming ? <span className="px-0.5 text-[10px] font-medium">确认?</span> : <RotateCcw className="h-3.5 w-3.5" />}
           </button>
         )}
         <button
@@ -203,8 +210,11 @@ export default function MonitorPanel({ botId }: { botId: string }) {
         size="lg"
         footer={
           <>
-            <Button variant="ghost" onClick={resetStats}>
-              <RotateCcw className="h-3.5 w-3.5" /> 重置统计
+            <Button
+              variant={resetDialog.arming ? "danger" : "ghost"}
+              onClick={resetDialog.onClick}
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> {resetDialog.arming ? "确认重置?" : "重置统计"}
             </Button>
             <Button variant="secondary" onClick={() => setShowPresets(true)}>
               预设

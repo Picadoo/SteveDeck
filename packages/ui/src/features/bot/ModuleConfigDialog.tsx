@@ -94,7 +94,8 @@ function FieldRow({
           onChange={(e) =>
             onChange(
               e.target.value
-                .split(",")
+                // 中文输入法下逗号/顿号是「，」「、」——只认英文逗号会静默不分隔，模块开了不干活
+                .split(/[,，、]/)
                 .map((s) => s.trim())
                 .filter(Boolean),
             )

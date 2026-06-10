@@ -36,7 +36,7 @@ function Key({
       onPointerLeave={onUp}
       onPointerCancel={onUp}
       className={cn(
-        "flex touch-none select-none flex-col items-center justify-center rounded-md border py-2 text-xs font-medium leading-tight transition-colors",
+        "flex min-h-9 touch-none select-none flex-col items-center justify-center rounded-md border py-2 text-xs font-medium leading-tight transition-colors",
         disabled
           ? "cursor-not-allowed border-border/40 text-muted/40"
           : active

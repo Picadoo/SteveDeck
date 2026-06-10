@@ -15,7 +15,7 @@ export default function Toaster() {
   const resumeToast = useStore((s) => s.resumeToast);
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[70] flex flex-col gap-2">
+    <div className="pointer-events-none fixed bottom-20 right-4 z-[70] flex flex-col gap-2 md:bottom-4">
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -28,6 +28,9 @@ export default function Toaster() {
         >
           {toneIcon(t.tone)}
           <span className="max-w-[22rem]">{t.message}</span>
+          {(t.count ?? 1) > 1 && (
+            <span className="shrink-0 rounded-full bg-surface-2 px-1.5 text-[10px] font-medium text-muted">×{t.count}</span>
+          )}
           <button onClick={() => dismiss(t.id)} className="ml-1 text-muted transition-colors hover:text-fg">
             <X className="h-3.5 w-3.5" />
           </button>
