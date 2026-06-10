@@ -8,6 +8,8 @@ services:
     restart: unless-stopped
     ports:
       - "8723:8723"
+      # 实时视角端口池（bot_viewer 每个机器人占一个，按需启动）
+      - "8800-8853:8800-8853"
     volumes:
       - mcbot-data:/data
     environment:

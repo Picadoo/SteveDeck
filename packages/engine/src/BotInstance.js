@@ -298,16 +298,31 @@ class BotInstance {
         }
 
         try {
-            this.bot = mineflayer.createBot({
+            const auth = this.config.auth || 'offline';
+            const botOpts = {
                 host: this.config.host,
                 port: this.config.port || 25565,
                 username: this.config.username,
-                auth: this.config.auth || 'offline',
+                auth,
                 version: this.config.version || "1.12.2",
                 // 省内存：只接收近处区块（区块数据是每个 bot 内存的大头）。可按 bot 配置覆盖：far/normal/short/tiny 或数字
                 viewDistance: this.config.settings?.viewDistance || 'short',
                 hideErrors: true
-            });
+            };
+            if (auth === 'microsoft') {
+                // 正版登录：令牌缓存进引擎数据目录（跟随 /data 卷迁移，重启免重新验证）；
+                // 首次需设备码验证——把验证地址+代码推到 UI 日志，用户在任意浏览器完成即可。
+                const { dataPath } = require('./config/paths');
+                botOpts.profilesFolder = dataPath('msa-cache');
+                botOpts.onMsaCode = (data) => {
+                    const url = (data && (data.verification_uri || data.verificationUri)) || 'https://microsoft.com/link';
+                    const code = (data && (data.user_code || data.userCode)) || '(未知)';
+                    const msg = `🔑 微软正版验证：浏览器打开 ${url} 输入代码 ${code}（限时约15分钟，验证一次后引擎会记住）`;
+                    logger.info(`[${this.config.username}] ${msg}`);
+                    this.uiLog(msg);
+                };
+            }
+            this.bot = mineflayer.createBot(botOpts);
 
             // Forge/FML 模组服（龙核 DragonCore 等）：在握手 serverHost 后附加 \0FML\0 标记，
             // 让服务器把我们当 Forge 客户端，否则登录阶段直接被 "requires FML/Forge" 踢。
@@ -409,13 +424,21 @@ class BotInstance {
                     logger.error(`[${this.config.username}] 模块状态恢复失败:`, err?.message || err);
                 }
 
-                // 4. 自动登录：如果配置了密码，延迟2秒后自动发送 /login 命令
+                // 4. 自动登录：配置了密码则延迟2秒发送登录指令。
+                // 指令模板可配（loginCommand）：{password}/{username} 占位替换；
+                // 模板没写 {password} 时把密码追加在末尾；默认 "/login {password}"。
+                // 适配 /l、/login、AuthMe 等各种离线服登录指令；正版(microsoft)服一般不设密码，自然跳过。
                 if (this.config.password) {
                     this.pushOneShot(() => {
                         try {
                             if (this.bot && this._epoch === epoch) {
-                                this.bot.chat(`/login ${this.config.password}`);
-                                logger.info(`[${this.config.username}] 已自动发送登录命令`);
+                                const tpl = String(this.config.loginCommand || '/login {password}');
+                                let cmd = tpl
+                                    .replace(/\{username\}/g, this.config.username)
+                                    .replace(/\{password\}/g, this.config.password);
+                                if (!tpl.includes('{password}')) cmd = `${cmd} ${this.config.password}`;
+                                this.bot.chat(cmd);
+                                logger.info(`[${this.config.username}] 已自动发送登录命令（模板: ${tpl}）`);
                             }
                         } catch (err) {
                             logger.error(`[${this.config.username}] 自动登录失败:`, err?.message || err);

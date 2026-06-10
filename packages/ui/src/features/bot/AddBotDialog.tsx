@@ -4,7 +4,8 @@ import Modal from "@/components/ui/Modal";
 import { Button, Input, Switch } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
-import type { BotSettings } from "@mcbot/protocol";
+import { cn } from "@/lib/cn";
+import type { BotSettings, McAuth } from "@mcbot/protocol";
 
 const EMPTY = {
   username: "",
@@ -12,6 +13,7 @@ const EMPTY = {
   port: "25565",
   version: "1.20.1",
   loginPassword: "",
+  loginCommand: "",
   note: "",
   maxReconnectAttempts: "0", // 0 = 无限
   reconnectDelay: "5",
@@ -22,6 +24,8 @@ export interface EditInitial {
   host: string;
   port?: number;
   version?: string;
+  auth?: McAuth;
+  loginCommand?: string;
   /** API-10：后端不再回传明文密码，仅回布尔「是否已设密码」，用于占位提示与「留空＝不改」逻辑 */
   hasLoginPassword?: boolean;
   note?: string;
@@ -41,6 +45,7 @@ export default function AddBotDialog({
 }) {
   const pushToast = useStore((s) => s.pushToast);
   const [form, setForm] = useState({ ...EMPTY });
+  const [auth, setAuth] = useState<McAuth>("offline");
   const [autoReconnect, setAutoReconnect] = useState(true);
   const [forge, setForge] = useState(false);
   const [rawMove, setRawMove] = useState(false);
@@ -68,8 +73,10 @@ export default function AddBotDialog({
       host: c.host || "",
       port: String(c.port ?? 25565),
       version: c.version || f.version,
+      loginCommand: c.loginCommand || "",
       note: c.note || "",
     }));
+    setAuth(c.auth === "microsoft" ? "microsoft" : "offline");
     setForge(!!c.settings?.forge);
     setRawMove(!!c.settings?.rawMove);
     setAutoReconnect(c.settings?.autoReconnect !== false);
@@ -85,16 +92,19 @@ export default function AddBotDialog({
         port: String(initial.port ?? 25565),
         version: initial.version || "1.20.1",
         loginPassword: "", // 编辑态密码框始终留空：后端不回明文，留空＝不修改
+        loginCommand: initial.loginCommand || "",
         note: initial.note || "",
         maxReconnectAttempts: String(s.maxReconnectAttempts ?? 0),
         reconnectDelay: String(s.reconnectDelay ?? 5),
       });
+      setAuth(initial.auth === "microsoft" ? "microsoft" : "offline");
       setHasSavedPassword(!!initial.hasLoginPassword);
       setAutoReconnect(s.autoReconnect !== false); // 未设/true → 开
       setForge(!!s.forge);
       setRawMove(!!s.rawMove);
     } else {
       setForm({ ...EMPTY });
+      setAuth("offline");
       setHasSavedPassword(false);
       setAutoReconnect(true);
       setForge(false);
@@ -120,8 +130,11 @@ export default function AddBotDialog({
       host: form.host.trim(),
       port: Number(form.port) || 25565,
       version: form.version.trim() || undefined,
+      auth,
       // 仅当用户输入了新密码才提交；留空＝不带该字段（配合引擎「空＝保留旧密码」契约，编辑态不会误清密码）
-      loginPassword: form.loginPassword ? form.loginPassword : undefined,
+      loginPassword: auth === "offline" && form.loginPassword ? form.loginPassword : undefined,
+      // 指令模板非敏感：编辑态空串=清掉回默认 /login（引擎契约），所以始终带上
+      loginCommand: auth === "offline" ? form.loginCommand.trim() : "",
       note: form.note.trim() || undefined,
       // 只传重连相关键；引擎侧 merge，不会覆盖模块配置/定时等其它设置
       settings: {
@@ -137,6 +150,7 @@ export default function AddBotDialog({
     if (res.ok) {
       if (!isEdit) {
         setForm({ ...EMPTY });
+        setAuth("offline");
         setAutoReconnect(true);
         setForge(false);
         setRawMove(false);
@@ -149,8 +163,8 @@ export default function AddBotDialog({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? "编辑机器人" : "添加机器人"} size="xl">
-      <form onSubmit={submit} className="space-y-3.5">
+    <Modal open={open} onClose={onClose} title={isEdit ? "编辑机器人" : "添加机器人"} size="2xl">
+      <form onSubmit={submit} className="space-y-4">
         {!isEdit && servers.length > 0 && (
           <div className="rounded-lg border border-border/60 bg-surface-2/30 p-2.5">
             <div className="mb-1.5 text-[11px] font-medium text-muted">复用已有服务器（点一下自动填好地址/版本/Forge 等，只需再填账号）</div>
@@ -168,6 +182,8 @@ export default function AddBotDialog({
             </div>
           </div>
         )}
+
+        {/* ① 账号与服务器 */}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="用户名（MC 登录名）">
             <Input value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="例如 MyBot" autoFocus />
@@ -175,30 +191,76 @@ export default function AddBotDialog({
           <Field label="服务器备注（便于记忆，界面优先显示）">
             <Input value={form.note} onChange={(e) => set("note", e.target.value)} placeholder="例如 花果山 RPG" />
           </Field>
-        </div>
-        <div className="grid grid-cols-[1fr_96px] gap-3">
-          <Field label="服务器地址">
-            <Input value={form.host} onChange={(e) => set("host", e.target.value)} placeholder="mc.example.com" />
-          </Field>
-          <Field label="端口">
-            <Input value={form.port} onChange={(e) => set("port", e.target.value)} placeholder="25565" inputMode="numeric" />
-          </Field>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-[1fr_88px] gap-3">
+            <Field label="服务器地址">
+              <Input value={form.host} onChange={(e) => set("host", e.target.value)} placeholder="mc.example.com" />
+            </Field>
+            <Field label="端口">
+              <Input value={form.port} onChange={(e) => set("port", e.target.value)} placeholder="25565" inputMode="numeric" />
+            </Field>
+          </div>
           <Field label="游戏版本">
             <Input value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="1.20.1" />
           </Field>
-          <Field label="登录密码（可选）">
-            <Input
-              type="password"
-              value={form.loginPassword}
-              onChange={(e) => set("loginPassword", e.target.value)}
-              placeholder={isEdit && hasSavedPassword ? "已保存，留空＝不修改" : "/login 用"}
-            />
-          </Field>
         </div>
 
-        {/* 连接 / 重连 + Forge：xl 弹窗下并排，窄屏自动落单列 */}
+        {/* ② 登录方式：离线（可配登录指令）/ 微软正版 */}
+        <div className="rounded-lg border border-border/60 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium">登录方式</div>
+              <p className="text-[11px] text-muted">离线服选「离线」，正版验证服务器选「微软正版」</p>
+            </div>
+            <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-xs">
+              {([
+                ["offline", "离线"],
+                ["microsoft", "微软正版"],
+              ] as const).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setAuth(v)}
+                  className={cn(
+                    "px-3 py-1.5 transition-colors",
+                    auth === v ? "bg-accent/15 text-accent" : "text-muted hover:text-fg",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {auth === "offline" ? (
+            <div className="mt-2.5 grid gap-3 border-t border-border/40 pt-2.5 sm:grid-cols-2">
+              <Field label="登录密码（服务器要 /login 才填）">
+                <Input
+                  type="password"
+                  value={form.loginPassword}
+                  onChange={(e) => set("loginPassword", e.target.value)}
+                  placeholder={isEdit && hasSavedPassword ? "已保存，留空＝不修改" : "没有就留空"}
+                />
+              </Field>
+              <Field label="登录指令模板（留空＝/login {password}）">
+                <Input
+                  value={form.loginCommand}
+                  onChange={(e) => set("loginCommand", e.target.value)}
+                  placeholder="例如 /l {password} 或 /login {password} {password}"
+                />
+              </Field>
+              <p className="text-[11px] leading-relaxed text-muted sm:col-span-2">
+                进服 2 秒后自动发送。{"{password}"}/{"{username}"} 会被替换成密码/用户名；模板里没写 {"{password}"} 时密码自动加在末尾。
+                各种离线服（/l、/login、AuthMe 双密码注册后登录等）都能配。
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2.5 border-t border-border/40 pt-2.5 text-[11px] leading-relaxed text-muted">
+              用户名填<b>微软账号邮箱</b>。首次连接时控制台日志会给出一个网址和验证码——任意浏览器打开、输入、用拥有
+              Minecraft 正版的微软账号登录即可；验证一次后引擎会记住（缓存在引擎数据目录），之后重连/重启都不用再验。
+            </p>
+          )}
+        </div>
+
+        {/* ③ 连接 / 重连 + Forge：宽弹窗下并排，窄屏自动落单列 */}
         <div className="grid gap-3 sm:grid-cols-2 sm:items-start">
         <div className="rounded-lg border border-border/60 p-3">
           <div className="flex items-center justify-between">

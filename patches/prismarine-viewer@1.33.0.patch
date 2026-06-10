@@ -1,8 +1,18 @@
 diff --git a/lib/mineflayer.js b/lib/mineflayer.js
-index 06634bf6415ec41410e95ec816bebcc239726497..05b537e6a4b2c6758b7137ab7692d197577958de 100644
+index 06634bf6415ec41410e95ec816bebcc239726497..235386e5f40b96893c9bbe2a6166b6fe32f6ec5b 100644
 --- a/lib/mineflayer.js
 +++ b/lib/mineflayer.js
-@@ -49,6 +49,24 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+@@ -5,6 +5,9 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+   const express = require('express')
+ 
+   const app = express()
++  // [mc-bot-player 魔改] gzip：worker.js 63MB / index.js 1.2MB，远程（公网小水管）首开必须压缩，
++  // 否则手机端要等一两分钟。压缩后 worker ~10MB；浏览器有缓存，只有首次/版本变更才付这笔。
++  try { app.use(require('compression')()) } catch (e) { /* compression 缺失就裸传，不致命 */ }
+   const http = require('http').createServer(app)
+ 
+   const io = require('socket.io')(http, { path: prefix + '/socket.io' })
+@@ -49,6 +52,24 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
      socket.emit('version', bot.version)
      sockets.push(socket)
  
@@ -27,7 +37,7 @@ index 06634bf6415ec41410e95ec816bebcc239726497..05b537e6a4b2c6758b7137ab7692d197
      const worldView = new WorldView(bot.world, viewDistance, bot.entity.position, socket)
      worldView.init(bot.entity.position)
  
-@@ -61,12 +79,25 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+@@ -61,12 +82,25 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
      }
  
      function botPosition () {

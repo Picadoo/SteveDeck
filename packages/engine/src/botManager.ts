@@ -48,6 +48,7 @@ function validateBotInput(input: Partial<BotConfigInput> | undefined): string | 
     ["host", MAX_STR],
     ["version", 24],
     ["loginPassword", MAX_STR],
+    ["loginCommand", 200],
     ["note", 500],
   ];
   for (const [k, max] of limits) {
@@ -322,6 +323,7 @@ class BotManager {
       version: cfg.version,
       auth: cfg.auth, // 修复：之前漏传 → 微软/正版账号会被当 offline 跑
       password: cfg.loginPassword,
+      loginCommand: cfg.loginCommand,
       settings: cfg.settings,
       ownerId: undefined,
     };
@@ -428,6 +430,7 @@ class BotManager {
       version: input.version ?? "1.20.1",
       auth: input.auth ?? "offline",
       loginPassword: input.loginPassword,
+      loginCommand: input.loginCommand?.trim() || undefined,
       note: input.note,
       // 合并默认值：即便前端只传了重连相关键，也保留 combat/fishing/schedules 等默认，不被整体替换。
       // API-7：客户端 settings 同样走白名单挑键 + 类型校验，避免新增机器人时把任意键灌进引擎状态/持久化。
@@ -478,6 +481,15 @@ class BotManager {
     // （前端编辑态不再回填明文，留空表示「保持不变」，绝不能用空覆盖掉真实密码）。
     if (typeof patch.loginPassword === "string" && patch.loginPassword.length > 0) {
       chg("loginPassword", patch.loginPassword as any);
+    }
+    // 登录方式/登录指令（非敏感，可回传可清空）：undefined＝不动；指令空串＝清掉回默认 /login
+    chg("auth", patch.auth as any);
+    if (typeof patch.loginCommand === "string") {
+      const v = patch.loginCommand.trim() || undefined;
+      if (v !== cfg.loginCommand) {
+        cfg.loginCommand = v;
+        reconnect = true;
+      }
     }
     // 备注是纯展示字段，改它不必重连
     if (patch.note !== undefined) cfg.note = patch.note;

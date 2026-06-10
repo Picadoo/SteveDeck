@@ -106,6 +106,8 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
       host: cfg.host,
       port: cfg.port,
       version: cfg.version,
+      auth: cfg.auth,
+      loginCommand: cfg.loginCommand,
       hasLoginPassword: !!cfg.loginPassword,
       note: cfg.note,
       settings: cfg.settings,

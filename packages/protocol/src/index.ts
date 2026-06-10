@@ -33,6 +33,12 @@ export interface BotConfigInput {
   auth?: McAuth;
   /** 登录服需要的 /login 密码（可选） */
   loginPassword?: string;
+  /**
+   * 登录指令模板（离线登录服用，可选）。默认 "/login {password}"。
+   * {password}/{username} 会被替换；模板里没写 {password} 时密码自动追加在末尾。
+   * 适配 /l、/login、AuthMe 变体等各种离线服登录指令。
+   */
+  loginCommand?: string;
   /** 服务器备注/别名，界面优先显示它而非 IP（IP 容易忘） */
   note?: string;
   settings?: BotSettings;
@@ -45,6 +51,7 @@ export interface BotConfig extends Required<Pick<BotConfigInput, "username" | "h
   version: string;
   auth: McAuth;
   loginPassword?: string;
+  loginCommand?: string;
   note?: string;
   settings: BotSettings;
 }
@@ -56,7 +63,7 @@ export interface BotConfig extends Required<Pick<BotConfigInput, "username" | "h
  */
 export type BotConfigResponse = Pick<
   BotConfig,
-  "username" | "host" | "port" | "version" | "note" | "settings"
+  "username" | "host" | "port" | "version" | "auth" | "loginCommand" | "note" | "settings"
 > & {
   /** 是否已保存登录密码（不回传明文）。前端用它决定密码框占位文案与是否提交新密码。 */
   hasLoginPassword?: boolean;
