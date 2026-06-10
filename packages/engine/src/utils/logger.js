@@ -11,7 +11,11 @@ const LOG_LEVELS = {
 class Logger {
     constructor() {
         this.level = LOG_LEVELS[process.env.LOG_LEVEL || 'INFO'];
-        this.logDir = path.join(__dirname, '../logs');
+        // 日志目录可经 MCBOT_DATA_DIR 配置（Docker/桌面打包时数据目录与代码目录分离）；
+        // 不配则保持旧行为（相对本文件的 ../logs，打包后落在 dist/logs）
+        this.logDir = process.env.MCBOT_DATA_DIR
+            ? path.join(process.env.MCBOT_DATA_DIR, 'logs')
+            : path.join(__dirname, '../logs');
 
         // 创建日志目录
         if (!fs.existsSync(this.logDir)) {

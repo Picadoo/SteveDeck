@@ -391,9 +391,16 @@ module.exports = (botInstance) => {
     };
 
     // 标记被其他玩家打过的怪 → 不抢
+    // E6：150ms 节流——每次任意实体受伤都全量遍历 bot.entities 找 10 格内玩家，
+    // 怪多/战斗密集时是 O(实体数×受伤事件) 热路径；150ms 内的后续受伤事件直接放过
+    //（「被玩家打过」标记本就有 TTL 容差，迟 150ms 标记无行为差异）。
+    let lastHurtScanAt = 0;
     const handleEntityHurt = (entity) => {
         if (!botInstance.mobHunterTask.active || !entity || !entity.position) return;
         if (entity.type === 'player') return;
+        const nowHurt = Date.now();
+        if (nowHurt - lastHurtScanAt < 150) return;
+        lastHurtScanAt = nowHurt;
         for (const e of Object.values(bot.entities)) {
             if (e.type === 'player' && e.username !== bot.username && e.position) {
                 try {
@@ -525,12 +532,7 @@ module.exports = (botInstance) => {
             botInstance.toggleMobHunter(false);
             return;
         }
-
-        botInstance.io.to(botInstance._room).to('admin').emit('mob_hunter_death', {
-            user: bot.username, ownerId: botInstance.config.ownerId,
-            deathCount: task.stats.deaths, lastPosition: task.lastPosition,
-            autoReturn: task.autoReturnOnDeath
-        });
+        // 死亡数走 emitLog + stats.deaths（mobhunter:stats ack）双路到 UI，不再单发死事件
     };
 
     // 从实例 timers 数组移除一个已 clear 的句柄，避免反复 toggle 时数组无界堆积失效句柄(MODA-2)
@@ -548,12 +550,15 @@ module.exports = (botInstance) => {
 
         if (botInstance.mobHunterTask.autoReturnOnDeath && botInstance.mobHunterTask.active) {
             // MODA-1：句柄入 timers（断线/cleanup 可取消），回调加 bot.entity 守卫，防对已拆除的 bot 操作
+            // E7：触发后用 dropTimer 自摘除，避免每次死亡累积一条失效句柄
             botInstance.timers = botInstance.timers || [];
-            botInstance.timers.push(setTimeout(() => {
+            const h = setTimeout(() => {
+                dropTimer(h);
                 if (bot.entity && botInstance.mobHunterTask.active && !botInstance.mobHunterTask.isDead) {
                     botInstance.returnToHuntArea();
                 }
-            }, 2000));
+            }, 2000);
+            botInstance.timers.push(h);
         } else {
             emitLog(`等待手动返回追怪区域...`);
         }

@@ -2,6 +2,7 @@
 // 设计见 docs/superpowers/specs/2026-05-30-automine-v2-design.md
 const { goals, Movements } = require('mineflayer-pathfinder');
 const H = require('./mining/humanizer');
+const gotoWithTimeout = require('../utils/gotoWithTimeout');
 
 const DEFAULT_CONFIG = {
     targets: [], scanRadius: 32, queueSize: 16, humanize: 'high',
@@ -31,7 +32,7 @@ module.exports = (botInstance) => {
         active: false, state: 'IDLE', config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
         queue: [], targetIds: [], advanceFails: 0, approachFails: 0, waitingScript: false, _current: null,
         stats: { minedByType: {}, total: 0, startTime: null, lastMine: null, fullEvents: 0 },
-        _tickTimer: null, _lastStatsEmit: 0,
+        _tickTimer: null,
     };
 
     const emitLog = (msg) => botInstance.io.to(botInstance._room).to('admin').emit('log', {
@@ -77,15 +78,6 @@ module.exports = (botInstance) => {
         const e = bot.entity.position;
         const dx = e.x - p.x, dy = e.y - p.y, dz = e.z - p.z;
         return dx * dx + dy * dy + dz * dz;
-    }
-
-    function emitStats() {
-        const now = Date.now();
-        if (now - task._lastStatsEmit < 500) return;
-        task._lastStatsEmit = now;
-        botInstance.io.to(botInstance._room).to('admin').emit('mine_stats', {
-            user: bot.username, ownerId: botInstance.config.ownerId, stats: botInstance.getMineStats(),
-        });
     }
 
     function nextFromQueueOrScan() {
@@ -156,7 +148,8 @@ module.exports = (botInstance) => {
         task._current = pos;
         task.queue.splice(idx, 1);
         try {
-            await bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 2)); // 留余量，更像玩家
+            // 带超时：不可达目标的 goto 可能永不返回（挂死在 APPROACH）；超时 throw 进熔断计数
+            await gotoWithTimeout(bot, new goals.GoalNear(pos.x, pos.y, pos.z, 2), 20000); // 留余量，更像玩家
             task.approachFails = 0; // 成功到达，清零熔断计数
             setState('MINE');
             return schedule(H.aimDelay(task.config.humanize)); // 瞄准延迟
@@ -196,7 +189,6 @@ module.exports = (botInstance) => {
             task.stats.minedByType[name] = (task.stats.minedByType[name] || 0) + 1;
             task.stats.total++;
             task.stats.lastMine = Date.now();
-            emitStats();
         } catch (e) { /* 挖掘失败跳过 */ }
 
         if (H.shouldPause(task.config.humanize)) {
@@ -209,7 +201,7 @@ module.exports = (botInstance) => {
         if (!task.config.advance.enabled) { setState('SCAN'); return schedule(1000); }
         const t = advanceTarget();
         try {
-            await bot.pathfinder.goto(new goals.GoalNear(t.x, t.y, t.z, 1));
+            await gotoWithTimeout(bot, new goals.GoalNear(t.x, t.y, t.z, 1), 20000);
             task.advanceFails = 0;
             setState('SCAN');
             return schedule(H.actionInterval(task.config.humanize, 400));

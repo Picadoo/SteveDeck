@@ -1,5 +1,5 @@
 import { Server as IOServer, Socket } from "socket.io";
-import { ClientCommands, ServerEvents, CommandAck, BotSettings } from "@mcbot/protocol";
+import { ClientCommands, CommandAck, BotSettings } from "@mcbot/protocol";
 import { botManager } from "../botManager";
 import { Ack, ok, fail } from "./ack";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -84,7 +84,7 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
           default:
             return ack?.(fail(`未知模块 ${module}`));
         }
-        io.emit(ServerEvents.MODULE_STATE, { id, module, state: { active } });
+        // 开关状态经 BOT_STATUS(≤2s) 到 UI，不再单发死事件（UI 从未监听 module:state）
         ack?.(ok());
       } catch (e: any) {
         ack?.(fail(String(e?.message ?? e)));
@@ -115,7 +115,6 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
             (s) => ((s as any).autoUse = { active: !!inst.autoUseTask?.active, rules: inst.autoUseTask?.rules || [] }),
           );
         }
-        io.emit(ServerEvents.MODULE_STATE, { id, module, state: config });
         ack?.(ok());
       } catch (e: any) {
         ack?.(fail(String(e?.message ?? e)));
@@ -485,7 +484,6 @@ function dispatchAction(
       if (inst.config.settings.schedules.length >= 50) return fail("定时任务数量已达上限(50)");
       inst.config.settings.schedules.push(sched);
       botManager.save();
-      io.emit(ServerEvents.MODULE_STATE, { id, module: "scheduler", state: { schedules: inst.config.settings.schedules } });
       return ok(inst.config.settings.schedules);
     }
     case "scheduler:remove": {
@@ -496,7 +494,6 @@ function dispatchAction(
         return fail("定时任务索引无效");
       inst.config.settings.schedules.splice(idx, 1);
       botManager.save();
-      io.emit(ServerEvents.MODULE_STATE, { id, module: "scheduler", state: { schedules: inst.config.settings.schedules } });
       return ok(inst.config.settings.schedules);
     }
     case "scheduler:list":

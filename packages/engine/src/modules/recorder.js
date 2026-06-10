@@ -4,7 +4,8 @@ const { customName } = require('../utils/items');
 
 const AUTO_WAIT_GAP_MS = 800; // 相邻操作间隔超过这个值就自动补一条 wait，回放不会太快
 
-const stripColor = (s) => String(s == null ? '' : s).replace(/§[0-9a-fk-or]/gi, '').trim();
+// §x 是 Bungee 十六进制色前缀——漏掉它会让录制的物品名残留垃圾字符，回放时名称匹配失败
+const stripColor = (s) => String(s == null ? '' : s).replace(/§[0-9a-fk-orx]/gi, '').trim();
 const itemMatchName = (it) => {
   if (!it) return '';
   let n = '';
@@ -26,14 +27,12 @@ class Recorder {
     this.steps = [];
     this.startedAt = Date.now();
     this.lastAt = this.startedAt;
-    this._emit();
     return this.status();
   }
 
   stop() {
     this.active = false;
     const steps = this.steps.slice();
-    this._emit();
     return { steps, count: steps.length };
   }
 
@@ -62,7 +61,6 @@ class Recorder {
       }
       for (const st of arr) this.steps.push(st);
       this.lastAt = now;
-      this._emit();
     } catch (e) {
       /* 录制绝不能影响正常操作 */
     }
@@ -119,13 +117,7 @@ class Recorder {
     }
   }
 
-  _emit() {
-    try {
-      this.inst.emitRecordingState && this.inst.emitRecordingState(this.status());
-    } catch (e) {
-      /* ignore */
-    }
-  }
+  // 录制状态不做推送：UI 录制条靠轮询 moduleAction('recording','status')（ScriptsTab/LocationsTab/Viewer）
 }
 
 module.exports = { Recorder };

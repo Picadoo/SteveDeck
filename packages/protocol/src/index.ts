@@ -331,10 +331,6 @@ export const ServerEvents = {
   BOT_DELETED: "bot:deleted",
   /** 日志流 */
   BOT_LOG: "bot:log",
-  /** 模块状态变更 */
-  MODULE_STATE: "module:state",
-  /** 模块数据推送（背包/计分板/统计等） */
-  MODULE_DATA: "module:data",
   /** 背包数据（复用引擎事件名） */
   INVENTORY: "player_inv_data",
   /** 服务器打开了窗口/GUI（箱子/菜单） */
@@ -345,10 +341,6 @@ export const ServerEvents = {
   WINDOW_UPDATE: "window_update",
   /** 机器人错误（致命断开等） */
   BOT_ERROR: "bot:error",
-  /** 脚本列表 */
-  SCRIPT_LIST: "script:list",
-  /** 脚本详情 */
-  SCRIPT_DETAIL: "script:detail",
   /** 脚本运行状态（running/stopped/rejected） */
   SCRIPT_STATUS: "script_status",
   /** 脚本执行进度（当前步路径/动作/循环计数） */
@@ -367,15 +359,11 @@ export interface ServerToClientPayloads {
   [ServerEvents.BOT_STATUS]: { bot: BotStatus };
   [ServerEvents.BOT_DELETED]: { id: BotId };
   [ServerEvents.BOT_LOG]: { id: BotId; line: LogLine };
-  [ServerEvents.MODULE_STATE]: { id: BotId; module: string; state: unknown };
-  [ServerEvents.MODULE_DATA]: { id: BotId; module: string; kind: string; data: unknown };
   [ServerEvents.INVENTORY]: { user: string; items: InventoryItem[] };
   [ServerEvents.WINDOW_OPEN]: { user: string; window: WindowState };
   [ServerEvents.WINDOW_CLOSE]: { user: string };
   [ServerEvents.WINDOW_UPDATE]: { user: string; window: WindowState };
   [ServerEvents.BOT_ERROR]: { id: BotId; error: string };
-  [ServerEvents.SCRIPT_LIST]: { scripts: ScriptSummary[] };
-  [ServerEvents.SCRIPT_DETAIL]: { name: string; script: BotScript | null };
 }
 
 // ==================== 客户端 → 服务端 命令 ====================

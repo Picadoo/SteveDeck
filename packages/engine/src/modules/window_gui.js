@@ -218,7 +218,9 @@ module.exports = (botInstance) => {
     try {
       const { goals } = require("mineflayer-pathfinder");
       if (bot.entity.position.distanceTo(block.position) > 3) {
-        await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 2));
+        // 带超时：不可达坐标的裸 goto 可能永不返回 → openContainerAt 永久挂死（前端只看到 8s 请求超时）
+        const gotoWithTimeout = require("../utils/gotoWithTimeout");
+        await gotoWithTimeout(bot, new goals.GoalNear(x, y, z, 2), 15000);
       }
     } catch {
       /* 靠不近也尝试直接开 */

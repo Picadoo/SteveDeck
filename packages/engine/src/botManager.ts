@@ -20,6 +20,21 @@ import {
 const BotInstance = require("./BotInstance");
 const logger = require("./utils/logger");
 
+// 透传事件白名单 = UI（packages/ui/src/lib/engine.ts）实际监听的模块专属事件。
+// 引擎新增推送事件时必须同步：UI 加监听 + 此处加名单；只加引擎侧=死推送（历史上积累过 5 个）。
+const PASSTHROUGH_EVENTS = new Set([
+  "player_inv_data",
+  "window_open",
+  "window_close",
+  "window_update",
+  "script_status",
+  "script_progress",
+  "script_error",
+  "script_vars",
+  "monitor_stats",
+]);
+const warnedPassthrough = new Set<string>();
+
 // API-6：bot 配置输入校验——端口范围、字段类型/长度，挡类型混淆与无界字段入盘/广播。
 const MAX_STR = 120;
 function validateBotInput(input: Partial<BotConfigInput> | undefined): string | null {
@@ -151,7 +166,15 @@ class BotManager {
           botId && payload && typeof payload === "object" ? { ...payload, _bid: botId } : payload;
         const t = self.translate(event, p);
         if (t) self.io.emit(t.event, t.payload);
-        else self.io.emit(event, p); // 模块专属事件原样透传（Phase 4 UI 消费）
+        else {
+          // 防漂移护栏：透传事件必须是 UI 已知消费的（engine.ts 监听清单）。
+          // 不在名单 → 大概率是「引擎发了、前端没人听」的死推送，警告一次但照常透传（不拦截，避免误杀）。
+          if (!PASSTHROUGH_EVENTS.has(event) && !warnedPassthrough.has(event)) {
+            warnedPassthrough.add(event);
+            logger.warn(`[broadcast] 透传了 UI 未知事件 "${event}"——若是新增事件请加入 PASSTHROUGH_EVENTS 白名单，否则它没有任何前端消费者`);
+          }
+          self.io.emit(event, p); // 模块专属事件原样透传（Phase 4 UI 消费）
+        }
       },
       // 借真实 IOServer 暴露连接数：广播壳本身不持连接，hasWatchers() 据此判断「是否有人在看」。
       get engine() {

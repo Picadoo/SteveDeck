@@ -313,25 +313,12 @@ module.exports = (botInstance) => {
         return true;
     }
 
-    // 寻路助手：带超时；超时/失败则取消寻路(setGoal(null))并吞掉败者 promise，
-    // 避免 bot 在后台继续走向目标 + 孤立 goto 的 unhandled reject(MODA-3)。裸 goto 也走这里，杜绝不可达目标无限挂起。
+    // 寻路助手：带超时（实现抽到 utils/gotoWithTimeout 供 automine/window_gui 复用，
+    // 修「不可达目标裸 goto 永久挂起」族 bug；此处保留旧签名做薄包装）。
+    const sharedGotoWithTimeout = require('../utils/gotoWithTimeout');
     async function gotoWithTimeout(goal, timeoutMs) {
         const ms = timeoutMs && timeoutMs > 0 ? timeoutMs : GOTO_TIMEOUT;
-        let timer;
-        const pathing = bot.pathfinder.goto(goal);
-        const timeout = new Promise((_resolve, reject) => {
-            timer = setTimeout(() => reject(new Error('寻路超时')), ms);
-        });
-        try {
-            await Promise.race([pathing, timeout]);
-        } catch (e) {
-            try { bot.pathfinder.setGoal(null); } catch (_) { /* ignore */ }
-            pathing.catch(() => {}); // 吞掉败者后续 reject（setGoal(null) 会让它以 GoalChanged 拒绝）
-            throw e;
-        } finally {
-            clearTimeout(timer);
-        }
-        pathing.catch(() => {}); // 正常胜出时保险吞错
+        return sharedGotoWithTimeout(bot, goal, ms);
     }
 
     // ==================== 动作执行器 ====================

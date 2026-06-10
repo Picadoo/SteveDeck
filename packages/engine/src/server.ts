@@ -182,6 +182,17 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
       wooden_button: "planks_oak",
     };
     const iconMapCache: Record<string, Record<string, string>> = {};
+    // E11：version 是客户端可控 URL 段——白名单限定为贴图根目录下真实存在的版本目录，
+    // 否则任意伪造字符串都会在 iconMapCache 落一个缓存条目（无上限无淘汰，可被刷无界增长）。
+    const validVersions = new Set<string>(
+      (() => {
+        try {
+          return fs.readdirSync(texRoot).filter((d: string) => {
+            try { return fs.statSync(path.join(texRoot, d)).isDirectory(); } catch { return false; }
+          });
+        } catch { return [] as string[]; }
+      })(),
+    );
     const getIconMap = (version: string): Record<string, string> => {
       if (iconMapCache[version]) return iconMapCache[version];
       const dir = path.join(texRoot, version);
@@ -250,6 +261,11 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     // 解析端点：/textures/1.12.2/_icon/totem_of_undying.png → 实际 items/totem.png（命中即 200 image/png）
     app.get("/textures/:version/_icon/:name", (req: Request, res: Response): void => {
       const version = String(req.params.version);
+      if (!validVersions.has(version)) {
+        res.set("Cache-Control", "no-store");
+        res.status(404).end();
+        return;
+      }
       const name = String(req.params.name).replace(/\.png$/i, "").toLowerCase();
       const rel = getIconMap(version)[name];
       if (!rel) {

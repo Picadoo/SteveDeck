@@ -110,8 +110,14 @@ module.exports = (botInstance) => {
             const key = keyRaw != null ? String(keyRaw).trim() : null;
             if (key) {
               st.byKey = st.byKey || {};
-              const b = st.byKey[key] || (st.byKey[key] = { count: 0, total: 0, last: null, max: null });
-              applyVal(b, rule, rawVal, val);
+              let b = st.byKey[key];
+              // E8：键数上限——捕获组是任意聊天片段，长跑可无限造新键（无界内存）。
+              // 满 500 后丢弃新键（已有键照常累计；UI 只展示 top30，无感）。
+              // 注意不能用 continue 跳过——会绕过循环尾部的零宽/guard 守卫（非全局正则会死循环）。
+              if (!b && Object.keys(st.byKey).length < 500) {
+                b = st.byKey[key] = { count: 0, total: 0, last: null, max: null };
+              }
+              if (b) applyVal(b, rule, rawVal, val);
             }
           }
           if (!re.global) break; // 非全局只处理一次

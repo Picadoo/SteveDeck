@@ -70,6 +70,11 @@ module.exports = (botInstance) => {
             emitLog("自动清理已关闭");
             if (botInstance.trashCleanerTask.timer) {
                 clearInterval(botInstance.trashCleanerTask.timer);
+                // E7：关闭路径同样从全局 timers 摘除句柄（开启路径已有同样的 splice），防反复开关累积
+                if (Array.isArray(botInstance.timers)) {
+                    const i = botInstance.timers.indexOf(botInstance.trashCleanerTask.timer);
+                    if (i >= 0) botInstance.timers.splice(i, 1);
+                }
                 botInstance.trashCleanerTask.timer = null;
             }
         }

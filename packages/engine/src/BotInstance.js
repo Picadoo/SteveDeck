@@ -121,25 +121,17 @@ class BotInstance {
         this.init();
     }
 
-    loadUserScriptsFromDisk() {
-        try {
-            const ownerId = this.config.ownerId;
-            if (!ownerId) return {};
-            const file = path.join(__dirname, 'user_scripts', `${ownerId}.json`);
-            if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
-        } catch (err) {
-            logger.error(`[${this.config.username}] 加载用户脚本失败:`, err.message);
-        }
-        return {};
-    }
-
-    // 录制状态推送给前端（复用 module:state 事件，UI 据此刷录制条）
-    emitRecordingState(state) {
-        try {
-            this.io.emit('module:state', { id: this.config.id, module: 'recording', state });
-        } catch (e) {
-            /* ignore */
-        }
+    // 一次性定时器：触发后自动从 timers 摘除句柄再执行回调。
+    // 直接 timers.push(setTimeout(...)) 的句柄触发后仍留在数组里直至 cleanup——
+    // 每次死亡/重连/切图都累积一条失效句柄，长跑无界增长（E7）。
+    pushOneShot(fn, ms) {
+        const h = setTimeout(() => {
+            const i = this.timers.indexOf(h);
+            if (i >= 0) this.timers.splice(i, 1);
+            fn();
+        }, ms);
+        this.timers.push(h);
+        return h;
     }
 
     // 身体协调：当前是否有动作占用身体（用东西时为 true）。
@@ -399,7 +391,7 @@ class BotInstance {
                 const MODULE_NAMES = [
                     'combat', 'fishing', 'scheduler', 'player_inventory',
                     'interact', 'automine', 'trash_cleaner', 'auto_farm', 'mob_hunter',
-                    'scoreboard', 'script_engine', 'fishing_hotspot', 'window_gui',
+                    'scoreboard', 'script_engine', 'window_gui',
                     'custom_js', 'bot_viewer', 'message_monitor', 'auto_use',
                 ];
                 for (const name of MODULE_NAMES) {
@@ -419,7 +411,7 @@ class BotInstance {
 
                 // 4. 自动登录：如果配置了密码，延迟2秒后自动发送 /login 命令
                 if (this.config.password) {
-                    this.timers.push(setTimeout(() => {
+                    this.pushOneShot(() => {
                         try {
                             if (this.bot && this._epoch === epoch) {
                                 this.bot.chat(`/login ${this.config.password}`);
@@ -428,7 +420,7 @@ class BotInstance {
                         } catch (err) {
                             logger.error(`[${this.config.username}] 自动登录失败:`, err?.message || err);
                         }
-                    }, 2000)); // 延迟2秒，给服务器加载时间（句柄入 timers，断线即取消）
+                    }, 2000); // 延迟2秒，给服务器加载时间（句柄入 timers，断线即取消）
                 }
 
                 // 应用寻路策略（默认无破坏模式，适配受保护地图）
@@ -457,12 +449,11 @@ class BotInstance {
         // 立即恢复（仅纯配置/脚本库，不会移动 bot，登录前执行无副作用）
         try {
             if (settings.combatConfig) this.combatConfig = { ...this.combatConfig, ...settings.combatConfig };
-            // 脚本库：冷启动优先从全局 scripts.json 预载；旧的 user_scripts / settings.scripts 仅作回退。
+            // 脚本库：冷启动优先从全局 scripts.json 预载；settings.scripts 仅作回退。
             let scriptsToLoad = {};
             try { if (this.loadGlobalScripts) scriptsToLoad = this.loadGlobalScripts() || {}; } catch (e) { /* 回退 */ }
             if (!scriptsToLoad || Object.keys(scriptsToLoad).length === 0) {
-                const userScripts = this.loadUserScriptsFromDisk();
-                scriptsToLoad = Object.keys(userScripts).length > 0 ? userScripts : (settings.scripts || {});
+                scriptsToLoad = settings.scripts || {};
             }
             if (this.preloadScripts && scriptsToLoad && typeof scriptsToLoad === 'object') {
                 this.preloadScripts(scriptsToLoad);
@@ -475,7 +466,7 @@ class BotInstance {
         // 延迟激活会移动 bot 的模块：必须晚于自动 /login（2秒），否则在需要登录的服务器上动作会被冻结/拒绝
         const RESTORE_DELAY = 3500;
         const epoch = this._epoch; // 捕获当前世代：延迟期间若断线重连(新世代)则不对新连接重复激活(CORE-4)
-        this.timers.push(setTimeout(() => {
+        this.pushOneShot(() => {
             if (this._epoch !== epoch || !this.bot || !this.bot.entity) return; // 已断线/换连接则放弃
             try {
                 this.combatConfig.enabled = settings.combat || false;
@@ -509,7 +500,7 @@ class BotInstance {
             } catch (err) {
                 logger.error(`[${this.config.username}] 模块恢复失败:`, err.message);
             }
-        }, RESTORE_DELAY));
+        }, RESTORE_DELAY);
     }
 
     handleReconnect() {
@@ -627,11 +618,25 @@ class BotInstance {
         // 等解析错误，但这是【非致命】的——连接不断、bot 照常在线(实测登录后只报一次、随即「连接稳定」)。
         // 故把这类良性解析错误降级：不当「连接出错」报警、每次连接只平静提示一次，避免吓人/刷屏。
         let benignParseWarned = false;
+        // E10：logger.warn 限频——模组服解析错误风暴可达 20 次/s，逐条落盘一天能写 100MB 日志。
+        // 首条照记，之后 60s 窗口内只计数，窗口结束补一条汇总。
+        let benignLogWindowStart = 0;
+        let benignSuppressed = 0;
         const BENIGN_PARSE_ERR = /varint is too big|PartialReadError|Chunk size is|Read error for|unexpected buffer end/i;
         this.bot.on('error', (err) => {
             const msg = err && err.message ? err.message : String(err);
             if (BENIGN_PARSE_ERR.test(msg)) {
-                logger.warn(`[${this.config.username}] 忽略良性解析错误: ${msg}`);
+                const now = Date.now();
+                if (now - benignLogWindowStart >= 60000) {
+                    if (benignSuppressed > 0) {
+                        logger.warn(`[${this.config.username}] 过去 60s 内已忽略 ${benignSuppressed} 条良性解析错误`);
+                    }
+                    benignLogWindowStart = now;
+                    benignSuppressed = 0;
+                    logger.warn(`[${this.config.username}] 忽略良性解析错误: ${msg}`);
+                } else {
+                    benignSuppressed++;
+                }
                 if (!benignParseWarned) {
                     benignParseWarned = true;
                     this.uiLog('ℹ️ 模组服部分世界数据无法解析（已忽略，不影响聊天/钓鱼/指令；走动请用「直发移动」）');
@@ -677,7 +682,7 @@ class BotInstance {
             const respawnCmd = this.config.settings?.respawnCommand?.trim();
             if (respawnCmd) {
                 const epoch = this._epoch;
-                this.timers.push(setTimeout(() => {
+                this.pushOneShot(() => {
                     if (this._epoch !== epoch || !this.bot) return;
                     // API-1：复活指令也过安全过滤（防有人把 /op 之类塞进 respawnCommand 绕过唯一防线）
                     if (isChatBlocked(respawnCmd)) {
@@ -689,13 +694,13 @@ class BotInstance {
                         user: this.config.username, ownerId: this.config.ownerId,
                         msg: `复活后执行: ${respawnCmd}`, time: new Date().toLocaleTimeString()
                     });
-                }, 1500));
+                }, 1500);
             }
             // 死亡返回：开关开启且有死亡点 → 等重生+复活指令(若有)生效后，寻路走回死亡点。
             // 模组服寻路可能因 varint 失败（本期不优化）；走不到不卡死（move 只设目标，后台寻路）。
             if (this.config.settings?.returnOnDeath && dp) {
                 const epoch = this._epoch;
-                this.timers.push(setTimeout(() => {
+                this.pushOneShot(() => {
                     if (this._epoch !== epoch || !this.bot?.entity) return;
                     this.io.to(this._room).to('admin').emit('log', {
                         user: this.config.username, ownerId: this.config.ownerId,
@@ -703,7 +708,7 @@ class BotInstance {
                         time: new Date().toLocaleTimeString()
                     });
                     this.move(dp.x, dp.y, dp.z);
-                }, 3500)); // 等重生 + respawnCommand(1.5s) + 服务器传送
+                }, 3500); // 等重生 + respawnCommand(1.5s) + 服务器传送
             }
         });
     }
@@ -984,9 +989,9 @@ class BotInstance {
                 time: new Date().toLocaleTimeString()
             });
             const epoch = this._epoch;
-            this.timers.push(setTimeout(() => {
+            this.pushOneShot(() => {
                 if (this._epoch === epoch && this.bot?.entity) this.move(location.x, location.y, location.z);
-            }, 2500));
+            }, 2500);
         } else {
             // 兜底：当前世界内寻路到坐标
             this.move(location.x, location.y, location.z);
