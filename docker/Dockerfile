@@ -33,6 +33,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV MCBOT_DATA_DIR=/data
 ENV PORT=8723
+# 容器内必须绑 0.0.0.0：引擎默认 127.0.0.1 会让端口映射够不着（镜像级兜底，compose 同名变量可覆盖）
+ENV ENGINE_HOST=0.0.0.0
 
 COPY --from=build /app/deploy /app
 # 网页客户端构建产物：引擎检测到 MCBOT_UI_DIST 即在根路径直出（手机浏览器/扫码直连）
