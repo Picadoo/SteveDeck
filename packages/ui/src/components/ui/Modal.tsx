@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 
 const SIZES = {
@@ -44,7 +45,10 @@ export default function Modal({
   }, [open]);
 
   if (!open) return null;
-  return (
+  // Portal 到 body：祖先容器一旦带 transform（如移动端侧栏抽屉的 translate-x 动画），
+  // fixed 定位就会被锁进那个容器盒子里——从侧栏开的弹窗会被挤成侧栏宽的窄条。
+  // 挂到 body 上彻底免疫，无论从哪个角落打开都是真·全屏居中。
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
@@ -72,6 +76,7 @@ export default function Modal({
           <div className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
