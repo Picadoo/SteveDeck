@@ -82,6 +82,9 @@ function parse(input: string): Seg[] {
       if (code === "m") { flush(); cur = { ...cur, strike: true }; i++; continue; }
       if (code === "r") { flush(); cur = {}; i++; continue; }
       if (code === "k") { i++; continue; } // 乱码效果：去掉码、保留文字
+      // 非标准码（§u/§j 等服务器自造码）：§ 后任意字符一律当格式码吞掉，不显示成「npc§u§j§x」。
+      // & 不享受此待遇——它是聊天里会真实出现的普通字符，只认上面那些已知码。
+      if (ch === "§") { i++; continue; }
     }
     buf += ch;
   }

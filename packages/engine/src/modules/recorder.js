@@ -5,7 +5,7 @@ const { customName } = require('../utils/items');
 const AUTO_WAIT_GAP_MS = 800; // 相邻操作间隔超过这个值就自动补一条 wait，回放不会太快
 
 // §x 是 Bungee 十六进制色前缀——漏掉它会让录制的物品名残留垃圾字符，回放时名称匹配失败
-const stripColor = (s) => String(s == null ? '' : s).replace(/§[0-9a-fk-orx]/gi, '').trim();
+const stripColor = (s) => String(s == null ? '' : s).replace(/§./gi, '').trim();
 const itemMatchName = (it) => {
   if (!it) return '';
   let n = '';

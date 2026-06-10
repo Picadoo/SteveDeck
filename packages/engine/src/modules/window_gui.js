@@ -33,7 +33,7 @@ function txt(v) {
       return null;
     }
   }
-  s = String(parseChat(s)).replace(/§[0-9a-fk-orx]/gi, "").trim();
+  s = String(parseChat(s)).replace(/§./gi, "").trim();
   return s || null;
 }
 
@@ -51,7 +51,7 @@ function serItem(it, i) {
   rawName = String(parseChat(rawName));
   return {
     slot: i,
-    name: rawName.replace(/§[0-9a-fk-orx]/gi, ""), // 纯文本（搜索/标题回退）
+    name: rawName.replace(/§./gi, ""), // 纯文本（搜索/标题回退）
     display: rawName, // 原始（含 §颜色码）
     id: iconId(it), // 物品 id（贴图来源；染料按 metadata 分色）
     count: it.count,

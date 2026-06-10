@@ -48,7 +48,8 @@ export function mcPlain(s: string | null | undefined): string {
   return s
     .replace(/[§&]#[0-9a-fA-F]{6}/g, "") // §#RRGGBB / &#RRGGBB
     .replace(/[§&]x(?:[§&][0-9a-fA-F]){6}/gi, "") // §x§R§R§G§G§B§B
-    .replace(/[§&][0-9a-fk-or]/gi, ""); // §0-9 / a-f 颜色 + k-o 格式 + r 复位
+    .replace(/§./g, "") // § 后任意字符都是格式码（含 §u/§j 等服务器自造码）
+    .replace(/&[0-9a-fk-or]/gi, ""); // & 只认标准码——它是聊天里会真实出现的普通字符
 }
 
 /** 秒 → 在线时长（如 2天3时 / 5时12分 / 8分30秒） */

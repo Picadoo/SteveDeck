@@ -24,7 +24,7 @@ function parseNum(str) {
 }
 
 function stripColor(s) {
-  return String(s == null ? "" : s).replace(/§[0-9a-fk-orx]/gi, "");
+  return String(s == null ? "" : s).replace(/§./gi, "");
 }
 
 module.exports = (botInstance) => {

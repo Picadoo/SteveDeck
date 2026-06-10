@@ -126,7 +126,7 @@ module.exports = (botInstance) => {
                     resolve(null);
                     return;
                 }
-                const raw = jsonMsg.toString().replace(/§[0-9a-fk-orx]/gi, '');
+                const raw = jsonMsg.toString().replace(/§./gi, '');
                 if (regex) {
                     const m = raw.match(regex);
                     if (m) {
@@ -423,7 +423,7 @@ module.exports = (botInstance) => {
                 const entity = bot.nearestEntity(e => {
                     if (e === bot.entity) return false;
                     const name = (e.customName || e.username || e.name || '').toString()
-                        .replace(/§[0-9a-fk-orx]/gi, '').toLowerCase();
+                        .replace(/§./gi, '').toLowerCase();
                     return name.includes(String(targetName).toLowerCase()) || String(e.id) === String(targetName);
                 });
                 if (!entity) throw new Error(`未找到实体: ${targetName}`);
@@ -1110,7 +1110,7 @@ module.exports = (botInstance) => {
 
     const onChatForTrigger = (jsonMsg) => {
         try {
-            const raw = jsonMsg.toString().replace(/§[0-9a-fk-orx]/gi, '');
+            const raw = jsonMsg.toString().replace(/§./gi, '');
             for (const [name, script] of Object.entries(botInstance._scripts)) {
                 const pat = script.trigger?.pattern || script.trigger?.value; // 编辑器存 value
                 if (script.trigger?.type === 'chat_match' && pat) {

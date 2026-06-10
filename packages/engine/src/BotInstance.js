@@ -40,7 +40,7 @@ function extractHoverText(h) {
             return m ? `[物品] ${m[1]}` : '[物品]';
         }
         if (val == null) return undefined;
-        const flat = (typeof val === 'string' ? val : flattenChatText(val)).replace(/§[0-9a-fk-orx]/gi, '').trim();
+        const flat = (typeof val === 'string' ? val : flattenChatText(val)).replace(/§./gi, '').trim();
         return flat || undefined;
     } catch (e) { return undefined; }
 }
@@ -585,7 +585,7 @@ class BotInstance {
             // actionbar（物品栏上方文本，position=game_info）：存最新值（供 AI 观测），
             // 并作为一条日志推到「日志」页和聊天并排显示。去重(文本变才发)+节流(≥1.5s)防 HUD 每 tick 刷屏。
             if (position === 'game_info') {
-                const abText = raw.replace(/§[0-9a-fk-orx]/gi, '').trim();
+                const abText = raw.replace(/§./gi, '').trim();
                 this._actionBar = { text: abText, at: Date.now() };
                 if (abText && abText !== this._lastAbText && Date.now() - (this._lastAbAt || 0) > 1500) {
                     this._lastAbText = abText;
@@ -672,7 +672,7 @@ class BotInstance {
 
         // 解析踢出原因：命中"不可恢复"关键词则标记，handleReconnect 据此停止重连（避免无意义重连）
         this.bot.on('kicked', (reason) => {
-            const text = extractText(reason).replace(/§[0-9a-fk-orx]/gi, '').trim();
+            const text = extractText(reason).replace(/§./gi, '').trim();
             logger.warn(`[${this.config.username}] 被踢出: ${text || '(无原因)'}`);
             this.io.to(this._room).to('admin').emit('log', {
                 user: this.config.username, ownerId: this.config.ownerId,

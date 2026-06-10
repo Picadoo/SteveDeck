@@ -261,12 +261,10 @@ export default function Viewer({
   function toggleWalk() {
     const next = !walk;
     setWalk(next);
-    if (next) {
-      setFirstPerson(true); // 操控=第一人称：走动时镜头跟机器人，不乱晃
-    } else {
-      setFirstPerson(false); // 退出操控自动回第三人称（绑定对称，不再单向卡在第一人称）
-      cmd.control.stop(bot.id); // 收起即停
-    }
+    // 不再联动人称：人称是渲染服务的启动参数，切了必然重启+iframe 重载（黑屏一次）。
+    // 补丁后的第三人称镜头本来就跟着机器人走，操控只需把摇杆/键盘挂出来即可；
+    // 想换人称用旁边的人称按钮，各管各的。
+    if (!next) cmd.control.stop(bot.id); // 收起即停
   }
   // 踩点：取机器人当前精确坐标 → 追加进踩点列表（可连续踩多个、导出为路线脚本）。
   // 录制中额外插一条 goto（保持原录制语义）。

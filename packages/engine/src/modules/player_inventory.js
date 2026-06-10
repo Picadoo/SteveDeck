@@ -67,7 +67,7 @@ module.exports = (botInstance) => {
 
             return {
                 slot: index,
-                name: rawName.replace(/§[0-9a-fk-orx]/gi, ''), // 纯文本（逻辑/搜索）
+                name: rawName.replace(/§./gi, ''), // 纯文本（逻辑/搜索）
                 display: rawName, // 原始（含 §颜色码）
                 lore: loreLines.map((l) => String(l)).join('\n'), // 保留颜色码
                 count: item.count,

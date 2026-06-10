@@ -53,7 +53,7 @@ module.exports = (botInstance) => {
             let src = entity.customName;
             if (src == null && entity.metadata) src = entity.metadata[2];
             let nameRaw = (src != null ? nameMotd(src) : (entity.username || "")).trim();
-            let name = nameRaw.replace(/§[0-9a-fk-orx]/gi, '').trim();
+            let name = nameRaw.replace(/§./gi, '').trim();
             // Citizens 内部占位名「CIT-<hex>」不是名字 → 当作无名(前端回退到类型/「NPC」)，绝不显示这串 id
             if (/^cit-[0-9a-f]+$/i.test(name)) { name = ''; nameRaw = ''; }
 
@@ -80,7 +80,7 @@ module.exports = (botInstance) => {
     botInstance.interactWithNPC = async (input) => {
         const target = bot.nearestEntity((entity) => {
             if (entity === bot.entity) return false;
-            let name = (entity.customName || entity.username || "").replace(/§[0-9a-fk-orx]/gi, '').toLowerCase();
+            let name = (entity.customName || entity.username || "").replace(/§./gi, '').toLowerCase();
             return name.includes(input.toLowerCase()) || entity.id.toString() === input;
         });
 
@@ -119,7 +119,7 @@ module.exports = (botInstance) => {
             botInstance.io.to(botInstance._room).to('admin').emit('log', {
                 user: bot.username,
                 ownerId: botInstance.config.ownerId,
-                msg: `已右键交互: ${nameMotd(target.customName).replace(/§[0-9a-fk-orx]/gi, '').trim() || target.username || target.name || target.id}`
+                msg: `已右键交互: ${nameMotd(target.customName).replace(/§./gi, '').trim() || target.username || target.name || target.id}`
             });
         } catch (err) {
             botInstance.io.to(botInstance._room).to('admin').emit('log', {

@@ -59,11 +59,11 @@ function entityMaxHealth(e: any): number | null {
 function txt(v: any): string | null {
   if (v == null) return null;
   try {
-    if (typeof v === "string") return v.replace(/§[0-9a-fk-orx]/gi, "").trim() || null;
+    if (typeof v === "string") return v.replace(/§./gi, "").trim() || null;
     if (typeof v.toString === "function") {
       const s = v.toString();
       if (typeof s === "string" && s !== "[object Object]")
-        return s.replace(/§[0-9a-fk-orx]/gi, "").trim() || null;
+        return s.replace(/§./gi, "").trim() || null;
     }
     // JSON 聊天组件 {text, extra}
     if (typeof v.text === "string" || Array.isArray(v.extra)) {
@@ -72,7 +72,7 @@ function txt(v: any): string | null {
         (Array.isArray(v.extra)
           ? v.extra.map((e: any) => (typeof e === "string" ? e : (e && e.text) || "")).join("")
           : "");
-      const cleaned = flat.replace(/§[0-9a-fk-orx]/gi, "").trim();
+      const cleaned = flat.replace(/§./gi, "").trim();
       if (cleaned) return cleaned;
     }
   } catch {
@@ -317,7 +317,7 @@ export function buildObservation(id: string): any {
       };
       if (e.type === "player" && e.username && e.username !== bot.username) {
         const realPlayer = !!(bot.players && bot.players[e.username]);
-        const cleanU = String(e.username).replace(/§[0-9a-fk-orx]/gi, "");
+        const cleanU = String(e.username).replace(/§./gi, "");
         const pd = txt(e.displayName);
         const npcCustom = entityCustomName(e);
         const isCitId = /^cit-[0-9a-f]+$/i.test(cleanU);

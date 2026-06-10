@@ -39,7 +39,7 @@ const roman = (n) => ROMAN[n] || String(n);
 
 /** 去除 §x 颜色码 */
 function cleanName(s) {
-  return String(s == null ? "" : s).replace(/§[0-9a-fk-orx]/gi, "");
+  return String(s == null ? "" : s).replace(/§./gi, "");
 }
 
 /** 展平 JSON 聊天组件为纯文本 */

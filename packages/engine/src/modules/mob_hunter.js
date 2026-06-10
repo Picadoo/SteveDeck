@@ -81,15 +81,19 @@ module.exports = (botInstance) => {
         });
     };
 
+    // 统一洗码：§ 后任意字符都是格式码（含 §u/§j 等服务器自造码）——关键词匹配两侧都要洗，
+    // 否则名字里夹着码（§u庄§j稼§x汉）按看到的字填关键词永远匹配不上。
+    const stripCodes = (s) => String(s == null ? '' : s).replace(/§./g, '');
+
     const matchesKeywords = (entityName, keywords) => {
         if (!keywords || keywords.length === 0) return false;
-        const lowerName = entityName.toLowerCase();
-        return keywords.some(k => lowerName.includes(k.toLowerCase().trim()));
+        const lowerName = stripCodes(entityName).toLowerCase();
+        return keywords.some(k => lowerName.includes(stripCodes(k).toLowerCase().trim()));
     };
 
     const isBlacklisted = (entityName) => {
-        const lowerName = entityName.toLowerCase();
-        return botInstance.mobHunterTask.blacklist.some(item => lowerName.includes(item.toLowerCase()));
+        const lowerName = stripCodes(entityName).toLowerCase();
+        return botInstance.mobHunterTask.blacklist.some(item => lowerName.includes(stripCodes(item).toLowerCase()));
     };
 
     const getEntityDisplayName = (entity) => {
@@ -98,15 +102,20 @@ module.exports = (botInstance) => {
             if (entity.metadata && entity.metadata[2]) {
                 const customName = entity.metadata[2];
                 if (typeof customName === 'string' && customName.length > 0) {
-                    return customName.replace(/§[0-9a-fk-orx]/gi, '').replace(/[{}"]/g, '').trim();
+                    return stripCodes(customName).replace(/[{}"]/g, '').trim();
                 }
                 if (customName && typeof customName === 'object') {
-                    if (customName.text) return customName.text;
-                    if (customName.extra && customName.extra[0]) return customName.extra[0].text || String(customName.extra[0]);
+                    // JSON 聊天组件：展平全部 text + extra（旧实现只取 extra[0]，多段名牌会丢字）
+                    const flat = (customName.text || '') +
+                        (Array.isArray(customName.extra)
+                            ? customName.extra.map(x => (typeof x === 'string' ? x : (x && x.text) || '')).join('')
+                            : '');
+                    const cleaned = stripCodes(flat).trim();
+                    if (cleaned) return cleaned;
                 }
             }
         } catch (e) {}
-        return entity.customName || entity.displayName || entity.name || 'unknown';
+        return stripCodes(entity.customName || entity.displayName || entity.name || 'unknown').trim() || 'unknown';
     };
 
     const isArmorStand = (e) =>

@@ -31,7 +31,7 @@ module.exports = (botInstance) => {
         }
         return String(v);
     };
-    const cleanColor = (v) => motd(v).replace(/§[0-9a-fk-orx]/gi, '').trim();
+    const cleanColor = (v) => motd(v).replace(/§./gi, '').trim();
 
     // 解析侧边栏。bot.scoreboard 按「显示位置」索引：.sidebar(=[1]) 是主侧边栏；
     // 3~18 是按队伍颜色区分的侧边栏（部分服用这些）。

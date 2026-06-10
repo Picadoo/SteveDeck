@@ -22,7 +22,7 @@ function slotText(item, matchLore) {
         }
     } catch (e) { /* 解析失败用基础 name */ }
     const all = matchLore ? [name, ...lore].join(' ') : name;
-    return String(all).replace(/§[0-9a-fk-orx]/gi, '').toLowerCase();
+    return String(all).replace(/§./gi, '').toLowerCase();
 }
 
 // 在 slots 数组中找第一个匹配关键词的槽位下标；找不到返回 -1。
@@ -30,7 +30,7 @@ function slotText(item, matchLore) {
 function findMatchingSlot(slots, keyword, opts) {
     if (!Array.isArray(slots)) return -1;
     opts = opts || {};
-    const kw = String(keyword == null ? '' : keyword).replace(/§[0-9a-fk-orx]/gi, '').toLowerCase().trim();
+    const kw = String(keyword == null ? '' : keyword).replace(/§./gi, '').toLowerCase().trim();
     if (!kw) return -1;
     const from = Number.isFinite(opts.slotFrom) ? Math.max(0, opts.slotFrom) : 0;
     const to = Number.isFinite(opts.slotTo) ? Math.min(slots.length - 1, opts.slotTo) : slots.length - 1;

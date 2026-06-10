@@ -29,7 +29,7 @@ function extractText(reason) {
 }
 
 function isFatalKick(reason) {
-    const text = extractText(reason).toLowerCase().replace(/§[0-9a-fk-orx]/gi, '');
+    const text = extractText(reason).toLowerCase().replace(/§./gi, '');
     if (!text) return false;
     return FATAL_PATTERNS.some(p => text.includes(p));
 }

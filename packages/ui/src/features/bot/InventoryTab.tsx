@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { RefreshCw, Package, Shirt, Hand, Trash2, MousePointerClick, Star, X, Shield, ArrowRightLeft, LayoutGrid } from "lucide-react";
+import { RefreshCw, Package, Shirt, Hand, Trash2, MousePointerClick, Star, X, Shield, LayoutGrid } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { Button } from "@/components/ui/primitives";
@@ -272,7 +272,6 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
                         full={full}
                         texBase={texBase}
                         onUse={recordUse}
-                        onMoveSlot={() => setOrganize({ open: true, initialSel: it.slot })}
                       />
                     ))}
                   </div>
@@ -320,6 +319,22 @@ function OrganizeDialog({
   const [busy, setBusy] = useState(false);
   const [sel, setSel] = useState<number | null>(initialSel ?? null);
   const [tip, setTip] = useState<{ it: InventoryItem; x: number; y: number } | null>(null);
+  // tip 定位：先渲染再测量——优先放光标上方（不挡手），上面放不下才放下方；超长 lore 限高可滚动
+  const tipRef = useRef<HTMLDivElement>(null);
+  const [tipStyle, setTipStyle] = useState<CSSProperties>({ left: -9999, top: -9999 });
+  useLayoutEffect(() => {
+    if (!tip || !tipRef.current) return;
+    const el = tipRef.current;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const m = 10;
+    let left = tip.x + 14;
+    if (left + w > window.innerWidth - m) left = Math.max(m, tip.x - w - 14);
+    let top = tip.y - h - 14; // 优先上方
+    if (top < m) top = Math.min(tip.y + 18, window.innerHeight - h - m); // 上方放不下 → 下方
+    if (top < m) top = m;
+    setTipStyle({ left, top, maxHeight: window.innerHeight - top - m });
+  }, [tip]);
   const bySlot = useMemo(() => {
     const m = new Map<number, InventoryItem>();
     for (const it of items) if (it.name) m.set(it.slot, it);
@@ -428,14 +443,12 @@ function OrganizeDialog({
         </div>
       </div>
 
-      {/* ItemTip：跟随鼠标的完整物品信息（与列表行同款样式） */}
+      {/* ItemTip：完整物品信息（优先光标上方，超长限高滚动；测量定位见上方 useLayoutEffect） */}
       {tip && (
         <div
-          className="pointer-events-none fixed z-[120] max-w-[18rem] rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
-          style={{
-            left: Math.min(tip.x + 14, window.innerWidth - 300),
-            top: Math.min(tip.y + 14, window.innerHeight - 200),
-          }}
+          ref={tipRef}
+          className="pointer-events-none fixed z-[120] max-w-[20rem] overflow-y-auto rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
+          style={tipStyle}
         >
           <div className="text-sm font-semibold leading-snug">
             <McText text={tip.it.display || tip.it.name || ""} onDark />
@@ -524,7 +537,6 @@ function ItemRow({
   full,
   texBase,
   onUse,
-  onMoveSlot,
 }: {
   item: InventoryItem;
   botId: string;
@@ -532,7 +544,6 @@ function ItemRow({
   full: boolean;
   texBase: string;
   onUse: (item: InventoryItem, action: UseAction) => void;
-  onMoveSlot: () => void;
 }) {
   const pushToast = useStore((s) => s.pushToast);
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
@@ -687,9 +698,6 @@ function ItemRow({
           </SlotBtn>
           <SlotBtn title="放到副手" onClick={() => act("offhand")}>
             <Shield className="h-3.5 w-3.5" />
-          </SlotBtn>
-          <SlotBtn title="移到指定槽位" onClick={onMoveSlot}>
-            <ArrowRightLeft className="h-3.5 w-3.5" />
           </SlotBtn>
           {!armor && (
             <SlotBtn title="使用（右键）" onClick={() => act("use")}>
