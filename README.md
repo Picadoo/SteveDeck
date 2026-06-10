@@ -1,6 +1,13 @@
 # mc-bot-player
 
-面向**玩家**的 Minecraft 挂机机器人。引擎 7×24 跑在 Docker 上，桌面（Windows）与手机（Android）作为瘦客户端遥控。
+面向**玩家**的 Minecraft 挂机机器人。引擎 7×24 跑在 Docker 上，桌面（Windows）与手机（网页/PWA）作为瘦客户端遥控。
+
+## 截图
+
+<!-- TODO: 截图待补 -->
+| 主界面 | 实时视角 | 手机端 |
+|---|---|---|
+| ![主界面](docs/screenshots/main.png) | ![实时视角](docs/screenshots/viewer.png) | ![手机端](docs/screenshots/mobile.png) |
 
 - 设计与实施计划书：[`docs/2026-06-02-mc-bot-player-design.md`](docs/2026-06-02-mc-bot-player-design.md)
 

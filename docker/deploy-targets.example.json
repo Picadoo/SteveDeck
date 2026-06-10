@@ -1,6 +1,6 @@
 {
   "myserver": {
-    "HostIp": "1.2.3.4",
+    "HostIp": "127.0.0.1",
     "User": "ubuntu",
     "Key": "%USERPROFILE%\\.ssh\\id_ed25519"
   }

@@ -44,6 +44,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # tauri.conf 的 resources 引用 engine-bundle，必须先生成（完整版含 3D 视角资源）
+      - run: node apps/desktop/scripts/make-engine-bundle.mjs full
       - run: pnpm -C apps/desktop tauri build
       - uses: actions/upload-artifact@v4
         with:
