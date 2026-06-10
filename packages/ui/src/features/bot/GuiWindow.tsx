@@ -5,6 +5,7 @@ import { cmd } from "@/lib/engine";
 import Modal from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import McText from "@/components/McText";
+import ChatOverlay from "./ChatOverlay";
 import { ItemIcon } from "@/components/ItemIcon";
 import { cn } from "@/lib/cn";
 import type { BotSummary, WindowSlot } from "@mcbot/protocol";
@@ -153,6 +154,9 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
           <SlotGrid slots={backpack} base={split} texBase={texBase} onClick={click} onHover={onHover} />
         </>
       )}
+
+      {/* 悬浮字幕：点菜单后服务器的聊天反馈直接浮在窗口上，不用关窗去翻控制台（bottom-14 避开底部按钮条） */}
+      <ChatOverlay botId={bot.id} className="bottom-14" />
       {hover && <ItemTip hover={hover} onEnter={cancelClose} onLeave={doClose} />}
     </Modal>
   );

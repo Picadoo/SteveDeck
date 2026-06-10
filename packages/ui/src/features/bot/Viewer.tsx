@@ -27,6 +27,7 @@ import { useStore } from "@/store/useStore";
 import { useConfirmClick } from "@/lib/useConfirmClick";
 import { healthPct } from "@/lib/format";
 import { MODULES } from "./moduleDefs";
+import ChatOverlay from "./ChatOverlay";
 import { cn } from "@/lib/cn";
 import type { BotSummary, ScriptSummary } from "@mcbot/protocol";
 
@@ -372,6 +373,9 @@ export default function Viewer({
             </Button>
           </div>
         )}
+
+        {/* 悬浮字幕：聊天/actionbar/错误浮在画面上几秒淡出——点脚本/发指令不用切控制台就能看到反馈 */}
+        {url && <ChatOverlay botId={bot.id} />}
 
         {/* 坐标 / 状态浮层 */}
         {pos && (
