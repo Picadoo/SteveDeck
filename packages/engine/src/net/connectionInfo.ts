@@ -27,7 +27,11 @@ export async function buildConnectionInfo(opts: {
   uiServed?: boolean;
 }): Promise<ConnectionInfo> {
   const addresses = listAddresses();
-  const primary = addresses[0] ?? "127.0.0.1";
+  // ENGINE_PUBLIC_HOST：容器/NAT 后面网卡上只有内网 IP，连接串/二维码必须用外界可达地址。
+  // 部署脚本会把服务器公网 IP 写进 .engine-env；不设则维持原行为（取第一块非回环网卡）。
+  const publicHost = process.env.ENGINE_PUBLIC_HOST?.trim();
+  const primary = publicHost || addresses[0] || "127.0.0.1";
+  if (publicHost && !addresses.includes(publicHost)) addresses.unshift(publicHost);
   const connectionString = buildConnectionString(primary, opts.port, opts.token);
   // 网页直开地址：系统相机扫码 → 浏览器打开 → 前端读 #mcbot= 自动连接（零安装配对）。
   // 连接串放 hash：不进 HTTP 请求行/服务器日志；前端读取后立即从地址栏清除。

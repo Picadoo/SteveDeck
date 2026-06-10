@@ -43,7 +43,7 @@ try {
   Write-Host "== 解包 + 准备令牌 + 启动 =="
   $composeUp = if ($LocalBuild) { "docker compose --env-file ../.engine-env up -d --no-build" }
                else             { "docker compose --env-file ../.engine-env up -d --build" }
-  ssh -i $key @sshOpts $ssh @"
+  $remoteScript = @"
 set -e
 cd ~/mc-bot-player
 tar xzf mcbot-deploy.tar.gz && rm mcbot-deploy.tar.gz
@@ -53,9 +53,15 @@ if [ ! -f .engine-env ]; then
   chmod 600 .engine-env
   echo "[deploy] 已生成新 ENGINE_TOKEN（存于 ~/mc-bot-player/.engine-env）"
 fi
+# 历史部署可能混入 CRLF（PowerShell here-string 行尾）——令牌带 \r 会导致鉴权永远失败
+sed -i 's/\r`$//' .engine-env
+# 公网地址：连接串/二维码用它（容器网卡上只有内网 IP）；IP 换了也会自动更新
+grep -q '^ENGINE_PUBLIC_HOST=' .engine-env && sed -i 's/^ENGINE_PUBLIC_HOST=.*/ENGINE_PUBLIC_HOST=$($cfg.HostIp)/' .engine-env || echo 'ENGINE_PUBLIC_HOST=$($cfg.HostIp)' >> .engine-env
 cd docker
 $composeUp
 "@
+  # 剥掉 here-string 的 CR：CRLF 进了远程 bash 会把 \r 写进 .engine-env/文件名（已踩坑）
+  ssh -i $key @sshOpts $ssh ($remoteScript -replace "`r", "")
 
   Write-Host "== 等待健康检查 =="
   Start-Sleep -Seconds 12

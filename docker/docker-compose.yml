@@ -18,6 +18,8 @@ services:
       # 经 --env-file 注入（deploy-tencent.ps1 首次部署自动生成并持久化）；
       # 留空则引擎首次启动自动生成令牌（见容器日志 / 数据卷）
       - ENGINE_TOKEN=${ENGINE_TOKEN:-}
+      # 公网/外部可达地址：连接串、二维码、网页直开地址都用它（容器网卡上只有内网 IP）
+      - ENGINE_PUBLIC_HOST=${ENGINE_PUBLIC_HOST:-}
     healthcheck:
       test:
         - CMD
