@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { RefreshCw, Package, Shirt, Hand, Trash2, MousePointerClick, Star, X, Shield, ArrowRightLeft } from "lucide-react";
+import { RefreshCw, Package, Shirt, Hand, Trash2, MousePointerClick, Star, X, Shield, ArrowRightLeft, LayoutGrid } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { Button } from "@/components/ui/primitives";
@@ -141,8 +141,8 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
     else recordUse(live, action);
   }
 
-  // 「移到指定槽位」：源物品 → 弹出 MC 布局迷你网格选目标格
-  const [moveSrc, setMoveSrc] = useState<InventoryItem | null>(null);
+  // 「整理背包」：常驻 MC 布局界面——点选源格→点目标格连续搬运，悬浮看完整物品信息
+  const [organize, setOrganize] = useState<{ open: boolean; initialSel?: number }>({ open: false });
 
   return (
     <div>
@@ -152,6 +152,9 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
           {groups.equip.length > 0 && <span className="ml-1.5">· 装备 {groups.equip.length}</span>}
         </span>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" disabled={!bot.online} onClick={() => setOrganize({ open: true })}>
+            <LayoutGrid className="h-3.5 w-3.5" /> 整理背包
+          </Button>
           <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-[11px]">
             {(["lite", "full"] as const).map((m) => (
               <button
@@ -269,7 +272,7 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
                         full={full}
                         texBase={texBase}
                         onUse={recordUse}
-                        onMoveSlot={() => setMoveSrc(it)}
+                        onMoveSlot={() => setOrganize({ open: true, initialSel: it.slot })}
                       />
                     ))}
                   </div>
@@ -280,50 +283,69 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
         </div>
       )}
 
-      {/* 移动到指定槽位：MC 布局迷你网格（装备+副手 / 背包 9×3 / 快捷栏 9），点目标格即移动 */}
-      {moveSrc && (
-        <MoveDialog
+      {/* 整理背包：常驻 MC 布局界面，可连续搬运/交换，悬浮看完整物品信息 */}
+      {organize.open && (
+        <OrganizeDialog
           botId={bot.id}
-          src={moveSrc}
           items={items}
           texBase={texBase}
-          onClose={() => setMoveSrc(null)}
+          initialSel={organize.initialSel}
+          onClose={() => setOrganize({ open: false })}
         />
       )}
     </div>
   );
 }
 
-/** 槽位网格选择器：还原 MC 背包布局让「放到哪」一目了然；点占用格=交换，点空格=移入 */
-function MoveDialog({
+/**
+ * 整理背包：常驻 MC 布局界面。
+ * - 点一件物品=选中（高亮），再点目标格=移动/交换，界面不关，可一直整理；
+ * - 悬浮任意物品显示完整 ItemTip（名字/数量/附魔/lore/物品 id）；
+ * - 数据来自 store 实时背包，每次移动后引擎广播自动刷新格子。
+ */
+function OrganizeDialog({
   botId,
-  src,
   items,
   texBase,
+  initialSel,
   onClose,
 }: {
   botId: string;
-  src: InventoryItem;
   items: InventoryItem[];
   texBase: string;
+  initialSel?: number;
   onClose: () => void;
 }) {
   const pushToast = useStore((s) => s.pushToast);
   const [busy, setBusy] = useState(false);
+  const [sel, setSel] = useState<number | null>(initialSel ?? null);
+  const [tip, setTip] = useState<{ it: InventoryItem; x: number; y: number } | null>(null);
   const bySlot = useMemo(() => {
     const m = new Map<number, InventoryItem>();
     for (const it of items) if (it.name) m.set(it.slot, it);
     return m;
   }, [items]);
+  // 选中的格子被移走/变化后自动取消选中（移动成功后源格大概率已空）
+  useEffect(() => {
+    if (sel !== null && !bySlot.get(sel)) setSel(null);
+  }, [bySlot, sel]);
 
-  async function moveTo(to: number) {
-    if (busy || to === src.slot) return;
+  async function clickCell(slot: number) {
+    if (busy) return;
+    const it = bySlot.get(slot);
+    if (sel === null) {
+      if (it) setSel(slot); // 空手点空格无意义，忽略
+      return;
+    }
+    if (sel === slot) {
+      setSel(null);
+      return;
+    }
     setBusy(true);
-    const r = await cmd.moduleAction(botId, "inventory", "move", { from: src.slot, to });
+    const r = await cmd.moduleAction(botId, "inventory", "move", { from: sel, to: slot });
     setBusy(false);
     if (r.ok) {
-      pushToast(`已移动到 #${to}`, "success");
-      onClose();
+      setSel(null); // 留在界面里继续整理
     } else {
       pushToast(r.error || "移动失败", "error");
     }
@@ -331,19 +353,21 @@ function MoveDialog({
 
   const Cell = ({ slot, label }: { slot: number; label?: string }) => {
     const it = bySlot.get(slot);
-    const isSrc = slot === src.slot;
+    const isSel = slot === sel;
     return (
       <button
-        disabled={busy || isSrc}
-        onClick={() => moveTo(slot)}
-        title={isSrc ? "当前位置" : it ? `#${slot} ${mcPlain(it.display || it.name || "")}（点击交换）` : `#${slot} 空格（点击移入）`}
+        disabled={busy}
+        onClick={() => clickCell(slot)}
+        onMouseMove={it ? (e) => setTip({ it, x: e.clientX, y: e.clientY }) : undefined}
+        onMouseLeave={it ? () => setTip(null) : undefined}
         className={cn(
-          "relative flex h-10 w-10 items-center justify-center rounded border text-[9px]",
-          isSrc
-            ? "border-accent bg-accent/20 ring-1 ring-accent"
+          "relative flex h-10 w-10 items-center justify-center rounded border text-[9px] transition-colors",
+          isSel
+            ? "border-accent bg-accent/25 ring-2 ring-accent"
             : it
-              ? "border-border bg-surface-2/70 hover:border-warning hover:bg-warning/10"
-              : "border-border/50 bg-surface-2/25 hover:border-accent hover:bg-accent/10",
+              ? cn("border-border bg-surface-2/70", sel !== null ? "hover:border-warning hover:bg-warning/10" : "hover:border-accent hover:bg-accent/10")
+              : cn("border-border/50 bg-surface-2/25", sel !== null && "hover:border-accent hover:bg-accent/10"),
+          it?.held && !isSel && "ring-1 ring-accent/50",
         )}
       >
         {it ? (
@@ -362,10 +386,19 @@ function MoveDialog({
     );
   };
 
+  const selItem = sel !== null ? bySlot.get(sel) : null;
   return (
-    <Modal open onClose={onClose} title={`移动：${mcPlain(src.display || src.name || "")}（#${src.slot}）`} size="lg">
+    <Modal open onClose={onClose} title="整理背包" size="lg">
       <div className="space-y-3">
-        <p className="text-[11px] text-muted">点目标格子：空格=移过去，占用格=两件交换。护甲格只收对应护甲（不符会报错，无副作用）。</p>
+        <p className="min-h-[18px] text-[11px] text-muted">
+          {selItem ? (
+            <>
+              已选中 <McText text={selItem.display || selItem.name || ""} />（#{sel}）——点目标格：空格=移过去，占用格=交换；再点自己=取消
+            </>
+          ) : (
+            "点一件物品选中，再点目标格子移动/交换；可以一直留在这里整理，悬浮看物品详情"
+          )}
+        </p>
         <div>
           <div className="mb-1 text-[11px] font-medium text-muted">装备 / 副手</div>
           <div className="flex gap-1">
@@ -386,7 +419,7 @@ function MoveDialog({
           </div>
         </div>
         <div>
-          <div className="mb-1 text-[11px] font-medium text-muted">快捷栏</div>
+          <div className="mb-1 text-[11px] font-medium text-muted">快捷栏（高亮圈=当前手持）</div>
           <div className="grid w-fit grid-cols-9 gap-1">
             {Array.from({ length: 9 }, (_, i) => (
               <Cell key={36 + i} slot={36 + i} />
@@ -394,6 +427,37 @@ function MoveDialog({
           </div>
         </div>
       </div>
+
+      {/* ItemTip：跟随鼠标的完整物品信息（与列表行同款样式） */}
+      {tip && (
+        <div
+          className="pointer-events-none fixed z-[120] max-w-[18rem] rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
+          style={{
+            left: Math.min(tip.x + 14, window.innerWidth - 300),
+            top: Math.min(tip.y + 14, window.innerHeight - 200),
+          }}
+        >
+          <div className="text-sm font-semibold leading-snug">
+            <McText text={tip.it.display || tip.it.name || ""} onDark />
+            {tip.it.count && tip.it.count > 1 ? (
+              <span className="ml-1 text-[11px] font-normal text-white/50">×{tip.it.count}</span>
+            ) : null}
+          </div>
+          {tip.it.enchants && tip.it.enchants.length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {tip.it.enchants.map((e, i) => (
+                <div key={i} className="text-[11px] text-[#9d8bff]">{e}</div>
+              ))}
+            </div>
+          )}
+          {tip.it.lore && (
+            <div className="mt-1 whitespace-pre-line text-[11px] leading-snug text-white/75">
+              <McText text={tip.it.lore} onDark />
+            </div>
+          )}
+          {tip.it.texture && <div className="mt-1.5 text-[10px] text-white/30">minecraft:{tip.it.texture} · #{tip.it.slot}</div>}
+        </div>
+      )}
     </Modal>
   );
 }
