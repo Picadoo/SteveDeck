@@ -192,11 +192,11 @@ function SlotGrid({
             }}
             onMouseMove={active ? (e) => onHover({ it: it!, x: e.clientX, y: e.clientY }) : undefined}
             onMouseLeave={active ? () => onHover(null) : undefined}
-            disabled={!it}
             className={cn(
               "relative flex aspect-square items-center justify-center rounded border p-0.5 transition-colors",
+              // 空格也可点：手里拿着东西时点空格=放下（之前 disabled 导致光标物品放不进空位）
               !it
-                ? "cursor-default border-border/30 bg-surface-2/20"
+                ? "border-border/30 bg-surface-2/20 hover:border-accent/60 hover:bg-accent/5"
                 : filler
                   ? "cursor-default border-border/20 bg-surface-2/30 opacity-60"
                   : "border-border bg-surface-2/70 hover:border-accent hover:bg-accent/10",

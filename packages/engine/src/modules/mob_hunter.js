@@ -109,20 +109,53 @@ module.exports = (botInstance) => {
         return entity.customName || entity.displayName || entity.name || 'unknown';
     };
 
+    const isArmorStand = (e) =>
+        e && /armor.?stand/i.test(String(e.name || e.kind || ''));
+
+    // RPG 服全息名牌：怪物名字常挂在头顶的隐形盔甲架上，怪本体没有 CustomName。
+    // 每轮扫描先收集带名字的盔甲架，匹配关键词时把「头顶 1.6 格半径内、脚下到 3.2 格高」
+    // 的名牌文字也算进该怪的名字——否则按显示名填关键词永远「无目标」。
+    let hologramStands = [];
+    const refreshHolograms = () => {
+        hologramStands = [];
+        for (const e of Object.values(bot.entities)) {
+            if (!e || !e.position || !isArmorStand(e)) continue;
+            const name = getEntityDisplayName(e);
+            if (name && name !== 'unknown' && !/armor.?stand/i.test(name)) {
+                hologramStands.push({ pos: e.position, name });
+            }
+        }
+    };
+    const hologramNameFor = (entity) => {
+        for (const h of hologramStands) {
+            const dx = h.pos.x - entity.position.x;
+            const dz = h.pos.z - entity.position.z;
+            const dy = h.pos.y - entity.position.y;
+            if (dx * dx + dz * dz <= 1.6 * 1.6 && dy > -0.5 && dy < 3.2) return h.name;
+        }
+        return null;
+    };
+
     const isValidTarget = (entity) => {
         if (!entity || !entity.position) return false;
         if (entity.type === 'player' || entity.type === 'object' ||
             entity.type === 'orb' || entity.type === 'other') return false;
+        // 盔甲架是名牌/全息载体，永远不是猎物（低版本里它的 type 可能不是 object）
+        if (isArmorStand(entity)) return false;
 
         const task = botInstance.mobHunterTask;
         const entityName = getEntityDisplayName(entity);
 
         if (task.mode === 'keyword') {
-            return matchesKeywords(entityName, task.keywords);
+            if (matchesKeywords(entityName, task.keywords)) return true;
+            const holo = hologramNameFor(entity);
+            return holo ? matchesKeywords(holo, task.keywords) : false;
         }
         if (task.mode === 'all_mobs') {
             if (entity.type === 'player' || entity.username) return false;
-            return !isBlacklisted(entityName);
+            if (isBlacklisted(entityName)) return false;
+            const holo = hologramNameFor(entity);
+            return holo ? !isBlacklisted(holo) : true;
         }
         return false;
     };
@@ -243,7 +276,8 @@ module.exports = (botInstance) => {
         const maxDistance = 32;
         const myPos = bot.entity.position;
 
-        // 一次遍历同时收集玩家和候选
+        // 一次遍历同时收集玩家和候选（先刷新全息名牌缓存，供关键词匹配）
+        refreshHolograms();
         const players = [];
         const candidates = [];
         for (const e of Object.values(bot.entities)) {

@@ -477,6 +477,18 @@ function dispatchAction(
         .useSlot(Number(args.slot))
         .then(() => ok())
         .catch((e: any) => fail(String(e?.message ?? e)));
+    case "inventory:offhand":
+      inst.recorder?.note?.("equip", { slot: Number(args.slot), dest: "off-hand" });
+      return inst
+        .offhandSlot(Number(args.slot))
+        .then(() => ok())
+        .catch((e: any) => fail(String(e?.message ?? e)));
+    case "inventory:move":
+      inst.recorder?.note?.("move", { from: Number(args.from), to: Number(args.to) });
+      return inst
+        .moveSlot(Number(args.from), Number(args.to))
+        .then(() => ok())
+        .catch((e: any) => fail(String(e?.message ?? e)));
     case "scheduler:add": {
       ensureSchedules(inst);
       const sched = args.schedule;

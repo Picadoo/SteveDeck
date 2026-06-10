@@ -4,6 +4,7 @@ import Modal from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
+import { copyText } from "@/lib/clipboard";
 import {
   cmd,
   fetchConnectionInfo,
@@ -48,12 +49,8 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
   if (!open) return null;
 
   async function copy(t: string) {
-    try {
-      await navigator.clipboard.writeText(t);
-      pushToast("已复制", "success");
-    } catch {
-      pushToast("复制失败", "error");
-    }
+    if (await copyText(t)) pushToast("已复制", "success");
+    else pushToast("复制失败", "error");
   }
 
   return (

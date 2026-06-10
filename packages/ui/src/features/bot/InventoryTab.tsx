@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { RefreshCw, Package, Shirt, Hand, Trash2, MousePointerClick, Star, X } from "lucide-react";
+import { RefreshCw, Package, Shirt, Hand, Trash2, MousePointerClick, Star, X, Shield, ArrowRightLeft } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { Button } from "@/components/ui/primitives";
+import Modal from "@/components/ui/Modal";
 import McText from "@/components/McText";
 import { ItemIcon } from "@/components/ItemIcon";
 import { mcPlain } from "@/lib/format";
@@ -140,6 +141,9 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
     else recordUse(live, action);
   }
 
+  // 「移到指定槽位」：源物品 → 弹出 MC 布局迷你网格选目标格
+  const [moveSrc, setMoveSrc] = useState<InventoryItem | null>(null);
+
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -265,6 +269,7 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
                         full={full}
                         texBase={texBase}
                         onUse={recordUse}
+                        onMoveSlot={() => setMoveSrc(it)}
                       />
                     ))}
                   </div>
@@ -274,7 +279,122 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
           )}
         </div>
       )}
+
+      {/* 移动到指定槽位：MC 布局迷你网格（装备+副手 / 背包 9×3 / 快捷栏 9），点目标格即移动 */}
+      {moveSrc && (
+        <MoveDialog
+          botId={bot.id}
+          src={moveSrc}
+          items={items}
+          texBase={texBase}
+          onClose={() => setMoveSrc(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/** 槽位网格选择器：还原 MC 背包布局让「放到哪」一目了然；点占用格=交换，点空格=移入 */
+function MoveDialog({
+  botId,
+  src,
+  items,
+  texBase,
+  onClose,
+}: {
+  botId: string;
+  src: InventoryItem;
+  items: InventoryItem[];
+  texBase: string;
+  onClose: () => void;
+}) {
+  const pushToast = useStore((s) => s.pushToast);
+  const [busy, setBusy] = useState(false);
+  const bySlot = useMemo(() => {
+    const m = new Map<number, InventoryItem>();
+    for (const it of items) if (it.name) m.set(it.slot, it);
+    return m;
+  }, [items]);
+
+  async function moveTo(to: number) {
+    if (busy || to === src.slot) return;
+    setBusy(true);
+    const r = await cmd.moduleAction(botId, "inventory", "move", { from: src.slot, to });
+    setBusy(false);
+    if (r.ok) {
+      pushToast(`已移动到 #${to}`, "success");
+      onClose();
+    } else {
+      pushToast(r.error || "移动失败", "error");
+    }
+  }
+
+  const Cell = ({ slot, label }: { slot: number; label?: string }) => {
+    const it = bySlot.get(slot);
+    const isSrc = slot === src.slot;
+    return (
+      <button
+        disabled={busy || isSrc}
+        onClick={() => moveTo(slot)}
+        title={isSrc ? "当前位置" : it ? `#${slot} ${mcPlain(it.display || it.name || "")}（点击交换）` : `#${slot} 空格（点击移入）`}
+        className={cn(
+          "relative flex h-10 w-10 items-center justify-center rounded border text-[9px]",
+          isSrc
+            ? "border-accent bg-accent/20 ring-1 ring-accent"
+            : it
+              ? "border-border bg-surface-2/70 hover:border-warning hover:bg-warning/10"
+              : "border-border/50 bg-surface-2/25 hover:border-accent hover:bg-accent/10",
+        )}
+      >
+        {it ? (
+          <>
+            <ItemIcon texture={it.texture} base={texBase} size={26} />
+            {it.count && it.count > 1 && (
+              <span className="absolute bottom-0 right-0.5 text-[9px] font-semibold text-white" style={{ textShadow: "1px 1px 0 #000" }}>
+                {it.count}
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="text-muted/40">{label ?? ""}</span>
+        )}
+      </button>
+    );
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`移动：${mcPlain(src.display || src.name || "")}（#${src.slot}）`} size="lg">
+      <div className="space-y-3">
+        <p className="text-[11px] text-muted">点目标格子：空格=移过去，占用格=两件交换。护甲格只收对应护甲（不符会报错，无副作用）。</p>
+        <div>
+          <div className="mb-1 text-[11px] font-medium text-muted">装备 / 副手</div>
+          <div className="flex gap-1">
+            <Cell slot={5} label="头" />
+            <Cell slot={6} label="胸" />
+            <Cell slot={7} label="腿" />
+            <Cell slot={8} label="脚" />
+            <span className="mx-1 self-center text-muted/30">|</span>
+            <Cell slot={45} label="副手" />
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 text-[11px] font-medium text-muted">背包</div>
+          <div className="grid w-fit grid-cols-9 gap-1">
+            {Array.from({ length: 27 }, (_, i) => (
+              <Cell key={9 + i} slot={9 + i} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 text-[11px] font-medium text-muted">快捷栏</div>
+          <div className="grid w-fit grid-cols-9 gap-1">
+            {Array.from({ length: 9 }, (_, i) => (
+              <Cell key={36 + i} slot={36 + i} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -340,6 +460,7 @@ function ItemRow({
   full,
   texBase,
   onUse,
+  onMoveSlot,
 }: {
   item: InventoryItem;
   botId: string;
@@ -347,15 +468,17 @@ function ItemRow({
   full: boolean;
   texBase: string;
   onUse: (item: InventoryItem, action: UseAction) => void;
+  onMoveSlot: () => void;
 }) {
   const pushToast = useStore((s) => s.pushToast);
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const [tipStyle, setTipStyle] = useState<CSSProperties>({ left: -9999, top: -9999 });
-  const act = async (action: "equip" | "hold" | "use" | "drop") => {
+  const act = async (action: "equip" | "hold" | "use" | "drop" | "offhand") => {
     const r = await cmd.moduleAction(botId, "inventory", action, { slot: item.slot });
     if (!r.ok) pushToast(r.error || "操作失败", "error");
-    else if (action !== "drop") onUse(item, action); // 丢弃不算「使用」，其余计入常用
+    // 丢弃/放副手/挪格子不算「使用」，其余计入常用
+    else if (action === "equip" || action === "hold" || action === "use") onUse(item, action);
   };
   // 丢弃整组不可恢复：两段确认（第一次点变「确认?」，2.5s 内再点才丢）。
   // resetKey=物品身份：行按槽位复用，确认窗口内物品滑动换位（拾取/清理高频）必须重新确认。
@@ -497,6 +620,12 @@ function ItemRow({
           )}
           <SlotBtn title="拿在手上" onClick={() => act("hold")}>
             <Hand className="h-3.5 w-3.5" />
+          </SlotBtn>
+          <SlotBtn title="放到副手" onClick={() => act("offhand")}>
+            <Shield className="h-3.5 w-3.5" />
+          </SlotBtn>
+          <SlotBtn title="移到指定槽位" onClick={onMoveSlot}>
+            <ArrowRightLeft className="h-3.5 w-3.5" />
           </SlotBtn>
           {!armor && (
             <SlotBtn title="使用（右键）" onClick={() => act("use")}>

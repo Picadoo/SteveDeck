@@ -290,6 +290,7 @@ export function buildObservation(id: string): any {
   try {
     const ents = Object.values(bot.entities || {});
     const others: any[] = [];
+    const holograms: any[] = [];
     for (const e of ents as any[]) {
       if (!e || !e.position || e === bot.entity) continue;
       const d = e.position.distanceTo(pos);
@@ -338,12 +339,19 @@ export function buildObservation(id: string): any {
           pos: item.pos,
         });
       } else if (e.type !== "object" && e.type !== "orb" && e.type !== "other") {
-        if (!custom && (e.name === "armor_stand" || /armor.?stand/i.test(item.name))) continue;
+        // 盔甲架特殊处理：RPG 服用隐形盔甲架当全息字/名牌。带名字的归入 holograms
+        // （文字情报，不是生物）；没名字的纯支架直接丢弃。绝不进 nearbyEntities。
+        if (e.name === "armor_stand" || /armor.?stand/i.test(String(e.name || e.kind || ""))) {
+          if (custom) holograms.push({ text: custom, distance: r1(d), pos: floorPos(e.position) });
+          continue;
+        }
         others.push(item);
       }
     }
     others.sort((a, b) => a.distance - b.distance);
     obs.nearbyEntities = others.slice(0, 20);
+    holograms.sort((a, b) => a.distance - b.distance);
+    obs.holograms = holograms.slice(0, 12);
     obs.nearbyPlayers.sort((a: any, b: any) => a.distance - b.distance);
 
     const hostiles = others.filter((o) => o.hostile);

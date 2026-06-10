@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Sparkles, RefreshCw, Copy, Loader2, ChevronDown, Settings2, Wand2, Play, Save } from "lucide-react";
 import { Card, Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
+import { copyText } from "@/lib/clipboard";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
 import type { BotSummary, BotScript, Observation } from "@mcbot/protocol";
@@ -155,12 +156,8 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
   }, [bot.id]);
 
   async function copy(text: string, label: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      pushToast(label + "已复制", "success");
-    } catch {
-      pushToast("复制失败（浏览器限制）", "error");
-    }
+    if (await copyText(text)) pushToast(label + "已复制", "success");
+    else pushToast("复制失败", "error");
   }
 
   return (

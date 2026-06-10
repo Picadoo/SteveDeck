@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2, Copy, ArrowDownToLine, MousePointerClick, X } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
+import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/cn";
 import McText from "@/components/McText";
 import MonitorPanel from "./MonitorPanel";
@@ -50,12 +51,8 @@ function Console({ botId }: { botId: string }) {
   }, [shown, autoScroll]);
 
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(logs.map((l) => `${l.time ?? ""} ${mcPlain(l.text)}`).join("\n"));
-      pushToast("日志已复制", "success");
-    } catch {
-      pushToast("复制失败", "error");
-    }
+    const ok = await copyText(logs.map((l) => `${l.time ?? ""} ${mcPlain(l.text)}`).join("\n"));
+    pushToast(ok ? "日志已复制" : "复制失败", ok ? "success" : "error");
   }
 
   return (
@@ -172,12 +169,8 @@ function SegmentLine({ segments, botId }: { segments: ChatSegment[]; botId: stri
       const r = await cmd.chat(botId, c.value);
       pushToast(r.ok ? `已执行：${c.value}` : r.error || "执行失败", r.ok ? "success" : "error");
     } else if (c.action === "suggest_command") {
-      try {
-        await navigator.clipboard.writeText(c.value);
-        pushToast(`已复制命令：${c.value}（粘贴到聊天框发送）`, "info");
-      } catch {
-        pushToast(c.value, "info");
-      }
+      if (await copyText(c.value)) pushToast(`已复制命令：${c.value}（粘贴到聊天框发送）`, "info");
+      else pushToast(c.value, "info");
     } else if (c.action === "open_url") {
       try {
         window.open(c.value, "_blank", "noopener");
@@ -185,12 +178,7 @@ function SegmentLine({ segments, botId }: { segments: ChatSegment[]; botId: stri
         /* ignore */
       }
     } else if (c.action === "copy_to_clipboard") {
-      try {
-        await navigator.clipboard.writeText(c.value);
-        pushToast("已复制", "success");
-      } catch {
-        /* ignore */
-      }
+      if (await copyText(c.value)) pushToast("已复制", "success");
     }
   }
   return (

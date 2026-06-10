@@ -123,6 +123,29 @@ module.exports = (botInstance) => {
         await bot.equip(it, 'hand');
         syncInventory();
     };
+    // 副手（1.9+；1.8 服务器没有副手槽，报可读错误而非协议异常）
+    botInstance.offhandSlot = async (slot) => {
+        const it = bot.inventory.slots[slot];
+        if (!it) throw new Error('该格为空');
+        try {
+            await bot.equip(it, 'off-hand');
+        } catch (e) {
+            const msg = String(e?.message || e);
+            throw new Error(/off.?hand|destination|invalid/i.test(msg) ? '放副手失败（1.8 等低版本没有副手槽）' : msg);
+        }
+        syncInventory();
+    };
+    // 移动到指定槽位：mineflayer 槽号体系（5-8 护甲、9-35 背包、36-44 快捷栏、45 副手）
+    botInstance.moveSlot = async (from, to) => {
+        from = Number(from); to = Number(to);
+        if (!Number.isInteger(from) || !Number.isInteger(to)) throw new Error('槽位无效');
+        if (from === to) return;
+        const inv = bot.inventory;
+        if (from < 0 || to < 0 || from >= inv.slots.length + 1 || to >= inv.slots.length + 1) throw new Error('槽位超出范围');
+        if (!inv.slots[from]) throw new Error('源格为空');
+        await bot.moveSlotItem(from, to);
+        syncInventory();
+    };
     // —— 「使用」物品：忠实模拟一次右键 ——
     // 关键认知：很多物品右键「空气」是无效的，必须右键一个【方块】或【实体】才生效。
     // 旧实现只做了 activateItem()（空挥右键），所以这些物品在背包里「用不了」：
