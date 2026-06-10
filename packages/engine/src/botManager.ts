@@ -270,7 +270,19 @@ class BotManager {
         : {},
       reconnecting: inst ? inst.reconnectAttempts > 0 && !online : false,
       fatalReason: (inst && inst._fatalReason) || null,
-      savedLocations: (inst && inst.savedLocations) || cfg.settings?.savedLocations || [],
+      // 瘦身：summary 只带地点元信息（列表展示用），完整 steps 在编辑/录制时经 ack 单独获取——
+      // 移动中每 2s 一次的 BOT_STATUS 若携带录制好的到达脚本（可达数 KB/地点）纯属重复广播。
+      savedLocations: (((inst && inst.savedLocations) || cfg.settings?.savedLocations || []) as any[]).map(
+        (l: any) => ({
+          id: l.id,
+          name: l.name,
+          x: l.x,
+          y: l.y,
+          z: l.z,
+          command: l.command,
+          stepCount: Array.isArray(l.steps) ? l.steps.length : 0,
+        }),
+      ),
     };
   }
 

@@ -4,7 +4,8 @@
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
 
-    // 缓存
+    // 缓存。注意：sidebar 系字段【必须】经 getScoreboard()/getScoreboardValue() 读取
+    //（getter 每次强刷，缓存不靠事件维护）；bossBar 系字段才是事件实时维护的。
     botInstance._scoreboard = {
         sidebar: [],    // [{ name, value }]
         sidebarTitle: '',
@@ -94,13 +95,10 @@ module.exports = (botInstance) => {
         } catch (e) {}
     };
 
-    // 注册事件
-    bot.on('scoreboardCreated', updateSidebar);
-    bot.on('scoreUpdated', updateSidebar);
-    bot.on('scoreRemoved', updateSidebar);
-    bot.on('scoreboardDeleted', updateSidebar);
-    bot.on('scoreboardPosition', updateSidebar);
-
+    // 不注册 sidebar 事件监听：所有消费方（observe/moduleHandlers/script_engine）都经
+    // getScoreboard()/getScoreboardValue() 读取，getter 每次强刷——缓存从不被「冷读」。
+    // 动画计分板服 scoreUpdated 可达每秒数十~数百次，逐事件全量重解析纯属白烧 CPU。
+    // bossBar 监听必须保留：它是 bossBar 数据的唯一来源（updateSidebar 不管 bossBar）。
     if (bot.on) {
         try {
             bot.on('bossBarCreated', onBossBarCreated);
@@ -110,16 +108,6 @@ module.exports = (botInstance) => {
             // 低版本可能没有 bossBar 事件
         }
     }
-
-    // 定期刷新（兜底，有些服务器不触发事件）。
-    // MODB-11：这只是「兜底重解析」——事件(scoreUpdated 等)已实时维护缓存，getScoreboard() 也会按需强刷，
-    // 故无人观看时跳过这一拍的全量走板，省 CPU；有人看才兜底刷新。
-    const refreshTimer = setInterval(() => {
-        if (!botInstance.hasWatchers()) return; // 无人看：跳过兜底重解析（缓存仍由事件维护）
-        updateSidebar();
-    }, 5000);
-    botInstance.timers = botInstance.timers || [];
-    botInstance.timers.push(refreshTimer);
 
     // 公开 API
     botInstance.getScoreboard = () => {
@@ -144,15 +132,9 @@ module.exports = (botInstance) => {
         return null;
     };
 
-    // 清理
+    // 清理（sidebar 已无监听/定时器，只剩 bossBar 三个监听）
     botInstance.cleanupHooks = botInstance.cleanupHooks || [];
     botInstance.cleanupHooks.push(() => {
-        clearInterval(refreshTimer);
-        bot.removeListener('scoreboardCreated', updateSidebar);
-        bot.removeListener('scoreUpdated', updateSidebar);
-        bot.removeListener('scoreRemoved', updateSidebar);
-        bot.removeListener('scoreboardDeleted', updateSidebar);
-        bot.removeListener('scoreboardPosition', updateSidebar);
         try {
             bot.removeListener('bossBarCreated', onBossBarCreated);
             bot.removeListener('bossBarUpdated', onBossBarUpdated);

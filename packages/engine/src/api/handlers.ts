@@ -19,6 +19,14 @@ function broadcastSnapshot(io: IOServer): void {
 export function registerHandlers(io: IOServer, socket: Socket): void {
   socket.emit(ServerEvents.BOTS_SNAPSHOT, { bots: botManager.buildSnapshot() });
 
+  // 背包首帧快照：背包推送带变更检测（内容不变不广播），新连接的前端不补这一帧会一直空着。
+  // force=true 绕过去重；广播面向全部客户端，老客户端收到等同幂等刷新（仅连接时一次）。
+  for (const cfg of botManager.getConfigs()) {
+    try {
+      (botManager.getInstance(cfg.id) as any)?.syncInventory?.(true);
+    } catch { /* ignore */ }
+  }
+
   socket.on(ClientCommands.BOT_ADD, (input: BotConfigInput, ack?: Ack) => {
     try {
       const cfg = botManager.addBot(input);

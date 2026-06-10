@@ -140,6 +140,22 @@ module.exports = (botInstance) => {
     throw new Error('视角启动失败：' + (lastErr && lastErr.message ? lastErr.message : lastErr));
   };
 
+  // 空闲自停：前端异常退出（崩溃/强杀/断网）不会发 viewer:stop，渲染服务会常驻到引擎重启，
+  // 白耗 CPU/内存。兜底：引擎完全没有 UI 客户端（hasWatchers=false）持续 5 分钟 → 自动关闭视角；前端回来会自动重启。
+  let viewerIdleSince = null;
+  const idleTimer = setInterval(() => {
+    if (!botInstance._viewerPort) { viewerIdleSince = null; return; }
+    if (botInstance.hasWatchers()) { viewerIdleSince = null; return; }
+    if (viewerIdleSince == null) { viewerIdleSince = Date.now(); return; }
+    if (Date.now() - viewerIdleSince >= 5 * 60 * 1000) {
+      viewerIdleSince = null;
+      cancelPendingStop();
+      closeViewerNow();
+    }
+  }, 30000);
+  botInstance.timers = botInstance.timers || [];
+  botInstance.timers.push(idleTimer);
+
   // 实例销毁（断线/清理）：无条件立即关闭并释放端口，不走代际化延迟（此时不会再有新 start）
   botInstance.cleanupHooks = botInstance.cleanupHooks || [];
   botInstance.cleanupHooks.push(() => {

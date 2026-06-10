@@ -176,6 +176,18 @@ export interface SavedLocation {
   createdAt: number;
 }
 
+/** 状态摘要里的地点瘦身版：列表展示用。完整 steps 不随每次状态广播携带（重复流量），编辑/录制经 ack 获取。 */
+export interface SavedLocationSummary {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  command?: string;
+  /** 到达脚本步数（仅计数；>0 即「已录制到达脚本」） */
+  stepCount?: number;
+}
+
 export interface Vec3Like {
   x: number;
   y: number;
@@ -261,7 +273,8 @@ export interface BotSummary {
   modules: ModuleFlags;
   reconnecting: boolean;
   fatalReason: string | null;
-  savedLocations?: SavedLocation[];
+  /** 瘦身版地点列表（不含 steps 全文）；完整地点经 ack 单独获取 */
+  savedLocations?: SavedLocationSummary[];
 }
 
 /** 详情用的完整状态 */

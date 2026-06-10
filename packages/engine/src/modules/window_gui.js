@@ -234,6 +234,10 @@ module.exports = (botInstance) => {
 
   const pushUpdate = () => {
     updateTimer = null;
+    // 动画菜单（DeluxeMenus 闪烁图标等）会让 updateSlot 每 120ms 触发全量序列化+广播，
+    // 脚本停在打开的菜单上时可持续数分钟。无人观看直接跳过（WINDOW_OPEN/CLOSE 照发，
+    // 前端本就只在「GUI 面板打开着」时消费 update；新看客重开窗口走 ack 拉取）。
+    if (!botInstance.hasWatchers()) return;
     if (bot.currentWindow) emit(ServerEvents.WINDOW_UPDATE, { window: serialize(bot.currentWindow) });
   };
   const scheduleUpdate = () => {

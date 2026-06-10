@@ -745,6 +745,9 @@ class BotInstance {
         if (sig === this._lastStatusSig && now - this._lastStatusEmitAt < 30000) return;
         this._lastStatusSig = sig;
         this._lastStatusEmitAt = now;
+        // 无人观看：签名照常推进（_lastAlivePos 等内部状态已更新），但省掉 构建摘要+广播。
+        // 新前端连上时 handlers.ts 的 BOTS_SNAPSHOT 提供全量首帧，无回归面。
+        if (!this.hasWatchers()) return;
         this.io.to(this._room).to('admin').emit('status', {
             user: this.config.username,
             host: this.config.host,

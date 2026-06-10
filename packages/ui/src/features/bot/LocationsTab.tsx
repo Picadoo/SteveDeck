@@ -5,13 +5,13 @@ import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
-import type { BotSummary, SavedLocation } from "@mcbot/protocol";
+import type { BotSummary, SavedLocationSummary } from "@mcbot/protocol";
 
 type RecTarget = { kind: "new" | "existing"; id?: string; name: string };
 
 // 地点的「到达方式」：脚本(GUI/多世界) > 命令 > 坐标寻路
-function reachInfo(l: SavedLocation) {
-  if (l.steps && l.steps.length) return { label: `脚本 ${l.steps.length} 步`, Icon: ListChecks, tone: "text-accent" };
+function reachInfo(l: SavedLocationSummary) {
+  if (l.stepCount) return { label: `脚本 ${l.stepCount} 步`, Icon: ListChecks, tone: "text-accent" };
   if (l.command) return { label: "命令", Icon: Terminal, tone: "text-blue-400" };
   return { label: "坐标寻路", Icon: Footprints, tone: "text-muted" };
 }
@@ -22,7 +22,7 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
   const [command, setCommand] = useState("");
   const [rec, setRec] = useState<RecTarget | null>(null);
   const [recCount, setRecCount] = useState(0);
-  const [confirmDelete, setConfirmDelete] = useState<SavedLocation | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<SavedLocationSummary | null>(null);
   const locs = bot.savedLocations ?? [];
 
   // 录制中：轮询步数；引擎侧若停了则收起横幅
@@ -185,10 +185,10 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
                     size="sm"
                     variant="ghost"
                     disabled={!bot.online || !!rec}
-                    title={l.steps?.length ? "重录到达脚本" : "录制到达脚本"}
+                    title={l.stepCount ? "重录到达脚本" : "录制到达脚本"}
                     onClick={() => startRecord({ kind: "existing", id: l.id, name: l.name })}
                   >
-                    <Circle className={cn("h-3.5 w-3.5", l.steps?.length ? "text-accent" : "text-danger")} />
+                    <Circle className={cn("h-3.5 w-3.5", l.stepCount ? "text-accent" : "text-danger")} />
                   </Button>
                   <Button
                     size="sm"

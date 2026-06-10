@@ -40,11 +40,13 @@ module.exports = (botInstance) => {
         }
     };
 
-    // 封装同步函数
-    // 注：不做「签名相同就跳过」的变更检测——那会把「新连接/刷新后的前端需要一份快照」也掐掉
-    //（引擎背包没变→签名相同→连 10s 兜底都跳过→重连前端永远空）。事件驱动已有 150ms 防抖合并、
-    // 无人观看由 hasWatchers 门控跳过，已足够省；正确性优先。
-    const syncInventory = () => {
+    // 封装同步函数（变更检测 + 显式快照路径解耦）：
+    //  · 内容签名相同 → 跳过广播（静止挂机时 10s 兜底不再反复推全量；拾取流防抖合并后仍有去重）。
+    //  · 新前端连接需要首帧 → handlers.ts 在 connection 时调 syncInventory(true) 强推快照。
+    //    历史教训：上次「只加去重」翻车的根因正是没有快照路径（引擎没变→签名相同→重连前端永远空背包）；
+    //    现在快照通道显式存在（force=true 是它的唯一来源），去重可以放心做。两者必须同生共死。
+    let lastSentSig = ''; // 上次广播的内容签名
+    const syncInventory = (force = false) => {
         if (!bot || !bot.inventory) return;
 
         // 主手 = 当前选中的快捷栏槽位（窗口槽位 36 + quickBarSlot）。供前端在快捷栏前单独显示「手持」。
@@ -74,6 +76,12 @@ module.exports = (botInstance) => {
                 held: index === heldSlot // 当前主手持有（选中的快捷栏格）
             };
         });
+
+        // 变更检测：签名涵盖 name/lore/count/held 全部展示字段；没变就不广播。
+        // force=true（新订阅者快照）必发。内容没变时 totals 也必然没变，trackItemFlow 一并省掉。
+        const sig = JSON.stringify(items);
+        if (!force && sig === lastSentSig) return;
+        lastSentSig = sig;
 
         botInstance.io.to(botInstance._room).to('admin').emit(ServerEvents.INVENTORY, {
             user: bot.username,
@@ -218,14 +226,15 @@ module.exports = (botInstance) => {
         }, 400);
     };
 
-    // 事件驱动同步加防抖：挖矿/战斗时槽位会连续变动，合并 150ms 内的多次事件为一次全量解析+推送
+    // 事件驱动同步加防抖：挖矿/战斗时槽位会连续变动，合并 400ms 内的多次事件为一次全量解析+推送
+    //（拾取流可达每秒数次 × 全槽 NBT 解析 10-30KB；400ms 对 UI 无感，但把解析/广播频率砍掉一大截）
     let syncDebounceTimer = null;
     const scheduleSync = () => {
         if (syncDebounceTimer) return; // 已排程，本轮事件合并
         syncDebounceTimer = setTimeout(() => {
             syncDebounceTimer = null;
             syncInventory();
-        }, 150);
+        }, 400);
     };
 
     bot.on('playerCollect', scheduleSync);
@@ -233,7 +242,8 @@ module.exports = (botInstance) => {
 
     // 每 10 秒强制全量同步一次，防止漏包。
     // MODB-11：无人观看时跳过这一拍兜底——背包改动本就由 updateSlot/playerCollect 事件实时驱动同步，
-    // 兜底只为补漏包；没人看就不必周期性触发全量解析。有人看时照常兜底（且 syncInventory 内已有变更检测，无变化也只是廉价空跑）。
+    // 兜底只为补漏包；没人看就不必周期性触发全量解析。有人看时 syncInventory 内的签名去重保证无变化不广播。
+    // 注意：重连前端的背包首帧不靠这里——唯一快照通道是 handlers.ts 连接时的 syncInventory(true)。
     botInstance.timers = botInstance.timers || [];
     const inventoryTimer = setInterval(() => {
         if (!botInstance.hasWatchers()) return; // 无人看：跳过兜底全量同步
