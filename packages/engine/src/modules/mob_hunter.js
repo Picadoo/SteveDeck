@@ -391,18 +391,23 @@ module.exports = (botInstance) => {
     };
 
     // 标记被其他玩家打过的怪 → 不抢
-    // E6：150ms 节流——每次任意实体受伤都全量遍历 bot.entities 找 10 格内玩家，
-    // 怪多/战斗密集时是 O(实体数×受伤事件) 热路径；150ms 内的后续受伤事件直接放过
-    //（「被玩家打过」标记本就有 TTL 容差，迟 150ms 标记无行为差异）。
-    let lastHurtScanAt = 0;
+    // E6：把热路径里的「全量遍历 bot.entities 找玩家」降为 150ms 缓存的玩家列表——
+    // 每个受伤事件都照常评估（横扫剑同 tick 打多只怪、姊妹事件不丢），但实体表扫描每 150ms 才做一次。
+    // 缓存的是实体对象引用，position 由 mineflayer 实时更新，距离判断不吃旧坐标。
+    let playerCacheAt = 0;
+    let playerCache = [];
     const handleEntityHurt = (entity) => {
         if (!botInstance.mobHunterTask.active || !entity || !entity.position) return;
         if (entity.type === 'player') return;
         const nowHurt = Date.now();
-        if (nowHurt - lastHurtScanAt < 150) return;
-        lastHurtScanAt = nowHurt;
-        for (const e of Object.values(bot.entities)) {
-            if (e.type === 'player' && e.username !== bot.username && e.position) {
+        if (nowHurt - playerCacheAt >= 150) {
+            playerCacheAt = nowHurt;
+            playerCache = Object.values(bot.entities).filter(
+                (e) => e.type === 'player' && e.username !== bot.username && e.position,
+            );
+        }
+        for (const e of playerCache) {
+            if (e.position) {
                 try {
                     if (e.position.distanceTo(entity.position) <= 10) {
                         const rec = damageHistory.get(entity.id) || {};

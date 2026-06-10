@@ -79,6 +79,13 @@ export default function Viewer({
     if (turnAcc.current.raf) cancelAnimationFrame(turnAcc.current.raf);
     turnAcc.current = { dx: 0, dy: 0, raf: 0 };
   };
+  // 拖动途中卸载（关弹窗/切 bot）：取消在途 rAF，不给已清理的 bot 再发 turn
+  useEffect(
+    () => () => {
+      if (turnAcc.current.raf) cancelAnimationFrame(turnAcc.current.raf);
+    },
+    [],
+  );
   const startGen = useRef(0); // 本地「代际」：每次启动 effect 自增，过期 ack 直接丢弃
 
   // 启动 / 切人称：服务端 startViewer 对同一 bot 幂等 + 原地重启（人称变才换端口），

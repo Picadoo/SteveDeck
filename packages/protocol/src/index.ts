@@ -277,10 +277,10 @@ export interface BotSummary {
   savedLocations?: SavedLocationSummary[];
 }
 
-/** 详情用的完整状态 */
+/** 详情用的完整状态。savedLocations 继承 BotSummary 的瘦身版——
+ * BOT_STATUS 线上载荷由 buildSummary 生成，从不携带完整 steps（覆写成 SavedLocation[] 是类型谎言）。 */
 export interface BotStatus extends BotSummary {
   combatConfig?: CombatConfig;
-  savedLocations?: SavedLocation[];
   schedules?: Schedule[];
 }
 
@@ -540,8 +540,36 @@ export interface Observation {
     vehicle?: string | null;
     dimension: string | null;
     gameMode: string | null;
+    /** 周身方块快照：脚下/脚部/头部 + 光照 + 群系（AI 导航/生存决策用） */
+    blocks?: {
+      below: string;
+      atFeet: string;
+      atHead: string;
+      lightLevel: number | null;
+      biome: string | null;
+    } | null;
+    /** 装备耐久剩余百分比（无耐久概念的物品为 null） */
+    equipmentDurability?: {
+      mainHand: number | null;
+      offHand: number | null;
+      head: number | null;
+      chest: number | null;
+      legs: number | null;
+      feet: number | null;
+    };
   } | null;
-  inventory: { name: string; count: number; displayName?: string; enchants?: string[] }[];
+  inventory: {
+    /** 窗口槽位号（equip(slot)/丢弃等操作需要） */
+    slot?: number;
+    name: string;
+    count: number;
+    displayName?: string;
+    enchants?: string[];
+    /** 耐久剩余百分比（无耐久为 null） */
+    durabilityPct?: number | null;
+  }[];
+  /** 主背包槽位统计（36 格；AI 判断「该去清包了吗」） */
+  inventorySlots?: { total: number; empty: number; used: number };
   /** realPlayer: 真实玩家（在线列表里有）；否则多为玩家型 NPC（Citizens 等）。health/maxHealth 服务器下发才有 */
   nearbyPlayers: {
     name: string;
@@ -577,7 +605,7 @@ export interface Observation {
   /** 机器人操作日志（动作/模块/脚本） */
   recentOps: string[];
   modules: Record<string, unknown>;
-  savedLocations: SavedLocation[];
+  savedLocations: SavedLocation[] | SavedLocationSummary[];
   scoreboard?: unknown;
   /** 服务器渲染到客户端可见处的文本（PAPI 常输出于此） */
   serverText?: {

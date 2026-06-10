@@ -19,8 +19,9 @@ export default function Toaster() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          onMouseEnter={() => pauseToast(t.id)}
-          onMouseLeave={() => resumeToast(t.id)}
+          // 仅鼠标悬停暂停：触屏点按会触发模拟 mouseenter 但 mouseleave 迟迟不来，toast 会永久滞留
+          onPointerEnter={(e) => e.pointerType === "mouse" && pauseToast(t.id)}
+          onPointerLeave={(e) => e.pointerType === "mouse" && resumeToast(t.id)}
           className={cn(
             "pointer-events-auto flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm shadow-lg",
             "animate-slide-in-right",

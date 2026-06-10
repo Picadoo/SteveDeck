@@ -449,7 +449,8 @@ function dispatchAction(
     case "scoreboard:get":
       return ok(inst.getScoreboard?.() ?? null);
     case "inventory:sync":
-      inst.syncInventory?.();
+      // 手动刷新 = 显式快照请求：force 绕过签名去重（否则内容没变时引擎不发包、UI 还报「已刷新」）
+      inst.syncInventory?.(true);
       return ok();
     case "inventory:drop":
       inst.recorder?.note?.("drop", { slot: Number(args.slot) });

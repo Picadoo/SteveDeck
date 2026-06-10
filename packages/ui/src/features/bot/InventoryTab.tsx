@@ -357,8 +357,13 @@ function ItemRow({
     if (!r.ok) pushToast(r.error || "操作失败", "error");
     else if (action !== "drop") onUse(item, action); // 丢弃不算「使用」，其余计入常用
   };
-  // 丢弃整组不可恢复：两段确认（第一次点变「确认?」，2.5s 内再点才丢）
-  const confirmDrop = useConfirmClick(() => void act("drop"));
+  // 丢弃整组不可恢复：两段确认（第一次点变「确认?」，2.5s 内再点才丢）。
+  // resetKey=物品身份：行按槽位复用，确认窗口内物品滑动换位（拾取/清理高频）必须重新确认。
+  const confirmDrop = useConfirmClick(
+    () => void act("drop"),
+    2500,
+    `${item.name}|${item.display}|${item.texture}|${item.count}`,
+  );
   const armor = isArmor(item.texture);
   const name = item.display || item.name || "";
   const hasTip = full && (!!item.lore || (item.enchants?.length ?? 0) > 0 || !!item.texture);

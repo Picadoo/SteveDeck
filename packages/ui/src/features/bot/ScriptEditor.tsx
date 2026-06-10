@@ -116,9 +116,13 @@ export default function ScriptEditor({
   const [entities, setEntities] = useState<string[]>([]);
   const [players, setPlayers] = useState<string[]>([]);
   const bot = useStore((st) => st.bots.find((b) => b.id === botId));
+  const pushToast = useStore((st) => st.pushToast);
   // 脏判断快照：打开时的脚本序列化结果；遮罩点击关闭前与当前比对，有改动先确认（防录制草稿一点蒸发）
   const baselineRef = useRef("");
 
+  // 丢稿确认走两段式 toast 而非 window.confirm——部分 WebView（Tauri 安卓等）的
+  // 原生 confirm 恒返回 falsy，会把「关不掉编辑器」写死。
+  const closeArmedAt = useRef(0);
   function requestClose() {
     let now: string;
     if (mode === "json") {
@@ -127,7 +131,12 @@ export default function ScriptEditor({
     } else {
       now = JSON.stringify(toScript(s));
     }
-    if (now !== baselineRef.current && !window.confirm("有未保存的修改，确定丢弃并关闭？")) return;
+    if (now !== baselineRef.current && Date.now() - closeArmedAt.current > 3000) {
+      closeArmedAt.current = Date.now();
+      pushToast("有未保存的修改——3 秒内再点一次关闭/取消将丢弃", "info");
+      return;
+    }
+    closeArmedAt.current = 0;
     onClose();
   }
   const requestCloseRef = useRef(requestClose);
@@ -291,7 +300,7 @@ export default function ScriptEditor({
         </div>
 
         <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
-          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button variant="ghost" onClick={requestClose}>取消</Button>
           <Button variant="primary" onClick={save}>保存</Button>
         </div>
       </div>

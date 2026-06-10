@@ -161,9 +161,12 @@ export const useStore = create<AppState>((set, get) => ({
       set((s) => ({
         toasts: s.toasts.map((t) => (t.id === dup.id ? { ...t, count: (t.count ?? 1) + 1 } : t)),
       }));
+      // 计时器不存在 = 用户正悬停暂停阅读 → 只加计数，不打破暂停语义
       const old = toastTimers.get(dup.id);
-      if (old) clearTimeout(old);
-      toastTimers.set(dup.id, setTimeout(() => get().dismissToast(dup.id), 4000));
+      if (old) {
+        clearTimeout(old);
+        toastTimers.set(dup.id, setTimeout(() => get().dismissToast(dup.id), 4000));
+      }
       return;
     }
     const id = ++toastSeq;
@@ -192,6 +195,8 @@ export const useStore = create<AppState>((set, get) => ({
   },
   resumeToast: (id) => {
     if (!get().toasts.some((t) => t.id === id)) return;
+    const old = toastTimers.get(id);
+    if (old) clearTimeout(old); // 防孤儿计时器（合并分支可能已重设过）
     const timer = setTimeout(() => get().dismissToast(id), 2000);
     toastTimers.set(id, timer);
   },
@@ -257,21 +262,8 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => {
       const idx = s.bots.findIndex((b) => b.id === bot.id);
       if (idx === -1) return { bots: [...s.bots, bot] };
-      // 无变化短路：引擎 30s 保活推送内容常与上次相同；不换引用就不触发
-      // 订阅 bots/单 bot 的整棵组件树（BotPanel/Sidebar 行/QuickCommands）重渲。
-      // 浅比较只看顶层标量+savedLocations/modules 的 JSON（小对象，微秒级）。
-      const prev = s.bots[idx] as unknown as Record<string, unknown>;
-      const incoming = bot as unknown as Record<string, unknown>;
-      let changed = false;
-      for (const k of Object.keys(incoming)) {
-        const a = prev[k];
-        const v = incoming[k];
-        if (a === v) continue;
-        if (typeof v === "object" && v !== null && JSON.stringify(a) === JSON.stringify(v)) continue;
-        changed = true;
-        break;
-      }
-      if (!changed) return {};
+      // 注：不做「无变化短路」——BOT_STATUS 的 uptime 每帧必变，短路永远打不中（复查证实是死优化）。
+      // 重渲收敛靠 BotRow/QuickCommands 的 memo + 未变化 bot 保留旧引用（slice 只换目标项）。
       const next = s.bots.slice();
       next[idx] = { ...next[idx], ...bot };
       return { bots: next };

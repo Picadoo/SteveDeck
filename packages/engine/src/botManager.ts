@@ -169,7 +169,9 @@ class BotManager {
         else {
           // 防漂移护栏：透传事件必须是 UI 已知消费的（engine.ts 监听清单）。
           // 不在名单 → 大概率是「引擎发了、前端没人听」的死推送，警告一次但照常透传（不拦截，避免误杀）。
-          if (!PASSTHROUGH_EVENTS.has(event) && !warnedPassthrough.has(event)) {
+          // status/log/bot_error 属 translate 管辖——查不到 cfg（bot 刚删的竞态）才落到这里，不算漂移，豁免告警。
+          const TRANSLATED = event === "status" || event === "log" || event === "bot_error";
+          if (!TRANSLATED && !PASSTHROUGH_EVENTS.has(event) && !warnedPassthrough.has(event)) {
             warnedPassthrough.add(event);
             logger.warn(`[broadcast] 透传了 UI 未知事件 "${event}"——若是新增事件请加入 PASSTHROUGH_EVENTS 白名单，否则它没有任何前端消费者`);
           }

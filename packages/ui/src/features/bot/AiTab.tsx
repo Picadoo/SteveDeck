@@ -44,8 +44,13 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
     const r = await cmd.observe(bot.id);
     if (alive && !alive()) return;
     setLoading(false);
-    if (r.ok) setObs(r.data as Observation);
-    else setLoadErr(r.error || "获取感知失败"); // 失败显示错误态而非永远转圈
+    if (r.ok) {
+      setObs(r.data as Observation);
+    } else {
+      setLoadErr(r.error || "获取感知失败"); // 空态显示错误卡+重试
+      // 已有旧数据时错误卡不渲染（界面仍显示旧快照）——必须 toast，否则刷新失败完全静默
+      if (obs) pushToast(r.error || "刷新感知失败（仍显示旧数据）", "error");
+    }
   }
   useEffect(() => {
     let cancelled = false;
@@ -124,11 +129,11 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
                   />
                   <Row k="手持" v={obs.self.heldItem || "—"} />
                   <Row k="维度 / 模式" v={`${obs.self.dimension || "—"} / ${obs.self.gameMode || "—"}`} />
-                  {(obs.self as any).blocks && (
+                  {obs.self.blocks && (
                     <>
-                      <Row k="脚下方块" v={(obs.self as any).blocks.below} />
-                      {(obs.self as any).blocks.biome && <Row k="群系" v={(obs.self as any).blocks.biome} />}
-                      {(obs.self as any).blocks.lightLevel != null && <Row k="光照" v={String((obs.self as any).blocks.lightLevel)} />}
+                      <Row k="脚下方块" v={obs.self.blocks.below} />
+                      {obs.self.blocks.biome && <Row k="群系" v={obs.self.blocks.biome} />}
+                      {obs.self.blocks.lightLevel != null && <Row k="光照" v={String(obs.self.blocks.lightLevel)} />}
                     </>
                   )}
                   {obs.self.effects && obs.self.effects.length > 0 && (
@@ -181,8 +186,8 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
                   }
                 />
                 <Row k="背包物品种类" v={String(obs.inventory.length)} />
-                {(obs as any).inventorySlots && (
-                  <Row k="背包容量" v={`${(obs as any).inventorySlots.used}/${(obs as any).inventorySlots.total} 格`} />
+                {obs.inventorySlots && (
+                  <Row k="背包容量" v={`${obs.inventorySlots.used}/${obs.inventorySlots.total} 格`} />
                 )}
               </div>
             </Card>

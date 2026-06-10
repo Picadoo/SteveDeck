@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { Bot, Plus, LogOut, Heart, Drumstick, Server, ChevronDown } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { StatusDot, IconButton, Badge } from "@/components/ui/primitives";
@@ -16,13 +16,16 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const [addOpen, setAddOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  // 稳定引用：行内闭包会让 memo(BotRow) 永远不等价
+  // 稳定引用：行内闭包会让 memo(BotRow) 永远不等价。
+  // onNavigate 走 ref——调用方若传内联箭头（每渲染新引用），不至于击穿全部 BotRow 的 memo。
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
   const onSelect = useCallback(
     (id: string) => {
       setSelected(id);
-      onNavigate?.();
+      onNavigateRef.current?.();
     },
-    [setSelected, onNavigate],
+    [setSelected],
   );
 
   // 按服务器（host）分组

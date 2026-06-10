@@ -46,11 +46,19 @@ export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.id]);
 
+  // 覆盖确认走两段式 toast 而非 window.confirm（部分 WebView 的原生 confirm 恒 falsy，会卡死流程）
+  const loadArm = useRef<{ name: string; at: number } | null>(null);
   async function load(n: string) {
     // 覆盖未保存的修改前先确认（编辑了半天点别的脚本一键蒸发是重灾区）
     if (baseline.current !== null && code !== baseline.current) {
-      if (!window.confirm(`当前代码有未保存的修改，加载「${n}」会丢弃这些修改。继续？`)) return;
+      const arm = loadArm.current;
+      if (!arm || arm.name !== n || Date.now() - arm.at > 3000) {
+        loadArm.current = { name: n, at: Date.now() };
+        pushToast(`当前代码有未保存的修改——3 秒内再点一次「${n}」将丢弃并加载`, "info");
+        return;
+      }
     }
+    loadArm.current = null;
     const r = await cmd.js.get(bot.id, n);
     if (r.ok && r.data) {
       setName(r.data.name);
