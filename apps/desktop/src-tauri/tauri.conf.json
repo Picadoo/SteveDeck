@@ -7,7 +7,7 @@
     "frontendDist": "../../../packages/ui/dist",
     "devUrl": "http://localhost:5273",
     "beforeDevCommand": "pnpm --filter @mcbot/ui dev",
-    "beforeBuildCommand": "pnpm --filter @mcbot/ui build"
+    "beforeBuildCommand": "cd ../../packages/ui && node node_modules/vite/bin/vite.js build"
   },
   "app": {
     "withGlobalTauri": true,

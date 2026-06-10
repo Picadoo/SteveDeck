@@ -88,6 +88,15 @@ fn restart_app(app: tauri::AppHandle) {
     app.restart();
 }
 
+// 前端调用：发系统通知（窗口收进托盘后，bot 死亡/被踢/掉线等关键事件用户才看得见）。
+// 走自定义命令而非把 notification 插件暴露给 JS——省 capability 配置，也不依赖前端打包插件 API。
+#[cfg(desktop)]
+#[tauri::command]
+fn notify_user(app: tauri::AppHandle, title: String, body: String) {
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
 // 让系统分配一个空闲端口（绑 127.0.0.1:0 拿到端口后立刻释放给引擎用）
 #[cfg(desktop)]
 fn pick_free_port() -> u16 {
@@ -186,6 +195,16 @@ pub fn run() {
     #[cfg(desktop)]
     {
         builder = builder
+            // 单实例锁必须最先注册：双击两次图标 = 两个进程 + 两个内置引擎写同一个
+            // AppData/engine-data/bots.json 互相覆盖。第二实例启动时唤起已有窗口后自动退出。
+            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+            }))
+            .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_autostart::init(
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 None,
@@ -194,7 +213,8 @@ pub fn run() {
                 engine_info,
                 get_engine_config,
                 set_engine_config,
-                restart_app
+                restart_app,
+                notify_user
             ])
             .setup(|app| {
                 // 引擎来源：配置为「远程」则不起内置引擎、直接用远程地址；否则起内置（失败不致命）
@@ -264,6 +284,19 @@ pub fn run() {
                 if let WindowEvent::CloseRequested { api, .. } = event {
                     let _ = window.hide();
                     api.prevent_close();
+                    // 首次收托盘弹一次系统通知——不少用户以为点 X 就退出了，其实机器人还在挂机
+                    use std::sync::atomic::{AtomicBool, Ordering};
+                    static TRAY_HINTED: AtomicBool = AtomicBool::new(false);
+                    if !TRAY_HINTED.swap(true, Ordering::Relaxed) {
+                        use tauri_plugin_notification::NotificationExt;
+                        let _ = window
+                            .app_handle()
+                            .notification()
+                            .builder()
+                            .title("mc-bot-player 仍在运行")
+                            .body("已最小化到托盘，机器人继续挂机。点击托盘图标可重新打开窗口。")
+                            .show();
+                    }
                 }
             });
     }

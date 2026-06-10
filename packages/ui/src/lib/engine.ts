@@ -155,6 +155,26 @@ export function isTauri(): boolean {
   return tauriInvoke() !== null;
 }
 
+// ===== 桌面系统通知（关键事件兜底）=====
+// 窗口收进托盘（document.hidden）后，bot 死亡/被踢/致命错误在 UI 里弹 toast 用户也看不见——
+// 经 Rust notify_user 命令发 Windows 系统通知。同键 60s 冷却防重连风暴刷屏。
+const lastNotifyAt: Record<string, number> = {};
+function notifyDesktop(key: string, title: string, body: string): void {
+  const inv = tauriInvoke();
+  if (!inv) return; // 非桌面壳：浏览器场景不打系统通知
+  if (typeof document !== "undefined" && !document.hidden) return; // 窗口可见：UI 内反馈已足够
+  const nowMs = Date.now();
+  if (nowMs - (lastNotifyAt[key] ?? 0) < 60000) return;
+  lastNotifyAt[key] = nowMs;
+  inv("notify_user", { title, body }).catch(() => {
+    /* 旧壳无此命令：静默忽略 */
+  });
+}
+function botName(id: string): string {
+  const b = useStore.getState().bots.find((x) => x.id === id);
+  return b ? `${b.username}@${b.host}` : "机器人";
+}
+
 /** 读引擎来源配置（内置/远程）；非 Tauri 返回 null */
 export async function getEngineConfig(): Promise<{ mode: string; url: string; token: string } | null> {
   const inv = tauriInvoke();
@@ -227,10 +247,17 @@ export function connect(url: string, token: string): void {
   );
   socket.on(ServerEvents.BOT_DELETED, (p: { id: string }) => useStore.getState().removeBot(p.id));
   socket.on(ServerEvents.BOT_LOG, (p: { id: string; line: LogLine }) => {
-    if (p.id) useStore.getState().appendLog(p.id, p.line);
+    if (!p.id) return;
+    useStore.getState().appendLog(p.id, p.line);
+    // 桌面壳 + 窗口收进托盘时：死亡/被踢这类关键事件发系统通知（窗口可见时 UI 内日志/toast 已足够）
+    const t = p.line?.text || "";
+    if (t.includes("机器人死亡")) notifyDesktop(`death:${p.id}`, botName(p.id), "机器人死亡，正在自动复活");
+    else if (t.includes("被服务器踢出")) notifyDesktop(`kick:${p.id}`, botName(p.id), t);
   });
   socket.on(ServerEvents.BOT_ERROR, (p: { id: string; error: string }) => {
-    if (p.id) useStore.getState().appendLog(p.id, { time: now(), text: p.error, level: "error" });
+    if (!p.id) return;
+    useStore.getState().appendLog(p.id, { time: now(), text: p.error, level: "error" });
+    notifyDesktop(`err:${p.id}`, botName(p.id), p.error);
   });
   // 按实例 ID(_bid) 归档，避免同名机器人（不同服务器）串台；老引擎无 _bid 时回退用户名
   socket.on(ServerEvents.INVENTORY, (p: { user: string; _bid?: string; items: InventoryItem[] }) => {
