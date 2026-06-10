@@ -12,8 +12,9 @@ services:
       - mcbot-data:/data
     environment:
       - PORT=8723
-      # 留空则首次启动自动生成令牌（见容器日志）；也可固定：
-      # - ENGINE_TOKEN=your-strong-token
+      # 经 --env-file 注入（deploy-tencent.ps1 首次部署自动生成并持久化）；
+      # 留空则引擎首次启动自动生成令牌（见容器日志 / 数据卷）
+      - ENGINE_TOKEN=${ENGINE_TOKEN:-}
     healthcheck:
       test:
         - CMD
