@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@mcbot/protocol": "workspace:*",
-    "canvas": "^3.2.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.0.1",

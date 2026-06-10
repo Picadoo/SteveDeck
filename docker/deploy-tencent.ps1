@@ -1,4 +1,4 @@
-# 部署 mc-bot-player 引擎(含网页客户端)到腾讯云服务器 — 在仓库根目录运行
+﻿# 部署 mc-bot-player 引擎(含网页客户端)到腾讯云服务器 — 在仓库根目录运行
 # 用法: .\docker\deploy-tencent.ps1            # 默认广东服务器
 #       .\docker\deploy-tencent.ps1 -Server seoul
 #
