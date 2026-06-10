@@ -13,6 +13,7 @@ import { useStore } from "@/store/useStore";
 import { Button, Input, Badge, StatusDot } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
+import { usePageVisible } from "@/lib/usePageVisible";
 import { computeMetrics, loadCfg, saveCfg, defaultCfg, type HeaderCfg } from "@/lib/headerMetrics";
 import HeaderMetricsConfig from "./HeaderMetricsConfig";
 import AddBotDialog, { type EditInitial } from "./AddBotDialog";
@@ -51,9 +52,11 @@ export default function BotPanel() {
   useEffect(() => {
     if (host) setMetricsCfg(loadCfg(host));
   }, [host]);
+  const visible = usePageVisible();
   useEffect(() => {
     const id = bot?.id;
     if (!id || !bot?.online || (metricsCfg.pinned.length === 0 && !metricsCfgOpen)) return;
+    if (!visible) return; // 页面后台：暂停计分板轮询（恢复可见时立即拉一次）
     let live = true;
     const poll = async () => {
       const r = await cmd.moduleAction(id, "scoreboard", "get");
@@ -69,7 +72,7 @@ export default function BotPanel() {
       clearInterval(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bot?.id, bot?.online, metricsCfg.pinned.length, metricsCfgOpen]);
+  }, [bot?.id, bot?.online, metricsCfg.pinned.length, metricsCfgOpen, visible]);
 
   if (!bot) {
     return (

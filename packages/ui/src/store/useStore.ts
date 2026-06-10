@@ -21,6 +21,9 @@ let toastSeq = 0;
 const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
 const MAX_LOG_LINES = 500;
+// 日志渲染序号：单调递增，给 React 当稳定 key。满 500 条后 appendLog 是滑动窗口，
+// 基于内容/下标的 key 会整窗左移 → 500 行 unmount+remount（低端机 30-80ms/条）。
+let logSeq = 0;
 
 /** 脚本运行时反馈（来自引擎 script_status/progress/error/vars），按机器人 id 键 */
 export interface ScriptRuntime {
@@ -232,6 +235,21 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => {
       const idx = s.bots.findIndex((b) => b.id === bot.id);
       if (idx === -1) return { bots: [...s.bots, bot] };
+      // 无变化短路：引擎 30s 保活推送内容常与上次相同；不换引用就不触发
+      // 订阅 bots/单 bot 的整棵组件树（BotPanel/Sidebar 行/QuickCommands）重渲。
+      // 浅比较只看顶层标量+savedLocations/modules 的 JSON（小对象，微秒级）。
+      const prev = s.bots[idx] as unknown as Record<string, unknown>;
+      const incoming = bot as unknown as Record<string, unknown>;
+      let changed = false;
+      for (const k of Object.keys(incoming)) {
+        const a = prev[k];
+        const v = incoming[k];
+        if (a === v) continue;
+        if (typeof v === "object" && v !== null && JSON.stringify(a) === JSON.stringify(v)) continue;
+        changed = true;
+        break;
+      }
+      if (!changed) return {};
       const next = s.bots.slice();
       next[idx] = { ...next[idx], ...bot };
       return { bots: next };
@@ -276,6 +294,7 @@ export const useStore = create<AppState>((set, get) => ({
     }),
   appendLog: (id, line) =>
     set((s) => {
+      line.seq = ++logSeq;
       const prev = s.logs[id] ?? [];
       const next = prev.length >= MAX_LOG_LINES ? [...prev.slice(prev.length - MAX_LOG_LINES + 1), line] : [...prev, line];
       return { logs: { ...s.logs, [id]: next } };

@@ -3,6 +3,7 @@ import { Settings2, FileCode2, Pickaxe } from "lucide-react";
 import { Card, Switch, Button, Input } from "@/components/ui/primitives";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
+import { usePageVisible } from "@/lib/usePageVisible";
 import { MODULES, defaultConfig, type ModuleDef } from "./moduleDefs";
 import ModuleConfigDialog from "./ModuleConfigDialog";
 import AutoUsePanel from "./AutoUsePanel";
@@ -86,19 +87,25 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
     ...(moduleConfigs[`${bot.id}:${def.key}`] || {}),
   });
 
-  // 实时统计轮询（仅在线 + 有激活的统计型模块时）
+  // 实时统计轮询（仅在线 + 有激活的统计型模块时 + 页面可见时）
+  const visible = usePageVisible();
   useEffect(() => {
     const active = MODULES.filter((d) => STATS_MODULES.has(d.key) && isActive(d));
     if (!bot.online || active.length === 0) {
       setStats({});
       return;
     }
+    if (!visible) return; // 页面后台：暂停拉取（恢复可见时立即拉一次）
     let cancelled = false;
     const poll = async () => {
+      // 攒一次 setStats：循环里逐个 set 各隔一个 await，React 18 不会合并成一次渲染
+      const merged: Record<string, any> = {};
       for (const d of active) {
         const r = await cmd.moduleAction(bot.id, d.key, "stats");
-        if (!cancelled && r.ok && r.data) setStats((s) => ({ ...s, [d.key]: r.data }));
+        if (cancelled) return;
+        if (r.ok && r.data) merged[d.key] = r.data;
       }
+      if (Object.keys(merged).length) setStats((s) => ({ ...s, ...merged }));
     };
     poll();
     const t = setInterval(poll, 3500);
@@ -107,7 +114,7 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
       clearInterval(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bot.id, bot.online, bot.modules.autofarm, bot.modules.automine, bot.modules.mobhunter]);
+  }, [bot.id, bot.online, bot.modules.autofarm, bot.modules.automine, bot.modules.mobhunter, visible]);
 
   function onToggle(def: ModuleDef, active: boolean) {
     setOpt(def.key, active); // 立即反映，开关即时动画

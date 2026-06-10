@@ -1,7 +1,7 @@
 // 快捷指令条：底部一排可点按钮（点了就发对应指令）+ 齿轮里编辑。
 // 通用可配置（按 host 存）；发送复用引擎的 chat 通道（聊天框发 /指令 就是它）。
 // 只提供指令、不提供快捷键（安卓收不到按键；客户端菜单键无头 bot 也按不出来）。
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Zap, Settings2, Plus, Trash2 } from "lucide-react";
 import { Button, Input } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
@@ -11,7 +11,7 @@ import { loadQuickCmds, saveQuickCmds, newQuickCmdId, type QuickCmd } from "@/li
 import { cn } from "@/lib/cn";
 import type { BotSummary } from "@mcbot/protocol";
 
-export default function QuickCommands({ bot }: { bot: BotSummary }) {
+function QuickCommands({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const pushCmd = useStore((s) => s.pushCmd);
   const [list, setList] = useState<QuickCmd[]>([]);
@@ -96,6 +96,12 @@ export default function QuickCommands({ bot }: { bot: BotSummary }) {
     </>
   );
 }
+
+// memo：组件只读 bot 的 id/host/online 三个字段；每 2s 的状态推送（坐标/血量变化）不再重渲指令条
+export default memo(
+  QuickCommands,
+  (a, b) => a.bot.id === b.bot.id && a.bot.host === b.bot.host && a.bot.online === b.bot.online,
+);
 
 /** 编辑器：增删行、改名字/指令。只配「名字 + 指令」，不再有触发键。 */
 function QuickCmdEditor({

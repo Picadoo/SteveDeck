@@ -304,6 +304,8 @@ export interface LogLine {
   level?: "info" | "warn" | "error" | "chat" | "actionbar";
   /** 服务器聊天的可点击/可悬浮片段；有则前端渲染成可点按钮/悬浮提示 */
   segments?: ChatSegment[];
+  /** 前端本地渲染序号（appendLog 时赋值，引擎不发送）：滑动窗口下稳定且唯一的 React key */
+  seq?: number;
 }
 
 export interface ConnectionInfo {

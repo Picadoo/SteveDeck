@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2, Copy, ArrowDownToLine, MousePointerClick, X } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
@@ -11,7 +11,7 @@ import type { LogLine, ChatSegment } from "@mcbot/protocol";
 // 模块级稳定空数组：避免 zustand v5 选择器返回新引用导致无限重渲染
 const EMPTY_LOGS: LogLine[] = [];
 
-export default function Console({ botId }: { botId: string }) {
+function Console({ botId }: { botId: string }) {
   const logs = useStore((s) => s.logs[botId]) ?? EMPTY_LOGS;
   const clearLog = useStore((s) => s.clearLog);
   const pushToast = useStore((s) => s.pushToast);
@@ -24,20 +24,24 @@ export default function Console({ botId }: { botId: string }) {
 
   // 过滤规则：去 §/& 色码后按纯文本匹配（=屏幕上看到的字）。
   // 空格分词=「且」(全部命中)；以 - 开头的词=「排除」。例：输入 `-金币猪` 滤掉刷怪刷屏，`暴击 -金币猪` 看非刷怪的暴击。
+  // useMemo：500 条日志 × mcPlain 每次渲染重算不便宜，挂机日志页是全 UI 最热的列表。
   const needle = filter.trim().toLowerCase();
-  const terms = needle.split(/\s+/).filter(Boolean);
-  const incl = terms.filter((t) => !t.startsWith("-"));
-  const excl = terms.filter((t) => t.startsWith("-") && t.length > 1).map((t) => t.slice(1));
-  // actionbar 与聊天同归「消息」类（一起显示），「操作」里排除它俩
-  const isMsg = (lv?: string) => lv === "chat" || lv === "actionbar";
-  const byLevel = logs.filter(
-    (l) => !(level === "chat" && !isMsg(l.level)) && !(level === "op" && isMsg(l.level)),
-  );
-  const shown = byLevel.filter((l) => {
-    if (!terms.length) return true;
-    const t = mcPlain(l.text).toLowerCase();
-    return incl.every((w) => t.includes(w)) && !excl.some((w) => t.includes(w));
-  });
+  const terms = useMemo(() => needle.split(/\s+/).filter(Boolean), [needle]);
+  const { byLevel, shown } = useMemo(() => {
+    const incl = terms.filter((t) => !t.startsWith("-"));
+    const excl = terms.filter((t) => t.startsWith("-") && t.length > 1).map((t) => t.slice(1));
+    // actionbar 与聊天同归「消息」类（一起显示），「操作」里排除它俩
+    const isMsg = (lv?: string) => lv === "chat" || lv === "actionbar";
+    const byLevel = logs.filter(
+      (l) => !(level === "chat" && !isMsg(l.level)) && !(level === "op" && isMsg(l.level)),
+    );
+    const shown = byLevel.filter((l) => {
+      if (!terms.length) return true;
+      const t = mcPlain(l.text).toLowerCase();
+      return incl.every((w) => t.includes(w)) && !excl.some((w) => t.includes(w));
+    });
+    return { byLevel, shown };
+  }, [logs, level, terms]);
 
   useEffect(() => {
     if (!autoScroll) return;
@@ -124,10 +128,11 @@ export default function Console({ botId }: { botId: string }) {
           </div>
         ) : (
           shown.map((l, i) => (
-            // 稳定复合 key：纯 index 在切级别/过滤后会让 React 复用错位 DOM（McText 记忆化下串色）。
-            // 用 时间+文本前缀 提供稳定性，末尾仍带 i 兜底，避免同时刻同文本撞 key。
+            // 首选 seq（appendLog 赋的单调序号）：滑动窗口/过滤/切级别下都稳定且唯一——
+            // 旧的「内容+下标」复合 key 在满 500 条滑窗后每条新日志都让全部 key 左移（500 行重建）。
+            // 旧日志（无 seq，热重载残留）退回复合 key。
             <div
-              key={`${l.time}-${l.text.slice(0, 24)}-${i}`}
+              key={l.seq ?? `${l.time}-${l.text.slice(0, 24)}-${i}`}
               className={cn(
                 "whitespace-pre-wrap break-words",
                 l.level === "error" && "text-danger",
@@ -236,6 +241,9 @@ function SegmentLine({ segments, botId }: { segments: ChatSegment[]; botId: stri
     </>
   );
 }
+
+// memo：props 只有 botId；选中 bot 每 2s 的状态推送重渲 BotPanel 时不再连带整树重渲日志页
+export default memo(Console);
 
 function ToolBtn({
   active,

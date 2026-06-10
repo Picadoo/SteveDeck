@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { Bot, Plus, LogOut, Heart, Drumstick, Server, ChevronDown } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { StatusDot, IconButton, Badge } from "@/components/ui/primitives";
@@ -15,6 +15,15 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const conn = useStore((s) => s.conn);
   const [addOpen, setAddOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  // 稳定引用：行内闭包会让 memo(BotRow) 永远不等价
+  const onSelect = useCallback(
+    (id: string) => {
+      setSelected(id);
+      onNavigate?.();
+    },
+    [setSelected, onNavigate],
+  );
 
   // 按服务器（host）分组
   const groups = useMemo(() => {
@@ -83,14 +92,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     <ul className="space-y-0.5">
                       {g.list.map((b) => (
                         <li key={b.id}>
-                          <BotRow
-                            bot={b}
-                            active={b.id === selectedId}
-                            onClick={() => {
-                              setSelected(b.id);
-                              onNavigate?.();
-                            }}
-                          />
+                          <BotRow bot={b} active={b.id === selectedId} onSelect={onSelect} />
                         </li>
                       ))}
                     </ul>
@@ -124,11 +126,20 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function BotRow({ bot, active, onClick }: { bot: BotSummary; active: boolean; onClick: () => void }) {
+// memo：任一 bot 的状态推送只重渲它自己的行（upsertBot 对未变化 bot 保留旧引用 + 无变化短路）
+const BotRow = memo(function BotRow({
+  bot,
+  active,
+  onSelect,
+}: {
+  bot: BotSummary;
+  active: boolean;
+  onSelect: (id: string) => void;
+}) {
   const pct = healthPct(bot);
   return (
     <button
-      onClick={onClick}
+      onClick={() => onSelect(bot.id)}
       className={cn(
         "group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
         active ? "bg-surface-2" : "hover:bg-surface-2/60",
@@ -159,4 +170,4 @@ function BotRow({ bot, active, onClick }: { bot: BotSummary; active: boolean; on
       )}
     </button>
   );
-}
+});

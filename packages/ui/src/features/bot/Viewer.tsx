@@ -62,6 +62,22 @@ export default function Viewer({
   const [cmdText, setCmdText] = useState("");
   const lastStates = useRef("");
   const dragRef = useRef<{ x: number; y: number } | null>(null);
+  // 拖动转向 rAF 合帧：pointermove 在高刷鼠标可达 125-1000Hz，逐事件直发 socket
+  // 每次还建一个 8s ack 计时器；改为帧内累加 dx/dy、每帧最多发一次。
+  const turnAcc = useRef({ dx: 0, dy: 0, raf: 0 });
+  const flushTurn = () => {
+    turnAcc.current.raf = 0;
+    const { dx, dy } = turnAcc.current;
+    if (dx === 0 && dy === 0) return;
+    turnAcc.current.dx = 0;
+    turnAcc.current.dy = 0;
+    cmd.control.turn(bot.id, dx * 0.012, dy * 0.012); // 水平转身体，竖直俯仰
+  };
+  const stopDrag = () => {
+    dragRef.current = null;
+    if (turnAcc.current.raf) cancelAnimationFrame(turnAcc.current.raf);
+    turnAcc.current = { dx: 0, dy: 0, raf: 0 };
+  };
   const startGen = useRef(0); // 本地「代际」：每次启动 effect 自增，过期 ack 直接丢弃
 
   // 启动 / 切人称：服务端 startViewer 对同一 bot 幂等 + 原地重启（人称变才换端口），
@@ -349,10 +365,12 @@ export default function Viewer({
               const dy = e.clientY - dragRef.current.y;
               if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
               dragRef.current = { x: e.clientX, y: e.clientY };
-              cmd.control.turn(bot.id, dx * 0.012, dy * 0.012); // 水平转身体，竖直俯仰
+              turnAcc.current.dx += dx;
+              turnAcc.current.dy += dy;
+              if (!turnAcc.current.raf) turnAcc.current.raf = requestAnimationFrame(flushTurn);
             }}
-            onPointerUp={() => (dragRef.current = null)}
-            onPointerCancel={() => (dragRef.current = null)}
+            onPointerUp={stopDrag}
+            onPointerCancel={stopDrag}
           />
         )}
 

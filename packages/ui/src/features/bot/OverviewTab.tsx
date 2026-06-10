@@ -27,6 +27,7 @@ import {
 import { Card } from "@/components/ui/primitives";
 import { loadOverviewPrefs, saveOverviewPrefs, OVERVIEW_CARDS } from "@/lib/overviewPrefs";
 import { cmd } from "@/lib/engine";
+import { usePageVisible } from "@/lib/usePageVisible";
 import McText from "@/components/McText";
 import { cnMob } from "@/lib/mobNames";
 import { classifyNearby, KIND_ORDER, KIND_LABEL, KIND_COLOR, type NearbyKind } from "@/lib/entityKind";
@@ -70,12 +71,14 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
   const m = bot.modules;
 
   // 实时感知 + 活动统计轮询
+  const visible = usePageVisible();
   useEffect(() => {
     if (!bot.online) {
       setObs(null);
       setStats({});
       return;
     }
+    if (!visible) return; // 页面后台：暂停拉取（恢复可见时 visible 变化触发重跑、立即拉一次）
     let cancelled = false;
     const poll = async () => {
       const r = await cmd.observe(bot.id);
@@ -84,10 +87,14 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
       if (m.automine) jobs.push(["automine", "automine"]);
       if (m.autofarm) jobs.push(["autofarm", "auto_farm"]);
       if (m.mobhunter) jobs.push(["mobhunter", "mob_hunter"]);
+      // 攒一次 setStats：循环里逐个 set 各隔一个 await，React 18 不会合并成一次渲染
+      const merged: Record<string, any> = {};
       for (const [k, mk] of jobs) {
         const s = await cmd.moduleAction(bot.id, mk, "stats");
-        if (!cancelled && s.ok && s.data) setStats((p) => ({ ...p, [k]: s.data }));
+        if (cancelled) return;
+        if (s.ok && s.data) merged[k] = s.data;
       }
+      if (Object.keys(merged).length) setStats((p) => ({ ...p, ...merged }));
     };
     poll();
     const t = setInterval(poll, Math.max(1, prefs.intervalSec) * 1000);
@@ -97,7 +104,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
     };
     // UIFEAT-4：只依赖 poll 实际读取的模块标志，去掉无关的 combat/fishing/trashcleaner（避免无谓重建 interval）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bot.id, bot.online, prefs.intervalSec, m.automine, m.autofarm, m.mobhunter]);
+  }, [bot.id, bot.online, prefs.intervalSec, m.automine, m.autofarm, m.mobhunter, visible]);
 
   if (!bot.online) {
     return (
