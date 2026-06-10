@@ -25,13 +25,9 @@ export default function Modal({
   footer?: ReactNode;
   size?: keyof typeof SIZES;
 }) {
-  // onClose 存进 ref：调用方常传内联箭头，每次父级重渲都换新引用。
-  // 若把它放进下面 effect 依赖，会导致每渲染都拆/挂 keydown 监听并重置 overflow（轻微闪烁）。
-  // 用 ref 读最新回调，effect 依赖只留 [open]。
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  // UICORE-4：打开时按 Esc 关闭 + 锁 body 滚动（关闭/卸载时还原）。
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -50,19 +46,23 @@ export default function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
         aria-hidden
       />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={cn(
           "relative z-10 flex max-h-[88vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl",
+          "animate-modal-in",
           SIZES[size],
         )}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
           <h2 className="text-sm font-semibold">{title}</h2>
-          <button onClick={onClose} className="text-muted transition-colors hover:text-fg">
+          <button onClick={onClose} aria-label="关闭" className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg">
             <X className="h-4 w-4" />
           </button>
         </div>

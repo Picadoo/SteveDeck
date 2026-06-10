@@ -4,6 +4,7 @@ import { Card, Button, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
+import Modal from "@/components/ui/Modal";
 import ScriptEditor from "./ScriptEditor";
 import CustomJsPanel from "./CustomJsPanel";
 import type { BotSummary, ScriptSummary, BotScript } from "@mcbot/protocol";
@@ -97,8 +98,10 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
     await cmd.script.stop(bot.id);
     refresh();
   }
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   async function remove(name: string) {
     await cmd.script.remove(name);
+    pushToast("脚本已删除", "success");
     refresh();
   }
 
@@ -166,7 +169,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
         <Button size="sm" variant="ghost" onClick={() => openEdit(s.name)} title="编辑">
           <Pencil className="h-3.5 w-3.5" />
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => remove(s.name)} title="删除">
+        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(s.name)} title="删除">
           <Trash2 className="h-3.5 w-3.5 text-danger" />
         </Button>
       </div>
@@ -337,6 +340,21 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
             onClose={() => setEditing({ open: false, initial: null })}
             onSave={handleSave}
           />
+
+          <Modal
+            open={!!confirmDelete}
+            onClose={() => setConfirmDelete(null)}
+            title="确认删除"
+            size="sm"
+            footer={
+              <>
+                <Button variant="secondary" onClick={() => setConfirmDelete(null)}>取消</Button>
+                <Button variant="danger" onClick={() => { if (confirmDelete) remove(confirmDelete); setConfirmDelete(null); }}>删除</Button>
+              </>
+            }
+          >
+            <p className="text-sm">确定要删除脚本「{confirmDelete}」吗？此操作不可撤销。</p>
+          </Modal>
         </>
       )}
     </div>

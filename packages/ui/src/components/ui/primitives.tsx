@@ -14,10 +14,10 @@ export function Button({
   size?: ButtonSize;
 }) {
   const variants: Record<ButtonVariant, string> = {
-    primary: "bg-accent text-accent-fg hover:opacity-90 shadow-sm",
-    secondary: "bg-surface-2 text-fg hover:bg-border/60 border border-border",
-    ghost: "text-fg hover:bg-surface-2",
-    danger: "bg-danger text-white hover:opacity-90",
+    primary: "bg-accent text-accent-fg hover:opacity-90 active:scale-[0.97] shadow-sm",
+    secondary: "bg-surface-2 text-fg hover:bg-border/60 active:scale-[0.97] border border-border",
+    ghost: "text-fg hover:bg-surface-2 active:scale-[0.97]",
+    danger: "bg-danger text-white hover:opacity-90 active:scale-[0.97]",
   };
   const sizes: Record<ButtonSize, string> = {
     sm: "h-8 px-3 text-xs gap-1.5",
@@ -26,7 +26,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-lg font-medium transition-colors no-drag",
+        "inline-flex items-center justify-center rounded-lg font-medium transition no-drag",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:opacity-50 disabled:pointer-events-none",
         variants[variant],
         sizes[size],
@@ -44,8 +44,8 @@ export function IconButton({
   return (
     <button
       className={cn(
-        "inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors no-drag",
-        "hover:bg-surface-2 hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition no-drag",
+        "hover:bg-surface-2 hover:text-fg active:scale-[0.93] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
         className,
       )}
       {...props}

@@ -276,7 +276,7 @@ export default function BotPanel() {
           placeholder={bot.online ? "发送聊天 / 命令（如 /home）· ↑ 翻历史" : "机器人离线"}
           disabled={!bot.online}
         />
-        <Button type="submit" variant="primary" disabled={!bot.online || !chat.trim()}>
+        <Button type="submit" variant="primary" disabled={!bot.online || !chat.trim()} aria-label="发送">
           <Send className="h-4 w-4" />
         </Button>
       </form>

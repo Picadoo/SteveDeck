@@ -5,6 +5,7 @@ import McText from "@/components/McText";
 import { cnMob } from "@/lib/mobNames";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
+import { cn } from "@/lib/cn";
 import Viewer from "./Viewer";
 import ViewerModal from "./ViewerModal";
 import SimKeys from "./SimKeys";
@@ -31,14 +32,20 @@ export default function LiveTab({ bot }: { bot: BotSummary }) {
   const [showHolo, setShowHolo] = useState(false); // 是否展开全息文字
   const [containers, setContainers] = useState<Container[] | null>(null);
   const [xyz, setXyz] = useState({ x: "", y: "", z: "" });
+  const [scanningNpc, setScanningNpc] = useState(false);
+  const [scanningContainer, setScanningContainer] = useState(false);
 
   async function scanNpc() {
+    setScanningNpc(true);
     const r = await cmd.moduleAction<Npc[]>(bot.id, "npc", "scan");
+    setScanningNpc(false);
     if (r.ok) setNpcs(r.data ?? []);
     else pushToast(r.error || "扫描失败", "error");
   }
   async function scanContainers() {
+    setScanningContainer(true);
     const r = await cmd.moduleAction<Container[]>(bot.id, "container", "scan");
+    setScanningContainer(false);
     if (r.ok) setContainers(r.data ?? []);
     else pushToast(r.error || "扫描失败", "error");
   }
@@ -101,8 +108,8 @@ export default function LiveTab({ bot }: { bot: BotSummary }) {
         <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
           <Search className="h-4 w-4 text-accent" /> NPC / 生物
         </h3>
-        <Button size="sm" variant="secondary" disabled={disabled} onClick={scanNpc}>
-          <RefreshCw className="h-3.5 w-3.5" /> 扫描附近 32 格
+        <Button size="sm" variant="secondary" disabled={disabled || scanningNpc} onClick={scanNpc}>
+          <RefreshCw className={cn("h-3.5 w-3.5", scanningNpc && "animate-spin")} /> {scanningNpc ? "扫描中…" : "扫描附近 32 格"}
         </Button>
         {npcs &&
           (() => {
@@ -182,8 +189,8 @@ export default function LiveTab({ bot }: { bot: BotSummary }) {
           服务器菜单：底部聊天栏发命令（如 <code className="rounded bg-surface-2 px-1">/menu</code>、
           <code className="rounded bg-surface-2 px-1">/bp</code>），界面自动弹出。箱子直接扫描点开（会自动走过去）：
         </p>
-        <Button size="sm" variant="secondary" disabled={disabled} onClick={scanContainers}>
-          <RefreshCw className="h-3.5 w-3.5" /> 扫描附近箱子
+        <Button size="sm" variant="secondary" disabled={disabled || scanningContainer} onClick={scanContainers}>
+          <RefreshCw className={cn("h-3.5 w-3.5", scanningContainer && "animate-spin")} /> {scanningContainer ? "扫描中…" : "扫描附近箱子"}
         </Button>
         {containers && (
           <div className="mt-2 space-y-1">

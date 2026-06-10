@@ -1,7 +1,9 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { MapPin, Plus, Navigation, Trash2, Footprints, Terminal, ListChecks, Circle, Square } from "lucide-react";
 import { Card, Button, Input } from "@/components/ui/primitives";
+import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
+import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
 import type { BotSummary, SavedLocation } from "@mcbot/protocol";
 
@@ -15,10 +17,12 @@ function reachInfo(l: SavedLocation) {
 }
 
 export default function LocationsTab({ bot }: { bot: BotSummary }) {
+  const pushToast = useStore((s) => s.pushToast);
   const [name, setName] = useState("");
   const [command, setCommand] = useState("");
   const [rec, setRec] = useState<RecTarget | null>(null);
   const [recCount, setRecCount] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState<SavedLocation | null>(null);
   const locs = bot.savedLocations ?? [];
 
   // 录制中：轮询步数；引擎侧若停了则收起横幅
@@ -51,6 +55,9 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
     if (r.ok) {
       setName("");
       setCommand("");
+      pushToast("地点已保存", "success");
+    } else {
+      pushToast(r.error || "保存失败", "error");
     }
   }
 
@@ -167,7 +174,10 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
                     size="sm"
                     variant="secondary"
                     disabled={!bot.online || !!rec}
-                    onClick={() => cmd.moduleAction(bot.id, "location", "goto", { locationId: l.id })}
+                    onClick={async () => {
+                      const r = await cmd.moduleAction(bot.id, "location", "goto", { locationId: l.id });
+                      pushToast(r.ok ? "出发前往…" : (r.error || "前往失败"), r.ok ? "success" : "error");
+                    }}
                   >
                     <Navigation className="h-3.5 w-3.5" /> 前往
                   </Button>
@@ -183,7 +193,7 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => cmd.moduleAction(bot.id, "location", "delete", { locationId: l.id })}
+                    onClick={() => setConfirmDelete(l)}
                   >
                     <Trash2 className="h-3.5 w-3.5 text-danger" />
                   </Button>
@@ -193,6 +203,26 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
           })
         )}
       </div>
+
+      <Modal
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        title="确认删除"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmDelete(null)}>取消</Button>
+            <Button variant="danger" onClick={async () => {
+              if (!confirmDelete) return;
+              const r = await cmd.moduleAction(bot.id, "location", "delete", { locationId: confirmDelete.id });
+              pushToast(r.ok ? "地点已删除" : (r.error || "删除失败"), r.ok ? "success" : "error");
+              setConfirmDelete(null);
+            }}>删除</Button>
+          </>
+        }
+      >
+        <p className="text-sm">确定要删除地点「{confirmDelete?.name}」吗？此操作不可撤销。</p>
+      </Modal>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Copy, ArrowDownToLine, MousePointerClick } from "lucide-react";
+import { Trash2, Copy, ArrowDownToLine, MousePointerClick, X } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { cn } from "@/lib/cn";
@@ -78,13 +78,24 @@ export default function Console({ botId }: { botId: string }) {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="过滤…  空格=且, -词=排除（如 -金币猪）"
-            className="h-7 w-full rounded-lg border border-border bg-surface px-2 pr-14 text-xs outline-none focus:ring-2 focus:ring-accent/50"
+            className="h-7 w-full rounded-lg border border-border bg-surface px-2 pr-20 text-xs outline-none focus:ring-2 focus:ring-accent/50"
           />
-          {terms.length > 0 && (
-            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-mono text-[10px] text-muted">
-              {shown.length}/{byLevel.length}
-            </span>
-          )}
+          <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1">
+            {terms.length > 0 && (
+              <>
+                <span className="font-mono text-[10px] text-muted">
+                  {shown.length}/{byLevel.length}
+                </span>
+                <button
+                  onClick={() => setFilter("")}
+                  className="rounded p-0.5 text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                  title="清除过滤"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </>
+            )}
+          </div>
         </div>
         <ToolBtn
           active={clickableChat}
@@ -242,7 +253,7 @@ function ToolBtn({
       onClick={onClick}
       title={title}
       className={cn(
-        "rounded-md p-1.5 transition-colors",
+        "rounded-md p-2 transition active:scale-90",
         active ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface-2 hover:text-fg",
       )}
     >

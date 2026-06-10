@@ -60,12 +60,13 @@ export default function Joystick({
       style={{ width: size, height: size }}
     >
       <div
-        className="absolute rounded-full bg-white/80 shadow-lg transition-[background] active:bg-white"
+        className="absolute rounded-full bg-white/80 shadow-lg active:bg-white"
         style={{
           width: knobSize,
           height: knobSize,
           left: radius - knobSize / 2 + knob.x,
           top: radius - knobSize / 2 + knob.y,
+          transition: active.current ? "background 150ms" : "left 150ms ease-out, top 150ms ease-out, background 150ms",
         }}
       />
     </div>

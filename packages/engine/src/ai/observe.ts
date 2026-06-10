@@ -152,6 +152,39 @@ function isHostile(kind: any): boolean {
   return /hostile/i.test(String(kind || ""));
 }
 
+/** 物品耐久百分比：有最大耐久时返回剩余百分比，否则 null */
+function durabilityPct(item: any): number | null {
+  if (!item) return null;
+  try {
+    const maxDur = item.maxDurability;
+    if (typeof maxDur === "number" && maxDur > 0) {
+      const used = item.durabilityUsed ?? 0;
+      return Math.round(((maxDur - used) / maxDur) * 100);
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+/** 脚下/脚部/头部方块快照 */
+function blockScan(bot: any): any {
+  try {
+    const pos = bot.entity.position;
+    const below = bot.blockAt(pos.offset(0, -1, 0));
+    const feet = bot.blockAt(pos);
+    const head = bot.blockAt(pos.offset(0, 1, 0));
+    const blockName = (b: any) => b?.name || "unknown";
+    return {
+      below: blockName(below),
+      atFeet: blockName(feet),
+      atHead: blockName(head),
+      lightLevel: typeof feet?.light === "number" ? feet.light : (typeof feet?.skyLight === "number" ? feet.skyLight : null),
+      biome: below?.biome?.name ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** 把机器人当前可感知的世界状态整理成 AI 友好的快照。 */
 export function buildObservation(id: string): any {
   const inst = botManager.getInstance(id);
@@ -165,6 +198,7 @@ export function buildObservation(id: string): any {
     bot: { id: cfg.id, username: cfg.username, host: cfg.host, online },
     self: null,
     inventory: [],
+    inventorySlots: { total: 36, empty: 36, used: 0 },
     nearbyPlayers: [],
     nearbyEntities: [],
     recentChat: botManager.getRecentChat(id).slice(-20),
@@ -191,6 +225,9 @@ export function buildObservation(id: string): any {
   const slots = bot.inventory?.slots || [];
   const maxHp = maxHealthOf(bot);
   const vel = bot.entity.velocity;
+
+  const blocks = blockScan(bot);
+
   obs.self = {
     pos: floorPos(pos),
     health: Math.round(bot.health),
@@ -198,7 +235,6 @@ export function buildObservation(id: string): any {
     healthPct: maxHp > 0 ? Math.round((bot.health / maxHp) * 100) : null,
     food: Math.round(bot.food),
     foodSaturation: Math.round(bot.foodSaturation ?? 0),
-    // 氧气仅在缺氧（潜水/憋气）时才有意义，满值不噪声
     oxygen: typeof bot.oxygenLevel === "number" && bot.oxygenLevel < 20 ? bot.oxygenLevel : null,
     xpLevel: bot.experience?.level ?? 0,
     xpProgress: Math.round((bot.experience?.progress ?? 0) * 100),
@@ -212,6 +248,14 @@ export function buildObservation(id: string): any {
       legs: itemBrief(slots[7]),
       feet: itemBrief(slots[8]),
     },
+    equipmentDurability: {
+      mainHand: durabilityPct(bot.heldItem),
+      offHand: durabilityPct(slots[45]),
+      head: durabilityPct(slots[5]),
+      chest: durabilityPct(slots[6]),
+      legs: durabilityPct(slots[7]),
+      feet: durabilityPct(slots[8]),
+    },
     effects: effectsOf(bot, inst?.getMcData?.() ?? null),
     facing: facingOf(bot.entity.yaw ?? 0),
     yaw: r1(bot.entity.yaw ?? 0),
@@ -222,15 +266,23 @@ export function buildObservation(id: string): any {
     vehicle: bot.vehicle ? bot.vehicle.name || bot.vehicle.displayName || "riding" : null,
     dimension: bot.game?.dimension ?? null,
     gameMode: bot.game?.gameMode ?? null,
+    blocks,
   };
 
   try {
-    obs.inventory = bot.inventory.items().map((it: any) => ({
+    const invItems = bot.inventory.items();
+    obs.inventory = invItems.map((it: any) => ({
+      slot: it.slot,
       name: it.name,
       count: it.count,
       displayName: it.displayName,
       enchants: enchantNames(it),
+      durabilityPct: durabilityPct(it),
     }));
+    // slot 9-44 = main inventory (36 slots)
+    const mainSlots = bot.inventory.slots.filter((_: any, i: number) => i >= 9 && i <= 44);
+    const emptyCount = mainSlots.filter((s: any) => !s).length;
+    obs.inventorySlots = { total: 36, empty: emptyCount, used: 36 - emptyCount };
   } catch {
     /* ignore */
   }
@@ -247,7 +299,7 @@ export function buildObservation(id: string): any {
       const maxHp2 = entityMaxHealth(e);
       const item = {
         type: e.type,
-        id: e.name || null, // 原始实体 id（即便有自定义名牌也保留，供分类用）
+        id: e.name || null,
         name:
           custom ||
           (typeof e.displayName === "string" ? e.displayName : null) ||
@@ -263,20 +315,18 @@ export function buildObservation(id: string): any {
         pos: floorPos(e.position),
       };
       if (e.type === "player" && e.username && e.username !== bot.username) {
-        // 真人 = 在线列表(tablist)里有该名字；玩家型 NPC(Citizens 等)通常不在
         const realPlayer = !!(bot.players && bot.players[e.username]);
         const cleanU = String(e.username).replace(/§[0-9a-fk-orx]/gi, "");
         const pd = txt(e.displayName);
-        const npcCustom = entityCustomName(e); // Citizens NPC 头顶名常在 customName/metadata
-        // Citizens 内部占位名「CIT-<hex>」不是名字：优先真名(metadata)→PAPI 名→退化为「NPC」，绝不显示这串 id
+        const npcCustom = entityCustomName(e);
         const isCitId = /^cit-[0-9a-f]+$/i.test(cleanU);
         let name = cleanU || e.username;
         let display: string | undefined = e.username !== cleanU ? e.username : pd && pd !== cleanU ? pd : undefined;
         if (isCitId) {
           name = npcCustom || (pd && pd !== cleanU ? pd : "") || "NPC";
-          display = undefined; // 不暴露 CIT 内部 id
+          display = undefined;
         } else if (npcCustom && npcCustom !== cleanU) {
-          name = npcCustom; // 用户名非彩色名、但 metadata 有真名（常见 Citizens 命名）
+          name = npcCustom;
         }
         obs.nearbyPlayers.push({
           name,
@@ -288,7 +338,6 @@ export function buildObservation(id: string): any {
           pos: item.pos,
         });
       } else if (e.type !== "object" && e.type !== "orb" && e.type !== "other") {
-        // 跳过无名牌的装饰盔甲架（服务器常用来做全息文字/NPC 底座，噪声大）
         if (!custom && (e.name === "armor_stand" || /armor.?stand/i.test(item.name))) continue;
         others.push(item);
       }
@@ -297,7 +346,6 @@ export function buildObservation(id: string): any {
     obs.nearbyEntities = others.slice(0, 20);
     obs.nearbyPlayers.sort((a: any, b: any) => a.distance - b.distance);
 
-    // 威胁概览：附近敌对生物数量 + 最近的一只（AI 决策用）
     const hostiles = others.filter((o) => o.hostile);
     obs.threats = {
       hostileCount: hostiles.length,
@@ -314,7 +362,6 @@ export function buildObservation(id: string): any {
     /* ignore */
   }
 
-  // 服务器渲染文本（PAPI 多输出到这些客户端可见处：Tab 头尾 / Boss 血条）
   try {
     const tl = bot.tablist || {};
     const bars = Object.values(bot.bossBars || {})
@@ -335,7 +382,6 @@ export function buildObservation(id: string): any {
     /* ignore */
   }
 
-  // 玩家 Tab 展示名（含 PAPI 前后缀，与原名不同才收录）
   try {
     obs.playersDisplay = Object.values(bot.players || {})
       .map((p: any) => ({ name: p?.username, display: txtC(p?.displayName) }))
@@ -345,7 +391,6 @@ export function buildObservation(id: string): any {
     /* ignore */
   }
 
-  // 环境（时间/天气）
   try {
     obs.environment = {
       timeOfDay: dayPhase(bot.time?.timeOfDay),
@@ -357,18 +402,23 @@ export function buildObservation(id: string): any {
     /* ignore */
   }
 
-  // 一句话情景摘要：供 AI 快速读取全局态势（不必逐字段解析）
+  // 一句话情景摘要
   try {
     const s = obs.self;
     const env = obs.environment;
     const t = obs.threats;
+    const bl = s.blocks;
     obs.summary = [
       env ? `${env.timeOfDay}${env.raining ? "·雨" : ""}` : "",
       `生命${s.healthPct ?? "?"}% 饱食${s.food}`,
       s.effects?.length ? `效果:${s.effects.map((e: any) => `${e.name}${e.level}`).join(",")}` : "",
-      t?.hostileCount ? `敌对${t.hostileCount}(最近${t.nearest.name} ${t.nearest.distance}m)` : "无敌对",
+      t?.hostileCount
+        ? `敌对${t.hostileCount}${t.nearest ? `(最近${t.nearest.name} ${t.nearest.distance}m)` : ""}`
+        : "无敌对",
       obs.nearbyPlayers.length ? `玩家${obs.nearbyPlayers.length}` : "",
       s.heldItem ? `手持${s.heldItem}` : "",
+      bl ? `脚下${bl.below}` : "",
+      `背包${obs.inventorySlots.used}/${obs.inventorySlots.total}`,
     ]
       .filter(Boolean)
       .join(" | ");

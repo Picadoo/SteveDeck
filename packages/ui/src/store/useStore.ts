@@ -18,6 +18,7 @@ export interface Toast {
   tone: ToastTone;
 }
 let toastSeq = 0;
+const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
 const MAX_LOG_LINES = 500;
 
@@ -68,6 +69,8 @@ interface AppState {
   pushCmd: (c: string) => void;
   pushToast: (message: string, tone?: ToastTone) => void;
   dismissToast: (id: number) => void;
+  pauseToast: (id: number) => void;
+  resumeToast: (id: number) => void;
   toggleTheme: () => void;
   setConn: (partial: Partial<ConnState>) => void;
   setBots: (bots: BotSummary[]) => void;
@@ -146,11 +149,27 @@ export const useStore = create<AppState>((set, get) => ({
   toasts: [],
 
   pushToast: (message, tone = "info") => {
+    const existing = get().toasts;
+    if (existing.some((t) => t.message === message && t.tone === (tone ?? "info"))) return;
     const id = ++toastSeq;
     set((s) => ({ toasts: [...s.toasts, { id, message, tone }] }));
-    setTimeout(() => get().dismissToast(id), 4000);
+    const timer = setTimeout(() => get().dismissToast(id), 4000);
+    toastTimers.set(id, timer);
   },
-  dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  dismissToast: (id) => {
+    const timer = toastTimers.get(id);
+    if (timer) { clearTimeout(timer); toastTimers.delete(id); }
+    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+  },
+  pauseToast: (id) => {
+    const timer = toastTimers.get(id);
+    if (timer) { clearTimeout(timer); toastTimers.delete(id); }
+  },
+  resumeToast: (id) => {
+    if (!get().toasts.some((t) => t.id === id)) return;
+    const timer = setTimeout(() => get().dismissToast(id), 2000);
+    toastTimers.set(id, timer);
+  },
 
   setModuleConfig: (botId, module, config) =>
     set((s) => ({
