@@ -140,9 +140,6 @@ function Console({ botId }: { botId: string }) {
               )}
             >
               <span className="mr-2 select-none text-muted">{l.time}</span>
-              {l.level === "actionbar" && (
-                <span className="mr-1 rounded bg-accent/15 px-1 text-[10px] text-accent">栏</span>
-              )}
               {l.segments && l.segments.length > 0 && clickableChat ? (
                 <SegmentLine segments={l.segments} botId={botId} />
               ) : (

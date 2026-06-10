@@ -17,6 +17,7 @@ import { buildConnectionInfo } from "./net/connectionInfo";
 import { botManager } from "./botManager";
 import { registerHandlers } from "./api/handlers";
 import { buildObservation } from "./ai/observe";
+import { loadAiConfig, saveAiConfig, generateScript } from "./ai/generate";
 
 export const ENGINE_VERSION = "0.1.0";
 
@@ -107,6 +108,26 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
 
   app.get("/api/bots", authGuard, (_req: Request, res: Response): void => {
     res.json({ bots: botManager.buildSnapshot() });
+  });
+
+  // 引擎自身资源占用（前端侧栏定时展示）。CPU% = 两次调用间 user+system 增量 / 墙钟（单核 100 制）；
+  // 首次调用窗口 = 进程启动至今的平均。只算本引擎进程，不看宿主机其他程序。
+  let statsLastCpu = process.cpuUsage();
+  let statsLastAt = Date.now();
+  app.get("/api/engine-stats", authGuard, (_req: Request, res: Response): void => {
+    const nowMs = Date.now();
+    const cu = process.cpuUsage();
+    const elapsedMs = Math.max(1, nowMs - statsLastAt);
+    const cpuPct = Math.round(((cu.user - statsLastCpu.user + cu.system - statsLastCpu.system) / 1000 / elapsedMs) * 100);
+    statsLastCpu = cu;
+    statsLastAt = nowMs;
+    const mem = process.memoryUsage();
+    res.json({
+      cpuPct: Math.max(0, Math.min(999, cpuPct)),
+      rssMB: Math.round(mem.rss / 1048576),
+      heapMB: Math.round(mem.heapUsed / 1048576),
+      uptimeSec: Math.floor(process.uptime()),
+    });
   });
 
   // 物品/方块贴图：复用 prismarine-viewer 自带的逐版本 PNG（如 /textures/1.12.2/items/diamond_sword.png）。
@@ -328,6 +349,31 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
         clickPath: Array.isArray(req.body?.clickPath) ? req.body.clickPath : undefined,
       });
       res.json(result);
+    } catch (e: any) {
+      res.status(400).json({ error: String(e?.message ?? e) });
+    }
+  });
+
+  // AI 直连配置：key 只存引擎数据目录，读取永不回传明文（仅 hasKey）
+  app.get("/api/ai/config", authGuard, (_req: Request, res: Response): void => {
+    const c = loadAiConfig();
+    res.json({ baseUrl: c.baseUrl, model: c.model, hasKey: !!c.apiKey });
+  });
+  app.post("/api/ai/config", authGuard, (req: Request, res: Response): void => {
+    const b = req.body || {};
+    const saved = saveAiConfig({
+      baseUrl: typeof b.baseUrl === "string" ? b.baseUrl : undefined,
+      model: typeof b.model === "string" ? b.model : undefined,
+      apiKey: typeof b.apiKey === "string" ? b.apiKey : undefined,
+    });
+    res.json({ baseUrl: saved.baseUrl, model: saved.model, hasKey: !!saved.apiKey });
+  });
+
+  // AI 直连生成：感知+目标 → DeepSeek/OpenAI 兼容接口 → 校验过的脚本 JSON（不自动保存，UI 决定导入/运行）
+  app.post("/api/ai/generate/:id", authGuard, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const script = await generateScript(String(req.params.id), String(req.body?.goal ?? ""));
+      res.json({ script });
     } catch (e: any) {
       res.status(400).json({ error: String(e?.message ?? e) });
     }

@@ -149,7 +149,7 @@ export default function AddBotDialog({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? "编辑机器人" : "添加机器人"}>
+    <Modal open={open} onClose={onClose} title={isEdit ? "编辑机器人" : "添加机器人"} size="xl">
       <form onSubmit={submit} className="space-y-3.5">
         {!isEdit && servers.length > 0 && (
           <div className="rounded-lg border border-border/60 bg-surface-2/30 p-2.5">
@@ -168,9 +168,14 @@ export default function AddBotDialog({
             </div>
           </div>
         )}
-        <Field label="用户名（MC 登录名）">
-          <Input value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="例如 MyBot" autoFocus />
-        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="用户名（MC 登录名）">
+            <Input value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="例如 MyBot" autoFocus />
+          </Field>
+          <Field label="服务器备注（便于记忆，界面优先显示）">
+            <Input value={form.note} onChange={(e) => set("note", e.target.value)} placeholder="例如 花果山 RPG" />
+          </Field>
+        </div>
         <div className="grid grid-cols-[1fr_96px] gap-3">
           <Field label="服务器地址">
             <Input value={form.host} onChange={(e) => set("host", e.target.value)} placeholder="mc.example.com" />
@@ -179,9 +184,6 @@ export default function AddBotDialog({
             <Input value={form.port} onChange={(e) => set("port", e.target.value)} placeholder="25565" inputMode="numeric" />
           </Field>
         </div>
-        <Field label="服务器备注（便于记忆，界面优先显示）">
-          <Input value={form.note} onChange={(e) => set("note", e.target.value)} placeholder="例如 花果山 RPG" />
-        </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="游戏版本">
             <Input value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="1.20.1" />
@@ -196,7 +198,8 @@ export default function AddBotDialog({
           </Field>
         </div>
 
-        {/* 连接 / 重连 */}
+        {/* 连接 / 重连 + Forge：xl 弹窗下并排，窄屏自动落单列 */}
+        <div className="grid gap-3 sm:grid-cols-2 sm:items-start">
         <div className="rounded-lg border border-border/60 p-3">
           <div className="flex items-center justify-between">
             <div className="min-w-0">
@@ -248,6 +251,7 @@ export default function AddBotDialog({
             </div>
             <Switch checked={rawMove} onChange={setRawMove} />
           </div>
+        </div>
         </div>
 
         {err && <div className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{err}</div>}

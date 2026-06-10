@@ -1,9 +1,10 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { Bot, Plus, LogOut, Heart, Drumstick, Server, ChevronDown } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Bot, Plus, LogOut, Heart, Drumstick, Server, ChevronDown, Cpu } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { StatusDot, IconButton, Badge } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { disconnect } from "@/lib/engine";
+import { usePageVisible } from "@/lib/usePageVisible";
 import { healthPct, healthTone } from "@/lib/format";
 import AddBotDialog from "@/features/bot/AddBotDialog";
 import type { BotSummary } from "@mcbot/protocol";
@@ -15,6 +16,30 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const conn = useStore((s) => s.conn);
   const [addOpen, setAddOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  // 引擎进程资源占用（只看本软件，不看宿主机其他程序）：5s 轮询，页面后台暂停；旧引擎无端点则不显示
+  const [engineStats, setEngineStats] = useState<{ cpuPct: number; rssMB: number } | null>(null);
+  const visible = usePageVisible();
+  useEffect(() => {
+    if (conn.status !== "online" || !visible) return;
+    let alive = true;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${conn.url.replace(/\/+$/, "")}/api/engine-stats`, {
+          headers: { Authorization: `Bearer ${conn.token}` },
+        });
+        if (alive && r.ok) setEngineStats(await r.json());
+      } catch {
+        /* 引擎暂不可达：保留上次值 */
+      }
+    };
+    poll();
+    const t = setInterval(poll, 5000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [conn.status, conn.url, conn.token, visible]);
 
   // 稳定引用：行内闭包会让 memo(BotRow) 永远不等价。
   // onNavigate 走 ref——调用方若传内联箭头（每渲染新引用），不至于击穿全部 BotRow 的 memo。
@@ -117,6 +142,11 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <div className="text-[10px] text-muted">
               引擎 {conn.engine?.version ? `v${conn.engine.version}` : ""}
             </div>
+            {engineStats && (
+              <div className="flex items-center gap-1 text-[10px] tabular-nums text-muted" title="引擎进程自身占用（每 5 秒刷新）">
+                <Cpu className="h-3 w-3" /> CPU {engineStats.cpuPct}% · 内存 {engineStats.rssMB}MB
+              </div>
+            )}
           </div>
           <IconButton onClick={() => disconnect()} title="断开连接">
             <LogOut className="h-4 w-4" />

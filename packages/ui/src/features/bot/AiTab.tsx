@@ -1,10 +1,24 @@
 import { useEffect, useState } from "react";
-import { Sparkles, RefreshCw, Copy, Loader2, ChevronDown } from "lucide-react";
-import { Card, Button } from "@/components/ui/primitives";
+import { Sparkles, RefreshCw, Copy, Loader2, ChevronDown, Settings2, Wand2, Play, Save } from "lucide-react";
+import { Card, Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
-import type { BotSummary, Observation } from "@mcbot/protocol";
+import type { BotSummary, BotScript, Observation } from "@mcbot/protocol";
+
+// AI 直连走引擎 HTTP（key 存引擎侧不进浏览器；socket ack 8s 超时太短，生成要 20-60s）
+function authedFetch(pathname: string, init?: RequestInit): Promise<Response> {
+  const { url, token } = useStore.getState().conn;
+  return fetch(`${url.replace(/\/+$/, "")}${pathname}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(init?.headers || {}),
+    },
+  });
+}
+type AiCfg = { baseUrl: string; model: string; hasKey: boolean };
 
 const SCRIPT_HELP = `脚本格式：
 { "name":"...", "loop":false, "trigger":{"type":"manual"}, "steps":[ {"do":"chat","msg":"hi"}, {"do":"wait","s":2} ] }
@@ -37,6 +51,85 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [goal, setGoal] = useState("");
   const [jsonExpanded, setJsonExpanded] = useState(false);
+
+  // AI 直连：配置状态 + 生成流程
+  const [aiCfg, setAiCfg] = useState<AiCfg | null>(null);
+  const [cfgOpen, setCfgOpen] = useState(false);
+  const [cfgForm, setCfgForm] = useState({ baseUrl: "", model: "", apiKey: "" });
+  const [generating, setGenerating] = useState(false);
+  const [genScript, setGenScript] = useState<BotScript | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    authedFetch("/api/ai/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c) => {
+        if (alive && c) {
+          setAiCfg(c);
+          setCfgForm({ baseUrl: c.baseUrl, model: c.model, apiKey: "" });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [bot.id]);
+
+  async function saveAiCfg() {
+    const r = await authedFetch("/api/ai/config", {
+      method: "POST",
+      body: JSON.stringify({ baseUrl: cfgForm.baseUrl, model: cfgForm.model, apiKey: cfgForm.apiKey }),
+    });
+    if (r.ok) {
+      const c = (await r.json()) as AiCfg;
+      setAiCfg(c);
+      setCfgForm((f) => ({ ...f, apiKey: "" }));
+      setCfgOpen(false);
+      pushToast(c.hasKey ? "AI 配置已保存" : "已保存（还没有 API Key）", c.hasKey ? "success" : "info");
+    } else {
+      pushToast("保存失败", "error");
+    }
+  }
+
+  async function generate() {
+    if (!aiCfg?.hasKey) {
+      setCfgOpen(true);
+      pushToast("先配置 API Key（DeepSeek 开放平台申请，几块钱能用很久）", "info");
+      return;
+    }
+    setGenerating(true);
+    setGenScript(null);
+    try {
+      const r = await authedFetch(`/api/ai/generate/${bot.id}`, {
+        method: "POST",
+        body: JSON.stringify({ goal }),
+      });
+      const data = await r.json().catch(() => null);
+      if (r.ok && data?.script) {
+        setGenScript(data.script as BotScript);
+        pushToast(`已生成「${data.script.name}」（${data.script.steps.length} 步）`, "success");
+      } else {
+        pushToast(data?.error || "生成失败", "error");
+      }
+    } catch {
+      pushToast("生成请求失败（引擎不可达）", "error");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function importGenerated(run: boolean) {
+    if (!genScript) return;
+    const r = await cmd.script.save(genScript);
+    if (!r.ok) return pushToast(r.error || "保存失败", "error");
+    if (run) {
+      const rr = await cmd.script.start(bot.id, genScript.name);
+      pushToast(rr.ok ? `已保存并运行「${genScript.name}」` : (rr.error || "运行失败"), rr.ok ? "success" : "error");
+    } else {
+      pushToast(`已保存到脚本库「${genScript.name}」`, "success");
+    }
+    setGenScript(null);
+  }
 
   async function refresh(alive?: () => boolean) {
     setLoading(true);
@@ -193,9 +286,45 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
             </Card>
           </div>
 
-          {/* 目标输入 + 一键复制提示词 */}
+          {/* 目标输入 + 直连生成 / 复制提示词 */}
           <Card className="p-4">
-            <h3 className="mb-2 text-sm font-semibold">AI 脚本生成</h3>
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">AI 脚本生成</h3>
+              <button
+                onClick={() => setCfgOpen((v) => !v)}
+                className={cn(
+                  "flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors",
+                  aiCfg?.hasKey ? "text-success hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg",
+                )}
+                title="配置 AI 接口（DeepSeek / 任意 OpenAI 兼容）"
+              >
+                <Settings2 className="h-3.5 w-3.5" /> {aiCfg?.hasKey ? "已连接 " + (aiCfg?.model || "") : "API 设置"}
+              </button>
+            </div>
+
+            {cfgOpen && (
+              <div className="mb-3 space-y-2 rounded-lg border border-border/60 bg-surface-2/30 p-3">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] text-muted">接口地址（OpenAI 兼容）</span>
+                    <Input value={cfgForm.baseUrl} onChange={(e) => setCfgForm((f) => ({ ...f, baseUrl: e.target.value }))} placeholder="https://api.deepseek.com" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] text-muted">模型</span>
+                    <Input value={cfgForm.model} onChange={(e) => setCfgForm((f) => ({ ...f, model: e.target.value }))} placeholder="deepseek-chat" />
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] text-muted">API Key（存在引擎端，浏览器不保存；填 - 清除）</span>
+                  <Input type="password" value={cfgForm.apiKey} onChange={(e) => setCfgForm((f) => ({ ...f, apiKey: e.target.value }))} placeholder={aiCfg?.hasKey ? "已保存，留空＝不修改" : "sk-..."} />
+                </label>
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setCfgOpen(false)}>收起</Button>
+                  <Button size="sm" variant="primary" onClick={saveAiCfg}>保存配置</Button>
+                </div>
+              </div>
+            )}
+
             <textarea
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
@@ -204,15 +333,41 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
               className="mb-3 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
             />
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="primary" disabled={!obs} onClick={() => obs && copy(buildPrompt(obs, goal), "AI 提示词")}>
-                <Sparkles className="h-3.5 w-3.5" /> 复制 AI 提示词
+              <Button size="sm" variant="primary" disabled={!obs || generating} onClick={generate}>
+                {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                {generating ? "生成中（约 20-60 秒）…" : "直接生成"}
               </Button>
-              <Button size="sm" variant="secondary" disabled={!obs} onClick={() => obs && copy(JSON.stringify(obs, null, 2), "状态 JSON")}>
+              <Button size="sm" variant="secondary" disabled={!obs} onClick={() => obs && copy(buildPrompt(obs, goal), "AI 提示词")}>
+                <Sparkles className="h-3.5 w-3.5" /> 复制提示词
+              </Button>
+              <Button size="sm" variant="ghost" disabled={!obs} onClick={() => obs && copy(JSON.stringify(obs, null, 2), "状态 JSON")}>
                 <Copy className="h-3.5 w-3.5" /> 仅复制状态
               </Button>
             </div>
+
+            {genScript && (
+              <div className="mt-3 rounded-lg border border-accent/40 bg-accent/5 p-3">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-sm font-medium">「{genScript.name}」 · {genScript.steps.length} 步 · 触发 {genScript.trigger?.type ?? "manual"}</span>
+                  <button onClick={() => setGenScript(null)} className="text-[11px] text-muted hover:text-fg">丢弃</button>
+                </div>
+                <pre className="mb-2 max-h-44 overflow-auto rounded bg-surface-2/50 p-2 font-mono text-[11px] leading-relaxed">
+                  {JSON.stringify(genScript, null, 2)}
+                </pre>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="primary" disabled={!bot.online} onClick={() => importGenerated(true)}>
+                    <Play className="h-3.5 w-3.5" /> 保存并运行
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => importGenerated(false)}>
+                    <Save className="h-3.5 w-3.5" /> 仅保存到脚本库
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <p className="mt-2 text-[11px] text-muted">
-              复制后粘贴到 Claude / ChatGPT → AI 返回脚本 JSON → 到「脚本」标签粘贴导入运行
+              「直接生成」走引擎调用 DeepSeek（或任意 OpenAI 兼容接口），生成后可预览再导入；
+              没有 Key 也可以「复制提示词」粘到 Claude / ChatGPT，把返回的 JSON 到「脚本」标签导入。
             </p>
           </Card>
 

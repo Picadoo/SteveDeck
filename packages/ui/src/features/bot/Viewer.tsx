@@ -14,15 +14,40 @@ import {
   Play,
   ChevronDown,
   RefreshCw,
+  ListChecks,
+  Navigation,
+  Trash2,
+  ScrollText,
+  Square,
 } from "lucide-react";
 import { Button, Input } from "@/components/ui/primitives";
 import Joystick, { HoldButton } from "@/components/Joystick";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
+import { useConfirmClick } from "@/lib/useConfirmClick";
 import { healthPct } from "@/lib/format";
 import { MODULES } from "./moduleDefs";
 import { cn } from "@/lib/cn";
-import type { BotSummary } from "@mcbot/protocol";
+import type { BotSummary, ScriptSummary } from "@mcbot/protocol";
+
+// 踩点列表：按 bot 存 localStorage（跨弹出/收起/刷新保留），上限 50 个
+type Mark = { x: number; y: number; z: number; at: number };
+const marksKey = (botId: string) => `mcbot.waypoints.${botId}`;
+function loadMarks(botId: string): Mark[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(marksKey(botId)) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+function saveMarks(botId: string, m: Mark[]): void {
+  try {
+    localStorage.setItem(marksKey(botId), JSON.stringify(m.slice(-50)));
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * 机器人实时视角（同一组件，可内嵌可弹出放大）。看 / 控 / 走三件事彻底分离：
@@ -61,6 +86,25 @@ export default function Viewer({
   const [showMods, setShowMods] = useState(false); // 模块快速开关折叠（默认收起，不挤占视角）
   const [showHelp, setShowHelp] = useState(false); // 操作说明默认收起，点 ? 展开
   const [cmdText, setCmdText] = useState("");
+  // 踩点列表 + 脚本快捷条（视角内直接操作，不用切标签页）
+  const [marks, setMarks] = useState<Mark[]>(() => loadMarks(bot.id));
+  const [showMarks, setShowMarks] = useState(false);
+  const [showScripts, setShowScripts] = useState(false);
+  const [scriptList, setScriptList] = useState<ScriptSummary[]>([]);
+  useEffect(() => setMarks(loadMarks(bot.id)), [bot.id]);
+  useEffect(() => {
+    if (!showScripts) return;
+    let alive = true;
+    cmd.script.list(bot.id).then((r) => {
+      if (alive && r.ok && Array.isArray(r.data)) {
+        // 与脚本页同口径：通用(无 server) + 本服
+        setScriptList(r.data.filter((s) => !s.server || s.server === bot.host));
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [showScripts, bot.id, bot.host, bot.modules.script]);
   const lastStates = useRef("");
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   // 拖动转向 rAF 合帧：pointermove 在高刷鼠标可达 125-1000Hz，逐事件直发 socket
@@ -223,7 +267,8 @@ export default function Viewer({
       cmd.control.stop(bot.id); // 收起即停
     }
   }
-  // 踩点：取机器人当前精确坐标。录制中→插一条 goto；否则复制坐标（可粘到脚本/地点）
+  // 踩点：取机器人当前精确坐标 → 追加进踩点列表（可连续踩多个、导出为路线脚本）。
+  // 录制中额外插一条 goto（保持原录制语义）。
   async function markHere() {
     const r = await cmd.moduleAction<{ x: number; y: number; z: number; recorded: boolean }>(
       bot.id,
@@ -235,17 +280,33 @@ export default function Viewer({
       return;
     }
     const { x, y, z, recorded } = r.data;
-    const coord = `${x}, ${y}, ${z}`;
-    if (recorded) {
-      pushToast(`已踩点 → ${coord}（已加入录制）`, "success");
-    } else {
-      try {
-        await navigator.clipboard?.writeText(coord);
-        pushToast(`已复制当前坐标 ${coord}`, "success");
-      } catch {
-        pushToast(`当前坐标 ${coord}`, "info");
-      }
-    }
+    const next = [...marks, { x, y, z, at: Date.now() }];
+    setMarks(next);
+    saveMarks(bot.id, next);
+    setShowMarks(true);
+    pushToast(`已踩点 #${next.length} → ${x}, ${y}, ${z}${recorded ? "（已加入录制）" : ""}`, "success");
+  }
+  function removeMark(at: number) {
+    const next = marks.filter((m) => m.at !== at);
+    setMarks(next);
+    saveMarks(bot.id, next);
+  }
+  const clearMarks = useConfirmClick(() => {
+    setMarks([]);
+    saveMarks(bot.id, []);
+  }, 2500, bot.id);
+  // 导出为路线脚本：按踩点顺序 goto（保存到脚本库，可在「脚本」页改名/加动作）
+  async function exportRoute() {
+    if (!marks.length) return;
+    const name = `路线 ${new Date().toLocaleTimeString().slice(0, 5)}（${marks.length}点）`;
+    const r = await cmd.script.save({
+      name,
+      server: bot.host,
+      category: "路线",
+      trigger: { type: "manual" },
+      steps: marks.map((m) => ({ do: "goto", x: m.x, y: m.y, z: m.z })),
+    } as never);
+    pushToast(r.ok ? `已导出「${name}」到脚本库` : (r.error || "导出失败"), r.ok ? "success" : "error");
   }
 
   // 仅第一人称挂全屏拖动转向层（镜头=机器人视线，拖动=转身体+俯仰）
@@ -425,8 +486,16 @@ export default function Viewer({
         <Button size="sm" variant={walk ? "primary" : "ghost"} onClick={toggleWalk} disabled={!bot.online}>
           <Gamepad2 className="h-3.5 w-3.5" /> {walk ? "停操控" : "操控"}
         </Button>
-        <Button size="sm" variant="ghost" onClick={markHere} disabled={!bot.online} title="获取当前位置（踩点）——录制中插入 goto，否则复制坐标">
+        <Button size="sm" variant="ghost" onClick={markHere} disabled={!bot.online} title="记录当前位置到踩点列表（可连续踩多个，导出为路线脚本）">
           <MapPin className="h-3.5 w-3.5 text-emerald-400" /> 踩点
+        </Button>
+        {marks.length > 0 && (
+          <Button size="sm" variant={showMarks ? "secondary" : "ghost"} onClick={() => setShowMarks((v) => !v)}>
+            <ListChecks className="h-3.5 w-3.5" /> {marks.length} 点
+          </Button>
+        )}
+        <Button size="sm" variant={showScripts ? "secondary" : "ghost"} onClick={() => setShowScripts((v) => !v)}>
+          <ScrollText className="h-3.5 w-3.5" /> 脚本
         </Button>
         <Button
           size="sm"
@@ -457,6 +526,83 @@ export default function Viewer({
           ?
         </button>
       </div>
+      {/* 踩点列表：边看边记路，逐点前往 / 删除，整组导出为路线脚本 */}
+      {showMarks && marks.length > 0 && (
+        <div className="rounded-lg border border-border bg-surface-2/40 p-2">
+          <div className="max-h-40 space-y-1 overflow-y-auto">
+            {marks.map((m, i) => (
+              <div key={m.at} className="flex items-center justify-between gap-2 rounded bg-surface px-2 py-1 text-xs">
+                <span className="font-mono tabular-nums text-muted">#{i + 1}</span>
+                <span className="min-w-0 flex-1 truncate font-mono">{m.x}, {m.y}, {m.z}</span>
+                <button
+                  title="前往此点"
+                  disabled={!bot.online}
+                  onClick={async () => {
+                    const r = await cmd.moduleAction(bot.id, "move", "goto", { x: m.x, y: m.y, z: m.z });
+                    pushToast(r.ok ? `前往 #${i + 1}…` : (r.error || "寻路失败"), r.ok ? "success" : "error");
+                  }}
+                  className="rounded p-1 text-muted transition hover:bg-surface-2 hover:text-fg active:scale-90 disabled:opacity-40"
+                >
+                  <Navigation className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  title="删除"
+                  onClick={() => removeMark(m.at)}
+                  className="rounded p-1 text-muted transition hover:bg-surface-2 hover:text-danger active:scale-90"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-1.5 flex items-center justify-between">
+            <span className="text-[11px] text-muted">按顺序踩点 → 导出成「依次走过去」的路线脚本</span>
+            <div className="flex gap-1.5">
+              <Button size="sm" variant="ghost" onClick={clearMarks.onClick}>
+                {clearMarks.arming ? <span className="text-danger">确认清空?</span> : "清空"}
+              </Button>
+              <Button size="sm" variant="secondary" onClick={exportRoute}>
+                导出路线脚本
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 脚本快捷条：边看边跑脚本，不用切到「脚本」标签 */}
+      {showScripts && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-surface-2/40 p-2">
+          {bot.modules.script ? (
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={async () => {
+                await cmd.script.stop(bot.id);
+                pushToast("已停止脚本", "info");
+              }}
+            >
+              <Square className="h-3.5 w-3.5" /> 停止「{bot.modules.script}」
+            </Button>
+          ) : scriptList.length === 0 ? (
+            <span className="px-1 text-[11px] text-muted">本服还没有脚本（「脚本」标签可新建/录制）</span>
+          ) : (
+            scriptList.slice(0, 12).map((s) => (
+              <button
+                key={s.name}
+                disabled={!bot.online}
+                onClick={async () => {
+                  const r = await cmd.script.start(bot.id, s.name);
+                  pushToast(r.ok ? `运行「${s.name}」` : (r.error || "运行失败"), r.ok ? "success" : "error");
+                }}
+                className="flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-xs transition-colors hover:border-accent hover:bg-accent/10 active:scale-95 disabled:opacity-40"
+              >
+                <Play className="h-3 w-3" /> {s.name}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
       {showMods && (
         <div className="flex flex-wrap gap-1.5">
           {MODULES.map((def) => {
