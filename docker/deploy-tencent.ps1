@@ -15,16 +15,18 @@ $cfg = @{
 }[$Server]
 $ssh = "$($cfg.User)@$($cfg.HostIp)"
 $key = $cfg.Key
+# keepalive：构建期 ssh 长时间无输出，没有心跳的话断线/半开连接会无限挂起
+$sshOpts = @("-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8")
 
 Write-Host "== 打包(git archive, 只含已跟踪文件) =="
 git archive HEAD -o mcbot-deploy.tar.gz
 try {
   Write-Host "== 上传到 $ssh =="
-  ssh -i $key $ssh "mkdir -p ~/mc-bot-player"
-  scp -i $key mcbot-deploy.tar.gz "${ssh}:~/mc-bot-player/"
+  ssh -i $key @sshOpts $ssh "mkdir -p ~/mc-bot-player"
+  scp -i $key @sshOpts mcbot-deploy.tar.gz "${ssh}:~/mc-bot-player/"
 
   Write-Host "== 解包 + 准备令牌 + 构建启动 =="
-  ssh -i $key $ssh @'
+  ssh -i $key @sshOpts $ssh @'
 set -e
 cd ~/mc-bot-player
 tar xzf mcbot-deploy.tar.gz && rm mcbot-deploy.tar.gz
@@ -40,7 +42,7 @@ docker compose --env-file ../.engine-env up -d --build
 
   Write-Host "== 等待健康检查 =="
   Start-Sleep -Seconds 12
-  ssh -i $key $ssh "curl -sf http://127.0.0.1:8723/health && echo '' && curl -sf -o /dev/null -w 'web client: HTTP %{http_code}\n' -H 'Accept: text/html' http://127.0.0.1:8723/"
+  ssh -i $key @sshOpts $ssh "curl -sf http://127.0.0.1:8723/health && echo '' && curl -sf -o /dev/null -w 'web client: HTTP %{http_code}\n' -H 'Accept: text/html' http://127.0.0.1:8723/"
 
   Write-Host ""
   Write-Host "完成。下一步："
