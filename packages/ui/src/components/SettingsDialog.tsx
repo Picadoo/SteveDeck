@@ -20,6 +20,8 @@ interface ConnInfo {
   port: number;
   connectionString: string;
   qrcodeDataUrl?: string;
+  /** 网页直开地址（引擎带网页客户端时才有） */
+  webUrl?: string;
 }
 
 export default function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -80,7 +82,16 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
           {info?.qrcodeDataUrl ? (
             <div className="flex flex-col items-center gap-2">
               <img src={info.qrcodeDataUrl} alt="连接二维码" className="h-40 w-40 rounded-lg bg-white p-1" />
-              <p className="text-center text-[11px] text-muted">在另一台设备的客户端里扫描，或复制下面的连接串</p>
+              <p className="text-center text-[11px] text-muted">
+                {info.webUrl
+                  ? "手机相机扫码 → 浏览器打开即自动连接（零安装）；或复制下面的连接串"
+                  : "在另一台设备的客户端里扫描，或复制下面的连接串"}
+              </p>
+              {info.webUrl && (
+                <code className="w-full truncate rounded-lg bg-surface-2 px-2 py-1.5 text-center text-[11px] text-muted">
+                  {info.webUrl.split("#")[0]}
+                </code>
+              )}
               <div className="flex w-full items-center gap-2">
                 <code className="flex-1 truncate rounded-lg bg-surface-2 px-2 py-1.5 text-[11px]">
                   {info.connectionString}

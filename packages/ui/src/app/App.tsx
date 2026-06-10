@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "@/store/useStore";
-import { connect, loadSaved, tryTauriAutoConnect } from "@/lib/engine";
+import { connect, loadSaved, parseConnectionString, tryTauriAutoConnect } from "@/lib/engine";
 import { cn } from "@/lib/cn";
 import ConnectScreen from "@/features/connect/ConnectScreen";
 import Sidebar from "@/components/Sidebar";
@@ -31,6 +31,21 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    // 扫码直连：URL #mcbot=<连接串>（引擎二维码即此格式）→ 浏览器打开即自动配对。
+    // 连接串读完立即从地址栏清掉，不把令牌留在地址栏/分享截图里。
+    try {
+      const m = /[#&]mcbot=([^&]+)/.exec(window.location.hash);
+      if (m) {
+        const parsed = parseConnectionString(decodeURIComponent(m[1]));
+        if (parsed) {
+          history.replaceState(null, "", window.location.pathname + window.location.search);
+          connect(parsed.url, parsed.token || "");
+          return;
+        }
+      }
+    } catch {
+      /* 解析失败走常规流程 */
+    }
     // 内置桌面版（Tauri 内）：先向 Rust 取本地引擎地址+令牌自动连接；
     // 非 Tauri（网页/移动浏览器）或取不到时，回退到上次保存的连接。
     let cancelled = false;

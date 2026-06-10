@@ -318,6 +318,8 @@ export interface ConnectionInfo {
   connectionString: string;
   /** 二维码 dataURL（image/png base64），供移动端扫码 */
   qrcodeDataUrl?: string;
+  /** 网页直开地址（引擎带网页客户端时才有）：相机扫码 → 浏览器打开 → #mcbot= 自动连接 */
+  webUrl?: string;
 }
 
 // ==================== 服务端 → 客户端 事件 ====================

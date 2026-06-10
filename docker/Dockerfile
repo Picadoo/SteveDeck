@@ -15,13 +15,14 @@ COPY apps/mobile/package.json ./apps/mobile/
 # 补丁文件（pnpm patchedDependencies 需要，否则 install 报 ENOENT）
 COPY patches ./patches/
 
-# 仅安装引擎及其依赖（含 protocol）
-RUN pnpm install --frozen-lockfile --filter @mcbot/engine...
+# 安装引擎 + 网页客户端的依赖（含 protocol）
+RUN pnpm install --frozen-lockfile --filter @mcbot/engine... --filter @mcbot/ui...
 
-# 拷贝源码并构建 protocol → engine
+# 拷贝源码并构建 protocol → engine → ui（网页客户端随引擎一起出，手机浏览器零安装直连）
 COPY packages/protocol ./packages/protocol
 COPY packages/engine ./packages/engine
-RUN pnpm --filter @mcbot/protocol build && pnpm --filter @mcbot/engine build
+COPY packages/ui ./packages/ui
+RUN pnpm --filter @mcbot/protocol build && pnpm --filter @mcbot/engine build && pnpm --filter @mcbot/ui build
 
 # 生成自包含部署目录（仅生产依赖）
 RUN pnpm --filter @mcbot/engine deploy --prod --legacy /app/deploy
@@ -34,6 +35,9 @@ ENV MCBOT_DATA_DIR=/data
 ENV PORT=8723
 
 COPY --from=build /app/deploy /app
+# 网页客户端构建产物：引擎检测到 MCBOT_UI_DIST 即在根路径直出（手机浏览器/扫码直连）
+COPY --from=build /app/packages/ui/dist /app/ui-dist
+ENV MCBOT_UI_DIST=/app/ui-dist
 RUN mkdir -p /data
 
 EXPOSE 8723

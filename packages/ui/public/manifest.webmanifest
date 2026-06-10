@@ -1,0 +1,14 @@
+{
+  "name": "mc-bot-player",
+  "short_name": "mcbot",
+  "description": "Minecraft 挂机机器人控制台",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1e1d1b",
+  "theme_color": "#1e1d1b",
+  "icons": [
+    { "src": "icons/icon-128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "icons/icon-256.png", "sizes": "256x256", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

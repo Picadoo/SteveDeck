@@ -23,13 +23,20 @@ export async function buildConnectionInfo(opts: {
   version: string;
   port: number;
   token: string;
+  /** 引擎是否同时提供网页客户端（决定二维码编码成哪种载荷） */
+  uiServed?: boolean;
 }): Promise<ConnectionInfo> {
   const addresses = listAddresses();
   const primary = addresses[0] ?? "127.0.0.1";
   const connectionString = buildConnectionString(primary, opts.port, opts.token);
+  // 网页直开地址：系统相机扫码 → 浏览器打开 → 前端读 #mcbot= 自动连接（零安装配对）。
+  // 连接串放 hash：不进 HTTP 请求行/服务器日志；前端读取后立即从地址栏清除。
+  const webUrl = `http://${primary}:${opts.port}/#mcbot=${encodeURIComponent(connectionString)}`;
   let qrcodeDataUrl: string | undefined;
   try {
-    qrcodeDataUrl = await QRCode.toDataURL(connectionString);
+    // 引擎带网页客户端 → 二维码编码网页地址（手机相机即扫即用，App 也能从 #mcbot= 提取连接串）；
+    // 不带（如桌面内置 bundle）→ 保持纯连接串（仅供客户端 App 解析）。
+    qrcodeDataUrl = await QRCode.toDataURL(opts.uiServed ? webUrl : connectionString);
   } catch {
     /* 二维码生成失败不致命 */
   }
@@ -39,6 +46,7 @@ export async function buildConnectionInfo(opts: {
     addresses,
     port: opts.port,
     connectionString,
+    webUrl: opts.uiServed ? webUrl : undefined,
     qrcodeDataUrl,
   };
 }

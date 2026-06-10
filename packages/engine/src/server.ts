@@ -77,6 +77,22 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
   // 避免逐个路由漏挂限流（之前仅 /api/connection-info 有限流）。
   const authGuard: express.RequestHandler[] = [authLimiter, requireToken];
 
+  // 网页客户端检测（挂载在所有路由之后，见文件下方）：找得到 UI 构建产物则
+  // 手机/平板浏览器打开 http://<引擎>:<端口>/ 即是完整客户端（零安装）。
+  // 查找顺序：MCBOT_UI_DIST 显式指定 → 仓库布局(packages/ui/dist) → 部署布局(<cwd>/ui-dist)。
+  const uiDistCandidates = [
+    process.env.MCBOT_UI_DIST,
+    path.join(__dirname, "../../ui/dist"),
+    path.join(process.cwd(), "ui-dist"),
+  ].filter(Boolean) as string[];
+  const uiDist = uiDistCandidates.find((p) => {
+    try {
+      return fs.existsSync(path.join(p, "index.html"));
+    } catch {
+      return false;
+    }
+  });
+
   app.get("/health", (_req: Request, res: Response): void => {
     res.json({ status: "ok", uptime: Math.floor(process.uptime()), version: ENGINE_VERSION });
   });
@@ -85,7 +101,7 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     "/api/connection-info",
     authGuard,
     async (_req: Request, res: Response): Promise<void> => {
-      res.json(await buildConnectionInfo({ version: ENGINE_VERSION, port, token }));
+      res.json(await buildConnectionInfo({ version: ENGINE_VERSION, port, token, uiServed: !!uiDist }));
     },
   );
 
@@ -344,6 +360,27 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     }
     res.json({ ok: true, saved: script.name, started });
   });
+
+  // ===== 网页客户端：UI 构建产物直接从引擎端口送出（注册在所有 API 路由之后，不抢路径）=====
+  if (uiDist) {
+    app.use(express.static(uiDist, { maxAge: "1h", index: "index.html" }));
+    // SPA 回退：非 API/socket/贴图 的 GET+期望 HTML 请求一律回 index.html（刷新/深链不 404）。
+    // 用 readFile 而非 sendFile：express5 的 sendFile 对绝对路径有怪异 NotFound（同贴图路由的教训）。
+    const indexHtml = path.join(uiDist, "index.html");
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.method !== "GET") return next();
+      const p = req.path;
+      if (p.startsWith("/api") || p.startsWith("/socket.io") || p.startsWith("/textures") || p === "/health")
+        return next();
+      if (!String(req.headers.accept || "").includes("text/html")) return next();
+      try {
+        res.type("html").send(fs.readFileSync(indexHtml));
+      } catch {
+        next();
+      }
+    });
+    console.log(`[engine] 网页客户端已挂载: ${uiDist}（浏览器直接打开引擎地址即可使用）`);
+  }
 
   const server = http.createServer(app);
   const io = new IOServer(server, { cors: { origin: "*" } });
