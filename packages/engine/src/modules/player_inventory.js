@@ -135,6 +135,53 @@ module.exports = (botInstance) => {
         }
         syncInventory();
     };
+    // ===== 书：读页面（成书/书与笔）与回写（书与笔） =====
+    // 页面内容在物品 NBT：writable_book 是纯文本页，written_book 是 JSON 聊天组件页（需展平）。
+    const flattenJson = (node) => {
+        if (node == null) return '';
+        if (typeof node === 'string') return node;
+        if (Array.isArray(node)) return node.map(flattenJson).join('');
+        let s = node.text != null ? String(node.text) : '';
+        if (Array.isArray(node.extra)) s += node.extra.map(flattenJson).join('');
+        return s;
+    };
+    const nbtVal = (v) => (v && typeof v === 'object' && 'value' in v ? v.value : v);
+    botInstance.readBookSlot = (slot) => {
+        const it = bot.inventory.slots[slot];
+        if (!it) throw new Error('该格为空');
+        const name = String(it.name || '');
+        if (!/^(written_book|writable_book)$/.test(name)) throw new Error('该物品不是书');
+        const writable = name === 'writable_book';
+        const root = (it.nbt && it.nbt.value) || {};
+        let raw = nbtVal(root.pages);
+        raw = (raw && Array.isArray(raw.value)) ? raw.value : (Array.isArray(raw) ? raw : []);
+        const pages = raw.map((p) => {
+            const s = String(nbtVal(p) ?? p ?? '');
+            if (!writable && (s.startsWith('{') || s.startsWith('"') || s.startsWith('['))) {
+                try { return flattenJson(JSON.parse(s)); } catch (e) { /* 按原文 */ }
+            }
+            return s;
+        });
+        return {
+            writable,
+            title: root.title != null ? String(nbtVal(root.title)) : null,
+            author: root.author != null ? String(nbtVal(root.author)) : null,
+            pages,
+        };
+    };
+    botInstance.writeBookSlot = async (slot, pages) => {
+        const it = bot.inventory.slots[slot];
+        if (!it) throw new Error('该格为空');
+        if (String(it.name) !== 'writable_book') throw new Error('只有「书与笔」能编辑（成书是只读的）');
+        const list = (Array.isArray(pages) ? pages : [])
+            .map((p) => String(p ?? ''))
+            .slice(0, 50)               // 原版上限
+            .map((p) => p.slice(0, 1024)); // 单页字符上限（宽松裁剪防超包）
+        if (list.length === 0) throw new Error('至少要有一页内容');
+        await bot.writeBook(slot, list);
+        syncInventory();
+    };
+
     // 移动到指定槽位：mineflayer 槽号体系（5-8 护甲、9-35 背包、36-44 快捷栏、45 副手）
     botInstance.moveSlot = async (from, to) => {
         from = Number(from); to = Number(to);

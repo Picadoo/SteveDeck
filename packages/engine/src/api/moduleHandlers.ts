@@ -493,6 +493,17 @@ function dispatchAction(
         .moveSlot(Number(args.from), Number(args.to))
         .then(() => ok())
         .catch((e: any) => fail(String(e?.message ?? e)));
+    case "inventory:readBook":
+      try {
+        return ok(inst.readBookSlot(Number(args.slot)));
+      } catch (e: any) {
+        return fail(String(e?.message ?? e));
+      }
+    case "inventory:writeBook":
+      return inst
+        .writeBookSlot(Number(args.slot), Array.isArray(args.pages) ? args.pages : [])
+        .then(() => ok())
+        .catch((e: any) => fail(String(e?.message ?? e)));
     case "scheduler:add": {
       ensureSchedules(inst);
       const sched = args.schedule;

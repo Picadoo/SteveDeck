@@ -299,6 +299,17 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
             </span>
           </h3>
           <NearbyList obs={obs} />
+          {/* 全息字 / 告示牌：文字情报单列，不混进生物 */}
+          {((obs?.holograms?.length ?? 0) > 0 || (obs?.signs?.length ?? 0) > 0) && (
+            <div className="mt-3 space-y-2 border-t border-border/40 pt-2.5">
+              {(obs?.holograms?.length ?? 0) > 0 && (
+                <TextIntel title="全息字" items={obs!.holograms!} />
+              )}
+              {(obs?.signs?.length ?? 0) > 0 && (
+                <TextIntel title="告示牌" items={obs!.signs!} />
+              )}
+            </div>
+          )}
         </Card>
       )}
 
@@ -520,6 +531,27 @@ type NearbyRowData = {
   maxHealth?: number | null;
   distance: number;
 };
+
+/** 文字情报小节（全息字/告示牌）：一行一条，右侧距离 */
+function TextIntel({ title, items }: { title: string; items: { text: string; distance: number }[] }) {
+  return (
+    <div>
+      <div className="mb-0.5 text-[11px] font-semibold text-muted">
+        {title} <span className="font-normal">· {items.length}</span>
+      </div>
+      <div className="space-y-0.5">
+        {items.slice(0, 6).map((h, i) => (
+          <div key={i} className="flex items-baseline justify-between gap-2 text-xs" title={h.text}>
+            <span className="min-w-0 flex-1 truncate">
+              <McText text={h.text} />
+            </span>
+            <span className="shrink-0 text-[10px] tabular-nums text-muted">{h.distance}格</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // 概览「附近」：按 玩家 / NPC / 村民 / 怪物 / 动物 / 其它 分组，每组带清晰小标题——一眼看清是什么。
 function NearbyList({ obs }: { obs: Observation | null }) {

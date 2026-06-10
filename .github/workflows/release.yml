@@ -39,6 +39,10 @@ jobs:
       - name: 生成自包含引擎包（完整版，带 3D 视角）
         run: node apps/desktop/scripts/make-engine-bundle.mjs full
 
+      # engine-bundle 的 pnpm deploy 会重写工作区安装状态（卸掉 @tauri-apps/cli 等），重装恢复
+      - name: 恢复工作区依赖
+        run: pnpm install --frozen-lockfile
+
       - name: 构建桌面安装包（NSIS + MSI）
         run: pnpm -C apps/desktop tauri build
 

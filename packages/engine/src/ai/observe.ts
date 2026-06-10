@@ -152,6 +152,51 @@ function isHostile(kind: any): boolean {
   return /hostile/i.test(String(kind || ""));
 }
 
+/** 告示牌文字：优先新 API getSignText（兼容多版本），回退旧属性/方块实体 NBT（1.12.2 Text1-4 JSON） */
+function signTextOf(block: any): string | null {
+  if (!block) return null;
+  const clean = (s: string) => s.replace(/§./g, "").replace(/\s+/g, " ").trim();
+  try {
+    if (typeof block.getSignText === "function") {
+      const parts = block.getSignText();
+      const t = clean([].concat(parts || []).filter(Boolean).join(" "));
+      if (t) return t;
+    }
+  } catch { /* 回退 */ }
+  try {
+    if (block.signText) {
+      const t = clean(String(block.signText));
+      if (t) return t;
+    }
+  } catch { /* 回退 */ }
+  try {
+    const be = block.blockEntity;
+    if (be) {
+      const lines: string[] = [];
+      for (const k of ["Text1", "Text2", "Text3", "Text4"]) {
+        let v: any = be[k];
+        if (v && typeof v === "object" && "value" in v) v = v.value; // nbt 包裹
+        if (v == null) continue;
+        const s = String(v);
+        // 1.12.2 行内容是 JSON 聊天组件字符串
+        const t2 = txt(s.startsWith("{") || s.startsWith("\"") ? safeJson(s) ?? s : s);
+        if (t2) lines.push(t2);
+      }
+      const t = clean(lines.join(" "));
+      if (t) return t;
+    }
+  } catch { /* 没有就算了 */ }
+  return null;
+}
+
+function safeJson(s: string): any {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
 /** 物品耐久百分比：有最大耐久时返回剩余百分比，否则 null */
 function durabilityPct(item: any): number | null {
   if (!item) return null;
@@ -352,6 +397,25 @@ export function buildObservation(id: string): any {
     obs.nearbyEntities = others.slice(0, 20);
     holograms.sort((a, b) => a.distance - b.distance);
     obs.holograms = holograms.slice(0, 12);
+
+    // 附近告示牌：16 格内扫 sign 方块读文字（路牌/规则牌/传送说明是 RPG 服的重要信息源）
+    try {
+      const signPosList = bot.findBlocks({
+        matching: (b: any) => /sign/i.test(String(b?.name || "")),
+        maxDistance: 16,
+        count: 10,
+      });
+      const signs: any[] = [];
+      for (const sp of signPosList) {
+        const blk = bot.blockAt(sp);
+        const text = signTextOf(blk);
+        if (text) signs.push({ text, distance: r1(sp.distanceTo(pos)), pos: floorPos(sp) });
+      }
+      signs.sort((a, b) => a.distance - b.distance);
+      obs.signs = signs.slice(0, 8);
+    } catch {
+      obs.signs = [];
+    }
     obs.nearbyPlayers.sort((a: any, b: any) => a.distance - b.distance);
 
     const hostiles = others.filter((o) => o.hostile);

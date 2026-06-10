@@ -604,6 +604,10 @@ export interface Observation {
     distance: number;
     pos: Vec3Like;
   }[];
+  /** 附近全息字（RPG 服带名字的隐形盔甲架——名牌/广告牌文字，不算生物） */
+  holograms?: { text: string; distance: number; pos: Vec3Like }[];
+  /** 附近告示牌文字（路牌/规则牌/传送说明） */
+  signs?: { text: string; distance: number; pos: Vec3Like }[];
   /** 威胁概览：附近敌对生物 */
   threats?: { hostileCount: number; nearest: { name: string; distance: number } | null };
   /** 环境（时间/天气） */

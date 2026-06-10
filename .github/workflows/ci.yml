@@ -46,6 +46,9 @@ jobs:
       - run: pnpm build
       # tauri.conf 的 resources 引用 engine-bundle，必须先生成（完整版含 3D 视角资源）
       - run: node apps/desktop/scripts/make-engine-bundle.mjs full
+      # engine-bundle 内部的 pnpm deploy --config.node-linker=hoisted 会重写工作区安装状态
+      # （连 @tauri-apps/cli 都被卸掉 → 'tauri' is not recognized），重装一次恢复
+      - run: pnpm install --frozen-lockfile
       - run: pnpm -C apps/desktop tauri build
       - uses: actions/upload-artifact@v4
         with:
