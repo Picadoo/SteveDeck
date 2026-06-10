@@ -1,8 +1,16 @@
 diff --git a/lib/mineflayer.js b/lib/mineflayer.js
-index 06634bf6415ec41410e95ec816bebcc239726497..235386e5f40b96893c9bbe2a6166b6fe32f6ec5b 100644
+index 06634bf6415ec41410e95ec816bebcc239726497..7fc4019f601aa7c4353e74b7f6de79e687c1e853 100644
 --- a/lib/mineflayer.js
 +++ b/lib/mineflayer.js
-@@ -5,6 +5,9 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+@@ -1,10 +1,16 @@
+ const EventEmitter = require('events')
+-const { WorldView } = require('../viewer')
++// [mc-bot-player 魔改] 直取 WorldView，不经 viewer/index.js：那个入口会饿加载
++// entities.js→Entity.js→utils.js→node-canvas（原生包，宿主未必装）。
++// web 模式服务端只用 WorldView（纯 events/vec3），完全不需要 canvas 渲染链。
++const { WorldView } = require('../viewer/lib/worldView')
+ 
+ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, prefix = '' }) => {
    const express = require('express')
  
    const app = express()
@@ -12,7 +20,7 @@ index 06634bf6415ec41410e95ec816bebcc239726497..235386e5f40b96893c9bbe2a6166b6fe
    const http = require('http').createServer(app)
  
    const io = require('socket.io')(http, { path: prefix + '/socket.io' })
-@@ -49,6 +52,24 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+@@ -49,6 +55,24 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
      socket.emit('version', bot.version)
      sockets.push(socket)
  
@@ -37,7 +45,7 @@ index 06634bf6415ec41410e95ec816bebcc239726497..235386e5f40b96893c9bbe2a6166b6fe
      const worldView = new WorldView(bot.world, viewDistance, bot.entity.position, socket)
      worldView.init(bot.entity.position)
  
-@@ -61,12 +82,25 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+@@ -61,12 +85,25 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
      }
  
      function botPosition () {

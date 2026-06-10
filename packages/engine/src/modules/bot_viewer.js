@@ -102,7 +102,9 @@ module.exports = (botInstance) => {
     // 切人称：先就地关旧服务（其端口进入 2s 延迟回收，新服务必然换端口）
     if (botInstance._viewerPort) closeViewerNow();
 
-    const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
+    // 直取子模块入口，不走根 index.js：根入口饿加载 headless/viewer 渲染链，
+    // 会把 node-canvas（我们已不装的原生包）拽进来——服务端只需要 web 模式这一个函数。
+    const mineflayerViewer = require('prismarine-viewer/lib/mineflayer');
     // viewDistance：3 区块≈48格，足够看清周围又省带宽/显存/CPU；ENGINE_VIEWER_DISTANCE 可覆盖（2~8）
     const viewDistance = Math.max(2, Math.min(8, Number(process.env.ENGINE_VIEWER_DISTANCE) || 3));
 
