@@ -1,0 +1,26 @@
+# SteveDeck 安卓客户端：最小 Tauri 壳。
+# 与桌面版的区别：不内置引擎、无托盘/单实例/自启（全是桌面专属），
+# 打开即网页 UI，连接信息存 WebView localStorage（连一次记住）。
+[package]
+name = "stevedeck-mobile"
+version = "0.1.0"
+description = "SteveDeck 安卓客户端"
+authors = ["SteveDeck"]
+edition = "2021"
+
+[lib]
+name = "stevedeck_mobile_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

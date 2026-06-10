@@ -1,6 +1,6 @@
-# mc-bot-player
+# SteveDeck
 
-面向**玩家**的 Minecraft 挂机机器人。引擎 7×24 跑在 Docker 上，桌面（Windows）与手机（网页/PWA）作为瘦客户端遥控。
+面向**玩家**的 Minecraft 挂机机器人控制台：你的 Steve 舰队，一块甲板全管住。引擎 7×24 跑在 Docker 上，桌面（Windows）、手机（网页/PWA/Android）作为瘦客户端遥控。
 
 ## 截图
 

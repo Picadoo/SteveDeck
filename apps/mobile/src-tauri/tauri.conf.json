@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SteveDeck",
   "version": "0.1.0",
-  "identifier": "com.mcbotplayer.app",
+  "identifier": "com.stevedeck.mobile",
   "build": {
     "frontendDist": "../../../packages/ui/dist",
     "devUrl": "http://localhost:5273",
@@ -14,13 +14,7 @@
     "windows": [
       {
         "title": "SteveDeck",
-        "width": 1080,
-        "height": 720,
-        "minWidth": 880,
-        "minHeight": 560,
-        "resizable": true,
-        "decorations": false,
-        "center": true
+        "label": "main"
       }
     ],
     "security": {
@@ -29,16 +23,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["msi", "nsis"],
-    "resources": {
-      "../engine-bundle": "engine-bundle"
-    },
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
+    "icon": ["icons/icon.png"]
   }
 }

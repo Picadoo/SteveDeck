@@ -9,7 +9,7 @@ export default function TitleBar() {
   return (
     <div className="flex h-8 shrink-0 items-stretch justify-between border-b border-border bg-surface select-none">
       <div data-tauri-drag-region className="flex flex-1 items-center pl-3 text-xs font-medium text-muted">
-        mc-bot-player
+        SteveDeck
       </div>
       <WindowControls />
     </div>

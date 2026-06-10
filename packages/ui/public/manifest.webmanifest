@@ -1,6 +1,6 @@
 {
-  "name": "mc-bot-player",
-  "short_name": "mcbot",
+  "name": "SteveDeck",
+  "short_name": "SteveDeck",
   "description": "Minecraft 挂机机器人控制台",
   "start_url": ".",
   "display": "standalone",

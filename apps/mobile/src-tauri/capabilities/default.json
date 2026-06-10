@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "移动端默认权限：仅核心（纯 WebView 客户端，无自定义命令）",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

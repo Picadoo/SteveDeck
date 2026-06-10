@@ -74,7 +74,7 @@ async function main(): Promise<void> {
   const tokenFingerprint = crypto.createHash("sha256").update(token).digest("hex").slice(0, 12);
   const showPlainToken = process.env.ENGINE_PRINT_TOKEN === "1" || Boolean(process.stdout.isTTY);
 
-  console.log("\n================ mc-bot-player 引擎已启动 ================");
+  console.log("\n================ SteveDeck 引擎已启动 ================");
   console.log(`版本: ${ENGINE_VERSION}   监听端口: ${port}`);
   if (showPlainToken) {
     console.log(`访问令牌: ${token}`);

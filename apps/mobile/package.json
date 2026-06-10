@@ -1,6 +1,17 @@
-{
+﻿{
   "name": "@mcbot/mobile",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Tauri 2 安卓客户端（Phase 5 搭建）"
+  "description": "SteveDeck 安卓客户端（Tauri 2 壳 + 共享网页 UI，纯远程遥控不带引擎）",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri android dev",
+    "build": "tauri android build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
 }
