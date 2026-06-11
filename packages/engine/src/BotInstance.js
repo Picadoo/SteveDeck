@@ -6,6 +6,7 @@ const collectBlock = require('mineflayer-collectblock').plugin;
 const logger = require('./utils/logger');
 const { isFatalKick, extractText } = require('./utils/reconnectPolicy');
 const { isChatBlocked } = require('./utils/chatSafety');
+const waitForTeleport = require('./utils/waitForTeleport');
 const { Recorder } = require('./modules/recorder');
 
 // pnpm 下引擎不能直接 require 传递依赖；借 mineflayer 的解析路径拿到 minecraft-protocol（用其 ping 探测 Forge 模组表）。
@@ -941,8 +942,8 @@ class BotInstance {
             return { success: false, error: '机器人未在线' };
         }
 
-        if (this.savedLocations.length >= 5) {
-            return { success: false, error: '已达到最大保存数量（5个）' };
+        if (this.savedLocations.length >= 12) {
+            return { success: false, error: '已达到最大保存数量（12个）' };
         }
 
         const pos = this.bot.entity.position;
@@ -955,6 +956,9 @@ class BotInstance {
             x: Math.floor(pos.x),
             y: Math.floor(pos.y),
             z: Math.floor(pos.z),
+            // 记录维度：跨维度且无到达方式时「前往」快速失败，而不是寻路 60 秒超时。
+            // 注意 Bukkit 多世界的自定义世界客户端常显示 overworld，分不清时靠 command/steps 兜底。
+            dimension: this.bot.game?.dimension || undefined,
             createdAt: Date.now()
         };
 
@@ -1001,7 +1005,17 @@ class BotInstance {
             return this.runSteps(location.steps, `前往「${location.name}」`);
         }
 
-        // 其次：前置指令切图，延迟后再寻路（多世界）
+        // 跨维度且没有任何到达方式：寻路注定 60 秒超时，直接快速失败给出可操作的提示
+        const curDim = this.bot.game?.dimension;
+        if (!location.command && location.dimension && curDim && location.dimension !== curDim) {
+            return {
+                success: false,
+                error: `「${location.name}」在 ${location.dimension}，当前在 ${curDim}——请为该地点配置前置指令或录制到达脚本`,
+            };
+        }
+
+        // 其次：前置指令切图 → 等传送真的发生（位置跳变/维度变化，最多 8 秒）→ 再寻路。
+        // 旧实现固定等 2.5 秒就开走：传送排队/确认菜单/网络延迟都会让机器人在原世界乱跑。
         if (location.command) {
             // API-1：地点 warp 指令也过安全过滤（与 respawn 同理，堵命令注入旁路）
             if (isChatBlocked(location.command)) {
@@ -1011,13 +1025,21 @@ class BotInstance {
             this.io.to(this._room).to('admin').emit('log', {
                 user: this.config.username,
                 ownerId: this.config.ownerId,
-                msg: `切图指令: ${location.command}，2.5秒后寻路`,
+                msg: `切图指令: ${location.command}，等待传送完成…`,
                 time: new Date().toLocaleTimeString()
             });
             const epoch = this._epoch;
-            this.pushOneShot(() => {
-                if (this._epoch === epoch && this.bot?.entity) this.move(location.x, location.y, location.z);
-            }, 2500);
+            (async () => {
+                const moved = await waitForTeleport(this.bot, { timeoutMs: 8000 });
+                if (this._epoch !== epoch || !this.bot?.entity) return; // 期间断连/重建：放弃陈旧寻路
+                this.io.to(this._room).to('admin').emit('log', {
+                    user: this.config.username,
+                    ownerId: this.config.ownerId,
+                    msg: moved ? '传送完成，开始寻路' : '8 秒内未检测到传送（可能已在附近），按坐标寻路',
+                    time: new Date().toLocaleTimeString()
+                });
+                this.move(location.x, location.y, location.z);
+            })();
         } else {
             // 兜底：当前世界内寻路到坐标
             this.move(location.x, location.y, location.z);

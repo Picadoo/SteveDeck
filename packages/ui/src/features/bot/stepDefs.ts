@@ -245,7 +245,7 @@ export const STEP_TYPES: StepTypeDef[] = [
   },
   {
     do: "goto_location",
-    label: "前往保存地点",
+    label: "前往保存地点(自动执行前置/到达脚本)",
     fields: [{ k: "name", label: "地点名", type: "text" }],
   },
   // ===== 控制块（含子步骤） =====

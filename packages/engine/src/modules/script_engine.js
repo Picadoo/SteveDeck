@@ -5,6 +5,7 @@
 const logger = require('../utils/logger');
 const { goals } = require('mineflayer-pathfinder');
 const { isChatBlocked } = require('../utils/chatSafety');
+const waitForTeleport = require('../utils/waitForTeleport');
 const { findMatchingSlot, slotText } = require('../utils/guiMatch');
 const { customName } = require('../utils/items');
 const { ServerEvents } = require('@mcbot/protocol'); // 事件名统一走协议常量，杜绝两端字符串漂移
@@ -353,10 +354,44 @@ module.exports = (botInstance) => {
             }
 
             case 'goto_location': {
+                // 完整复用地点的「到达方式」：到达脚本 > 前置指令(等真实传送) > 坐标寻路。
+                // 旧实现只朝坐标裸寻路——多世界(Multiverse 等)地点在脚本里必然走废，
+                // 与踩点页「前往」按钮行为不一致（那边早就会先执行前置）。
                 const locName = step.name || step.location || '';
-                const loc = (botInstance.savedLocations || []).find(l => l.name === locName);
+                const loc = (botInstance.savedLocations || []).find(l => l.name === locName || l.id === locName);
                 if (!loc) { emitLog(`未找到保存的地点: ${locName}`); break; }
-                emitLog(`前往地点「${locName}」(${loc.x}, ${loc.y}, ${loc.z})`);
+
+                // 到达脚本优先：在当前脚本上下文里回放（共享中止标记/总步数熔断）。
+                // 与 run_script 共用调用深度护栏——到达脚本里又写 goto_location 自身会无限递归。
+                if (Array.isArray(loc.steps) && loc.steps.length) {
+                    if (ctx.callDepth >= MAX_CALL_DEPTH) {
+                        emitLog(`到达脚本嵌套超过 ${MAX_CALL_DEPTH} 层，跳过「${loc.name}」`);
+                        break;
+                    }
+                    emitLog(`前往「${loc.name}」：回放到达脚本（${loc.steps.length} 步）`);
+                    const subCtx = { ...ctx, callDepth: ctx.callDepth + 1 };
+                    await executeSteps(loc.steps, subCtx, [`loc:${loc.name}`]);
+                    if (subCtx.aborted) ctx.aborted = true;
+                    ctx.totalSteps = subCtx.totalSteps;
+                    break;
+                }
+
+                // 跨维度且无前置指令：寻路注定超时，明确报错（throw 让 retry/错误推送接得住）
+                const curDim = bot.game?.dimension;
+                if (!loc.command && loc.dimension && curDim && loc.dimension !== curDim) {
+                    throw new Error(`「${loc.name}」在 ${loc.dimension}，当前在 ${curDim}——请为该地点配置前置指令或到达脚本`);
+                }
+
+                if (loc.command) {
+                    if (isChatBlocked(loc.command)) { emitLog('地点前置指令被安全过滤拦截'); break; }
+                    emitLog(`前置指令: ${loc.command}（等待传送…）`);
+                    bot.chat(loc.command);
+                    const moved = await waitForTeleport(bot, { timeoutMs: 8000 });
+                    if (ctx.aborted || !bot.entity) return; // 传送等待期间停止/断连
+                    emitLog(moved ? '传送完成，继续寻路' : '8 秒内未检测到传送（可能已在附近），按坐标寻路');
+                }
+
+                emitLog(`前往地点「${loc.name}」(${loc.x}, ${loc.y}, ${loc.z})`);
                 const locGoal = new goals.GoalBlock(loc.x, loc.y, loc.z);
                 await gotoWithTimeout(locGoal, Number(step.timeout) * 1000);
                 break;

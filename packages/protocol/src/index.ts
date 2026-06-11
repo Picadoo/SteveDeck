@@ -176,6 +176,9 @@ export interface SavedLocation {
   x: number;
   y: number;
   z: number;
+  /** 保存时所在维度（overworld/the_nether/the_end）。跨维度且无到达方式时前往会快速失败而非寻路超时。
+   *  注意：Bukkit 多世界插件的自定义世界在客户端侧多显示为 overworld，无法据此区分——靠 command/steps 兜底。 */
+  dimension?: string;
   /** 可选·前往前先执行的指令（多世界切图，如 /warp 主城） */
   command?: string;
   /** 可选·到达脚本（开菜单→点地点等 GUI/多世界传送，回放动作序列；优先于 command/坐标） */
@@ -190,6 +193,8 @@ export interface SavedLocationSummary {
   x: number;
   y: number;
   z: number;
+  /** 保存时所在维度 */
+  dimension?: string;
   command?: string;
   /** 到达脚本步数（仅计数；>0 即「已录制到达脚本」） */
   stepCount?: number;
@@ -523,7 +528,7 @@ export const SCRIPT_SPEC = `脚本格式：
 { "name":"...", "loop":false, "trigger":{"type":"manual"}, "steps":[ {"do":"chat","msg":"hi"}, {"do":"wait","s":2} ] }
 可用 do（只能用以下列出的，禁止编造）：
 基础：chat(msg) cmd(cmd) whisper(player,msg) wait(s) log(msg) note(text，注释不执行) stop
-移动：goto(x,y,z) goto_location(name=已保存地点) goto_nearest(target=player/mob/名字,distance) return_home look(x,y,z) look_at(target) hold(key=forward/back/left/right/jump/sneak/sprint,s) sneak(active) jump
+移动：goto(x,y,z) goto_location(name=已保存地点，自动执行该地点配置的前置指令/到达脚本，跨世界用它) goto_nearest(target=player/mob/名字,distance) return_home look(x,y,z) look_at(target) hold(key=forward/back/left/right/jump/sneak/sprint,s) sneak(active) jump
 物品：equip(item) equip_best_weapon equip_best_tool(block) drop(item,count) drop_all(keep=保留关键词) deposit(item，存入最近箱子) use_item swap_hands craft(item,count，自动找工作台) dig(block,distance，挖最近的该方块) place(item,x,y,z，在坐标放置方块)
 战斗/交互：attack(entity,count,interval) interact(target，右键实体/NPC)
 GUI菜单：wait_gui_item(item,timeout) find_and_click_slot(item,button=0左1右,matchLore) click_slot(slot,button) close_gui
@@ -732,7 +737,9 @@ export function compactObservation(obs: Observation): Record<string, unknown> {
       : undefined,
     recentChat: (obs.recentChat || []).slice(-10),
     savedLocations: (obs.savedLocations || []).map((l: any) =>
-      typeof l?.x === "number" ? `${l.name}(${l.x},${l.y},${l.z})` : l?.name,
+      typeof l?.x === "number"
+        ? `${l.name}(${l.x},${l.y},${l.z}${l.dimension ? `,${l.dimension}` : ""})`
+        : l?.name,
     ),
     scoreboard: obs.scoreboard,
     bossBars: obs.serverText?.bossBars?.length

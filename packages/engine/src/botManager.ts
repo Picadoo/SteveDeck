@@ -307,6 +307,7 @@ class BotManager {
           x: l.x,
           y: l.y,
           z: l.z,
+          dimension: l.dimension,
           command: l.command,
           stepCount: Array.isArray(l.steps) ? l.steps.length : 0,
         }),

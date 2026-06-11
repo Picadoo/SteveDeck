@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { MapPin, Plus, Navigation, Trash2, Footprints, Terminal, ListChecks, Circle, Square } from "lucide-react";
+import { MapPin, Plus, Navigation, Trash2, Footprints, Terminal, ListChecks, Circle, Square, Globe, Pencil } from "lucide-react";
 import { Card, Button, Input } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
@@ -16,6 +16,15 @@ function reachInfo(l: SavedLocationSummary) {
   return { label: "坐标寻路", Icon: Footprints, tone: "text-muted" };
 }
 
+// 维度中文短名（保存时记录；Bukkit 多世界的自定义世界客户端侧常显示为主世界）
+function dimLabel(d?: string): string | null {
+  if (!d) return null;
+  if (/nether/i.test(d)) return "下界";
+  if (/end/i.test(d)) return "末地";
+  if (/overworld/i.test(d)) return "主世界";
+  return d;
+}
+
 export default function LocationsTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [name, setName] = useState("");
@@ -23,8 +32,10 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
   const [rec, setRec] = useState<RecTarget | null>(null);
   const [recCount, setRecCount] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState<SavedLocationSummary | null>(null);
+  // 编辑前置指令：set-reach API 早已存在，这里补 UI 入口（多世界地点保存后也能改 /warp 指令）
+  const [editCmd, setEditCmd] = useState<{ loc: SavedLocationSummary; value: string } | null>(null);
   const locs = bot.savedLocations ?? [];
-  const atCap = locs.length >= 5; // 引擎上限 5 个（BotInstance 强制）；满了禁用而不是让保存报错
+  const atCap = locs.length >= 12; // 引擎上限 12 个（BotInstance 强制）；满了禁用而不是让保存报错
 
   // 录制中：轮询步数；引擎侧若停了则收起横幅
   useEffect(() => {
@@ -124,7 +135,7 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
         <h3 className="mb-3 flex items-center justify-between text-sm font-semibold">
           <span>新增地点</span>
           <span className={cn("text-[11px] font-normal tabular-nums", atCap ? "text-danger" : "text-muted")}>
-            {locs.length}/5
+            {locs.length}/12
           </span>
         </h3>
         <form onSubmit={saveHere} className="space-y-2">
@@ -180,6 +191,11 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
                       <span>
                         {l.x}, {l.y}, {l.z}
                       </span>
+                      {dimLabel(l.dimension) && (
+                        <span className="inline-flex items-center gap-1">
+                          <Globe className="h-3 w-3" /> {dimLabel(l.dimension)}
+                        </span>
+                      )}
                       <span className={cn("inline-flex items-center gap-1", ri.tone)}>
                         <ri.Icon className="h-3 w-3" /> {ri.label}
                       </span>
@@ -198,6 +214,15 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
                     }}
                   >
                     <Navigation className="h-3.5 w-3.5" /> 前往
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!!rec}
+                    title="编辑前置指令（多世界切图，如 /warp 主城）"
+                    onClick={() => setEditCmd({ loc: l, value: l.command || "" })}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
                   </Button>
                   <Button
                     size="sm"
@@ -221,6 +246,46 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
           })
         )}
       </div>
+
+      {/* 编辑前置指令：跨世界地点保存后也能补/改 /warp、/mv tp 等切图指令（留空=清除，走纯坐标寻路） */}
+      <Modal
+        open={!!editCmd}
+        onClose={() => setEditCmd(null)}
+        title={`前置指令 — ${editCmd?.loc.name ?? ""}`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditCmd(null)}>取消</Button>
+            <Button
+              variant="primary"
+              onClick={async () => {
+                if (!editCmd) return;
+                const r = await cmd.moduleAction(bot.id, "location", "set-reach", {
+                  locationId: editCmd.loc.id,
+                  command: editCmd.value.trim(),
+                });
+                pushToast(r.ok ? "前置指令已更新" : (r.error || "更新失败"), r.ok ? "success" : "error");
+                setEditCmd(null);
+              }}
+            >
+              保存
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <Input
+            value={editCmd?.value ?? ""}
+            onChange={(e) => setEditCmd((p) => (p ? { ...p, value: e.target.value } : p))}
+            placeholder="如 /warp 主城、/mv tp 资源世界（留空=清除）"
+            autoFocus
+          />
+          <p className="text-[11px] leading-relaxed text-muted">
+            前往该地点（含脚本里的 goto_location）会先执行这条指令，等传送完成后再寻路到坐标。
+            跨世界的地点必须配前置指令或录制到达脚本，否则没法走过去。
+          </p>
+        </div>
+      </Modal>
 
       <Modal
         open={!!confirmDelete}
