@@ -461,6 +461,9 @@ export interface ScriptTrigger {
     | "schedule"
     | "chat_match"
     | "health_below"
+    | "food_below"
+    | "mob_nearby"
+    | "damage"
     | "respawn"
     | "player_nearby"
     | "inventory_full"
@@ -491,6 +494,44 @@ export interface ScriptSummary {
   /** 分类/文件夹；空=未分类 */
   category?: string;
 }
+
+/** 引擎脚本引擎支持的全部 do 类型（白名单）。
+ *  AI 生成结果按此校验，UI 积木调色板是它的子集——新增动作两端都从这里对账。 */
+export const SCRIPT_DO_TYPES = [
+  // 基础
+  "chat", "cmd", "whisper", "wait", "log", "note", "stop",
+  // 移动 / 视角
+  "goto", "goto_location", "goto_nearest", "return_home", "look", "look_at",
+  "hold", "sneak", "jump",
+  // 物品 / 方块
+  "equip", "equip_best_weapon", "equip_best_tool", "drop", "drop_all", "deposit",
+  "use_item", "swap_hands", "craft", "dig", "place",
+  // 战斗 / 交互
+  "attack", "interact",
+  // GUI 菜单
+  "wait_gui_item", "find_and_click_slot", "click_slot", "close_gui",
+  // 等待
+  "wait_chat", "wait_until", "wait_spawn",
+  // 变量
+  "set_var", "math_var",
+  // 控制流
+  "if", "repeat", "while", "break_if", "run_script",
+] as const;
+
+/** 给 AI 的脚本规范文本（引擎直连生成与 UI「复制提示词」共用，单一事实源）。 */
+export const SCRIPT_SPEC = `脚本格式：
+{ "name":"...", "loop":false, "trigger":{"type":"manual"}, "steps":[ {"do":"chat","msg":"hi"}, {"do":"wait","s":2} ] }
+可用 do（只能用以下列出的，禁止编造）：
+基础：chat(msg) cmd(cmd) whisper(player,msg) wait(s) log(msg) note(text，注释不执行) stop
+移动：goto(x,y,z) goto_location(name=已保存地点) goto_nearest(target=player/mob/名字,distance) return_home look(x,y,z) look_at(target) hold(key=forward/back/left/right/jump/sneak/sprint,s) sneak(active) jump
+物品：equip(item) equip_best_weapon equip_best_tool(block) drop(item,count) drop_all(keep=保留关键词) deposit(item，存入最近箱子) use_item swap_hands craft(item,count，自动找工作台) dig(block,distance，挖最近的该方块) place(item,x,y,z，在坐标放置方块)
+战斗/交互：attack(entity,count,interval) interact(target，右键实体/NPC)
+GUI菜单：wait_gui_item(item,timeout) find_and_click_slot(item,button=0左1右,matchLore) click_slot(slot,button) close_gui
+等待：wait_chat(pattern,timeout,save_to=存变量名) wait_until(cond,timeout) wait_spawn
+变量：set_var(name,value，特殊值 $health/$food/$x/$y/$z/=数学式) math_var(name,op=+,-,*,/,%,value)
+控制：if(cond,then=[步骤],else=[步骤]) repeat(times,steps=[步骤]) while(cond,steps=[步骤]) break_if(cond) run_script(name)
+可用 trigger.type：manual interval(value=秒) schedule(value=HH:MM) chat_match(value=关键词) health_below(value=数) food_below(value=数) mob_nearby(value=距离格数) damage(受到伤害) respawn player_nearby inventory_full
+条件(cond)语法：health<10 food<8 inventory_full inventory_has 物品名 inventory_count 物品名>32 players_nearby no_players_nearby holding 物品名 gui_open gui_closed gui_has 关键词 alive dead var 名字>5；支持 && || ! 和括号`;
 
 // ==================== AI 感知 ====================
 
@@ -631,6 +672,81 @@ export interface Observation {
   };
   /** 玩家 Tab 展示名（含 PAPI 前后缀） */
   playersDisplay?: { name: string; display: string }[];
+}
+
+/** 把完整感知快照压成 AI 提示词友好的紧凑版：
+ *  背包按名合并、实体/玩家只留名字+距离、全息/告示牌只留文字、砍掉朝向/耐久/延迟等
+ *  对「写脚本」没用的字段。完整版给前端展示，紧凑版进 prompt——省 token 也省模型注意力。 */
+export function compactObservation(obs: Observation): Record<string, unknown> {
+  const s = obs.self;
+  // 背包按「显示名(物品id)」合并数量，丢槽位/耐久细节
+  const inv = new Map<string, number>();
+  for (const it of obs.inventory || []) {
+    const label =
+      it.displayName && it.displayName !== it.name ? `${it.displayName}(${it.name})` : it.name;
+    const key = it.enchants?.length ? `${label}[${it.enchants.join(",")}]` : label;
+    inv.set(key, (inv.get(key) || 0) + it.count);
+  }
+  const equipment = s?.equipment
+    ? Object.fromEntries(
+        Object.entries(s.equipment)
+          .filter(([, v]) => v)
+          .map(([k, v]) => [k, (v as EquipItem).name]),
+      )
+    : undefined;
+  const out: Record<string, unknown> = {
+    bot: { username: obs.bot.username, online: obs.bot.online },
+    summary: obs.summary,
+    self: s
+      ? {
+          pos: s.pos,
+          health: s.health,
+          maxHealth: s.maxHealth,
+          food: s.food,
+          heldItem: s.heldItem,
+          equipment: equipment && Object.keys(equipment).length ? equipment : undefined,
+          effects: s.effects?.length
+            ? s.effects.map((e) => `${e.name}${e.level > 1 ? e.level : ""}`)
+            : undefined,
+          dimension: s.dimension,
+          gameMode: s.gameMode,
+          blockBelow: s.blocks?.below,
+        }
+      : null,
+    inventory: [...inv.entries()].map(([n, c]) => `${n} x${c}`),
+    inventorySlots: obs.inventorySlots,
+    nearbyPlayers: (obs.nearbyPlayers || [])
+      .slice(0, 8)
+      .map((p) => ({ name: p.name, distance: p.distance })),
+    nearbyEntities: (obs.nearbyEntities || []).slice(0, 10).map((e) => ({
+      name: e.name,
+      id: e.id && e.id !== e.name ? e.id : undefined,
+      hostile: e.hostile || undefined,
+      distance: e.distance,
+    })),
+    holograms: (obs.holograms || []).slice(0, 8).map((h) => h.text),
+    signs: (obs.signs || []).slice(0, 6).map((g) => g.text),
+    threats: obs.threats?.hostileCount ? obs.threats : undefined,
+    environment: obs.environment
+      ? `${obs.environment.timeOfDay}${obs.environment.raining ? "·雨" : ""}`
+      : undefined,
+    recentChat: (obs.recentChat || []).slice(-10),
+    savedLocations: (obs.savedLocations || []).map((l: any) =>
+      typeof l?.x === "number" ? `${l.name}(${l.x},${l.y},${l.z})` : l?.name,
+    ),
+    scoreboard: obs.scoreboard,
+    bossBars: obs.serverText?.bossBars?.length
+      ? obs.serverText.bossBars.map((b) => b.title).filter(Boolean)
+      : undefined,
+    actionBar: obs.serverText?.actionBar || undefined,
+    runningScript: (obs.modules as any)?.runningScript ?? undefined,
+  };
+  // 剔除空值/空数组，让 prompt 里不出现一排 [] 噪音
+  for (const k of Object.keys(out)) {
+    const v = out[k];
+    if (v === undefined || v === null || (Array.isArray(v) && v.length === 0)) delete out[k];
+  }
+  return out;
 }
 
 // ==================== Socket.IO 握手鉴权 ====================

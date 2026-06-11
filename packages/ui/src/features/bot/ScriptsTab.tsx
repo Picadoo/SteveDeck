@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Play, Square, Plus, Pencil, Trash2, ScrollText, Repeat, AlertCircle, Activity, Folder, ChevronDown, CircleDot } from "lucide-react";
+import { Play, Square, Plus, Pencil, Trash2, ScrollText, Repeat, AlertCircle, Activity, Folder, ChevronDown, CircleDot, LayoutTemplate } from "lucide-react";
 import { Card, Button, Badge } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
@@ -8,6 +8,7 @@ import Modal from "@/components/ui/Modal";
 import ScriptEditor from "./ScriptEditor";
 import CustomJsPanel from "./CustomJsPanel";
 import { TRIGGER_TYPES } from "./stepDefs";
+import { SCRIPT_TEMPLATES } from "./scriptTemplates";
 import type { BotSummary, ScriptSummary, BotScript } from "@mcbot/protocol";
 
 export default function ScriptsTab({ bot }: { bot: BotSummary }) {
@@ -19,6 +20,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
     open: false,
     initial: null,
   });
+  const [tplOpen, setTplOpen] = useState(false);
   const runtime = useStore((s) => s.scriptRuntime[bot.id]);
   // 录制态（轮询引擎 recording:status；录制中加快刷新步数）
   const [rec, setRec] = useState<{ active: boolean; count: number } | null>(null);
@@ -299,6 +301,9 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
                   <CircleDot className="h-3.5 w-3.5 text-danger" /> 录制
                 </Button>
               )}
+              <Button size="sm" variant="secondary" onClick={() => setTplOpen(true)} title="从常见场景模板创建">
+                <LayoutTemplate className="h-3.5 w-3.5" /> 模板
+              </Button>
               <Button size="sm" variant="primary" onClick={openNew}>
                 <Plus className="h-3.5 w-3.5" /> 新建脚本
               </Button>
@@ -347,6 +352,32 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
             onClose={() => setEditing({ open: false, initial: null })}
             onSave={handleSave}
           />
+
+          {/* 模板库：点一个模板 → 进编辑器微调（关键词/地点名）→ 保存。深拷贝防止编辑改坏模板常量 */}
+          <Modal open={tplOpen} onClose={() => setTplOpen(false)} title="脚本模板" size="lg">
+            <div className="space-y-2">
+              <p className="text-xs text-muted">选一个常见场景，进编辑器把关键词/地点名改成你服务器的，保存即可用。</p>
+              {SCRIPT_TEMPLATES.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => {
+                    setTplOpen(false);
+                    setEditing({ open: true, initial: JSON.parse(JSON.stringify(t.script)) as BotScript });
+                  }}
+                  className="block w-full rounded-lg border border-border bg-surface-2/40 p-3 text-left transition-colors hover:border-accent/50 hover:bg-surface-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{t.name}</span>
+                    <span className="text-[10px] text-muted">
+                      {TRIGGER_TYPES.find((tt) => tt.type === t.script.trigger?.type)?.label ?? "手动触发"}
+                      {" · "}{t.script.steps.length} 步{t.script.loop ? " · 循环" : ""}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted">{t.desc}</p>
+                </button>
+              ))}
+            </div>
+          </Modal>
 
           <Modal
             open={!!confirmDelete}

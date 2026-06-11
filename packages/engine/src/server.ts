@@ -372,8 +372,8 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
   // AI 直连生成：感知+目标 → DeepSeek/OpenAI 兼容接口 → 校验过的脚本 JSON（不自动保存，UI 决定导入/运行）
   app.post("/api/ai/generate/:id", authGuard, async (req: Request, res: Response): Promise<void> => {
     try {
-      const script = await generateScript(String(req.params.id), String(req.body?.goal ?? ""));
-      res.json({ script });
+      const { script, warnings } = await generateScript(String(req.params.id), String(req.body?.goal ?? ""));
+      res.json({ script, warnings });
     } catch (e: any) {
       res.status(400).json({ error: String(e?.message ?? e) });
     }

@@ -92,10 +92,10 @@ WebSocket 等价：`script:save` + `script:start`（见各命令）。
 }
 ```
 
-- **动作**：`chat(msg)` `cmd(cmd)` `whisper(player,msg)` `goto(x,y,z)` `goto_location(name)` `return_home` `equip(item)`（按**显示名或物品ID**找并持到手） `equip_best_weapon` `drop(item,count)` `use_item`（右键手持物，常用于打开菜单） `attack(entity)` `jump` `swap_hands` `look(x,y,z)`
+- **动作**：`chat(msg)` `cmd(cmd)` `whisper(player,msg)` `goto(x,y,z)` `goto_location(name)` `goto_nearest(target,distance)` `return_home` `look_at(target)` `hold(key,s)` `sneak(active)` `equip(item)`（按**显示名或物品ID**找并持到手） `equip_best_weapon` `equip_best_tool(block)` `drop(item,count)` `drop_all(keep)` `deposit(item)` `use_item`（右键手持物，常用于打开菜单） `interact(target)`（右键实体/NPC） `attack(entity,count,interval)` `dig(block,distance)`（挖最近的该方块） `place(item,x,y,z)`（在坐标放方块） `craft(item,count)`（自动找工作台） `jump` `swap_hands` `look(x,y,z)`
 - **GUI 界面交互**（服务器定制菜单）：`use_item`（开菜单）→ `wait_gui_item(item, timeout?, matchLore?)`（等界面出现含关键词的物品，按**显示名**匹配）→ `find_and_click_slot(item, button?, matchLore?, slotFrom?, slotTo?, save_slot?)`（按**名字/lore**找槽位点击，button 0=左键/1=右键）→ `click_slot(slot, button?)` → `close_gui`
-- **等待/变量/流程**：`wait(s)` `wait_chat(pattern, timeout?, regex?, save_to?)` `wait_until(cond, timeout?)` `set_var(name, value)`（value 可用 `$health/$food/$x/$y/$z/$scoreboard:关键词`） `math_var(name, op, value)` `if(cond, steps[, else])` `repeat(times, steps)` `while(cond, steps)` `break_if(cond)` `run_script(name)` `stop` `log(msg)` `note(text)`
-- **触发 `trigger.type`**：`manual` `interval(value=秒)` `schedule(value=HH:MM)` `chat_match(value=关键词)` `health_below(value=数)` `respawn` `player_nearby` `inventory_full`
+- **等待/变量/流程**：`wait(s)` `wait_spawn(timeout?)` `wait_chat(pattern, timeout?, regex?, save_to?)` `wait_until(cond, timeout?)` `set_var(name, value)`（value 可用 `$health/$food/$x/$y/$z/$scoreboard:关键词`） `math_var(name, op, value)` `if(cond, steps[, else])` `repeat(times, steps)` `while(cond, steps)` `break_if(cond)` `run_script(name)` `stop` `log(msg)` `note(text)`
+- **触发 `trigger.type`**：`manual` `interval(value=秒)` `schedule(value=HH:MM)` `chat_match(value=关键词)` `health_below(value=数)` `food_below(value=数)` `mob_nearby(value=距离格数)` `damage`（受到伤害） `respawn` `player_nearby` `inventory_full`
 - **条件 `cond`**（用于 if/while/break_if）：`health < 10`、`food < 5`、`inventory_full`、`inventory_has diamond`、`inventory_count diamond > 10`、`players_nearby`、`no_players_nearby`、`holding diamond_sword`、`alive`、`dead`、`var counter > 5`
 
 ### GUI 自动化套路（开菜单 → 逐级找物品点击）

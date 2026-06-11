@@ -88,7 +88,7 @@ function toScript(e: EditScript): BotScript {
 
 function listIdFor(key: string): string | undefined {
   if (key === "item") return "mc-items";
-  if (key === "entity") return "mc-entities";
+  if (key === "entity" || key === "target") return "mc-entities";
   if (key === "player") return "mc-players";
   return undefined;
 }

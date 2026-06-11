@@ -1,10 +1,11 @@
 // AI 直连脚本生成：引擎代理调用 OpenAI 兼容接口（默认 DeepSeek），
-// 把「世界感知 + 脚本规范 + 用户目标」组装成提示词 → 拿回脚本 JSON → 校验形状后返回。
+// 把「世界感知 + 脚本规范 + 用户目标」组装成提示词 → 拿回脚本 JSON → 校验后返回。
 // 走引擎而非前端直调的原因：apiKey 只落引擎数据目录（不进浏览器 localStorage / 不暴露给网页端）、
 // 没有 CORS 问题、提示词与感知组装在同一进程零拷贝。
 import * as fs from "fs";
 import { dataPath } from "../config/paths";
 import { buildObservation } from "./observe";
+import { SCRIPT_SPEC, SCRIPT_DO_TYPES, compactObservation } from "@mcbot/protocol";
 
 export interface AiConfig {
   baseUrl: string;
@@ -46,39 +47,10 @@ export function saveAiConfig(patch: Partial<AiConfig>): AiConfig {
   return next;
 }
 
-const SCRIPT_SPEC = `脚本格式：
-{ "name":"...", "loop":false, "trigger":{"type":"manual"}, "steps":[ {"do":"chat","msg":"hi"}, {"do":"wait","s":2} ] }
-可用 do：chat(msg) cmd(cmd) whisper(player,msg) wait(s) log(msg) goto(x,y,z) return_home equip(item) equip_best_weapon drop(item,count) use_item attack(entity) jump swap_hands look(x,y,z) if(cond,steps) repeat(times,steps) while(cond,steps) run_script(name) stop set_var(name,value) math_var(name,op,value)
-可用 trigger.type：manual interval(value=秒) schedule(value=HH:MM) chat_match(value=关键词) health_below(value=数) respawn player_nearby inventory_full
-条件(cond)示例："health < 10"、"inventory_has diamond"、"players_nearby"、"no_players_nearby"`;
+type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
 
-/** 调 OpenAI 兼容接口生成脚本。成功返回脚本对象；失败 throw（带可读中文消息）。 */
-export async function generateScript(botId: string, goal: string): Promise<any> {
-  const cfg = loadAiConfig();
-  if (!cfg.apiKey) throw new Error("未配置 AI API Key（AI 标签 → API 设置）");
-  const obs = buildObservation(botId);
-  if (!obs) throw new Error("机器人不存在");
-
-  const system = [
-    "你是 Minecraft 挂机机器人的脚本生成器。根据用户目标和机器人当前世界状态，生成一个可直接执行的脚本。",
-    "只输出一个 JSON 对象（脚本本体），不要解释、不要 markdown 代码块。",
-    "",
-    "# 脚本规范",
-    SCRIPT_SPEC,
-    "",
-    "# 注意",
-    "- name 用简短中文描述目标",
-    "- 坐标/物品名/实体名必须取自世界状态里真实存在的值，不要编造",
-    "- 不确定时偏保守：宁可少步骤，不要做破坏性操作（丢贵重物品/攻击玩家）",
-  ].join("\n");
-  const user = [
-    "# 当前世界状态",
-    JSON.stringify(obs),
-    "",
-    "# 我的目标",
-    goal.trim() || "（用户没写目标——生成一个原地待命并定时报告状态的脚本）",
-  ].join("\n");
-
+/** 调一次 OpenAI 兼容 chat/completions，返回首条文本内容（失败 throw 中文消息）。 */
+async function callModel(cfg: AiConfig, messages: ChatMsg[]): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90_000);
   let resp: Response;
@@ -88,10 +60,7 @@ export async function generateScript(botId: string, goal: string): Promise<any> 
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
       body: JSON.stringify({
         model: cfg.model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
+        messages,
         temperature: 0.3,
         response_format: { type: "json_object" },
       }),
@@ -111,8 +80,12 @@ export async function generateScript(botId: string, goal: string): Promise<any> 
   const data: any = await resp.json();
   const content = String(data?.choices?.[0]?.message?.content ?? "");
   if (!content) throw new Error("AI 返回为空");
+  return content;
+}
 
-  // 容错解析：response_format 下应是裸 JSON；万一带了代码栅栏/前后缀，截取首个 { 到末个 }
+/** 容错解析模型输出为脚本对象；不合形状 throw。 */
+function parseScript(content: string): any {
+  // response_format 下应是裸 JSON；万一带了代码栅栏/前后缀，截取首个 { 到末个 }
   let script: any;
   try {
     script = JSON.parse(content);
@@ -128,4 +101,108 @@ export async function generateScript(botId: string, goal: string): Promise<any> 
   }
   if (!script.trigger || typeof script.trigger !== "object") script.trigger = { type: "manual" };
   return script;
+}
+
+const KNOWN_DOS = new Set<string>(SCRIPT_DO_TYPES);
+const CONTAINER_KEYS = ["steps", "then", "else"] as const;
+
+/** 递归收集脚本里所有不在白名单内的 do 类型（模型幻觉的重灾区）。 */
+function collectUnknownDos(steps: any[], bad = new Set<string>()): Set<string> {
+  if (!Array.isArray(steps)) return bad;
+  for (const st of steps) {
+    if (!st || typeof st !== "object") continue;
+    if (typeof st.do === "string" && st.do && !KNOWN_DOS.has(st.do)) bad.add(st.do);
+    for (const k of CONTAINER_KEYS) if (Array.isArray(st[k])) collectUnknownDos(st[k], bad);
+  }
+  return bad;
+}
+
+/** 把非法 do 的步骤标记 disabled（引擎跳过禁用步骤），保留给用户看而不是悄悄删掉。 */
+function disableUnknownSteps(steps: any[]): void {
+  if (!Array.isArray(steps)) return;
+  for (const st of steps) {
+    if (!st || typeof st !== "object") continue;
+    if (typeof st.do === "string" && st.do && !KNOWN_DOS.has(st.do)) st.disabled = true;
+    for (const k of CONTAINER_KEYS) if (Array.isArray(st[k])) disableUnknownSteps(st[k]);
+  }
+}
+
+const KNOWN_TRIGGERS = new Set([
+  "manual", "interval", "schedule", "chat_match", "health_below", "food_below",
+  "mob_nearby", "damage", "respawn", "player_nearby", "inventory_full",
+]);
+
+export interface GenerateResult {
+  script: any;
+  /** 非空时表示生成结果有瑕疵（已自动处理），UI 提示用户复查 */
+  warnings: string[];
+}
+
+/** 调 OpenAI 兼容接口生成脚本。成功返回 {script, warnings}；失败 throw（带可读中文消息）。 */
+export async function generateScript(botId: string, goal: string): Promise<GenerateResult> {
+  const cfg = loadAiConfig();
+  if (!cfg.apiKey) throw new Error("未配置 AI API Key（AI 标签 → API 设置）");
+  const obs = buildObservation(botId);
+  if (!obs) throw new Error("机器人不存在");
+
+  const system = [
+    "你是 Minecraft 挂机机器人的脚本生成器。根据用户目标和机器人当前世界状态，生成一个可直接执行的脚本。",
+    "只输出一个 JSON 对象（脚本本体），不要解释、不要 markdown 代码块。",
+    "",
+    "# 脚本规范",
+    SCRIPT_SPEC,
+    "",
+    "# 注意",
+    "- name 用简短中文描述目标",
+    "- 坐标/物品名/实体名必须取自世界状态里真实存在的值，不要编造",
+    "- 不确定时偏保守：宁可少步骤，不要做破坏性操作（丢贵重物品/攻击玩家）",
+  ].join("\n");
+  // 紧凑版感知进 prompt：完整版有装备耐久/朝向/操作日志等写脚本用不上的字段，徒耗 token
+  const user = [
+    "# 当前世界状态",
+    JSON.stringify(compactObservation(obs)),
+    "",
+    "# 我的目标",
+    goal.trim() || "（用户没写目标——生成一个原地待命并定时报告状态的脚本）",
+  ].join("\n");
+
+  const messages: ChatMsg[] = [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ];
+  let content = await callModel(cfg, messages);
+  let script = parseScript(content);
+
+  // 步骤白名单校验：模型编出不存在的 do → 带着错误清单重试一轮；仍不合规则禁用问题步骤并告警
+  let unknown = collectUnknownDos(script.steps);
+  if (unknown.size > 0) {
+    const retryMsg =
+      `你的脚本用了不存在的动作类型：${[...unknown].join("、")}。` +
+      `只能使用规范里列出的 do 类型，请改用等价的合法动作，重新输出完整的脚本 JSON（不要解释）。`;
+    try {
+      content = await callModel(cfg, [
+        ...messages,
+        { role: "assistant", content },
+        { role: "user", content: retryMsg },
+      ]);
+      const retried = parseScript(content);
+      const stillBad = collectUnknownDos(retried.steps);
+      if (stillBad.size < unknown.size) {
+        script = retried;
+        unknown = stillBad;
+      }
+    } catch {
+      /* 重试失败就用第一轮结果走禁用兜底 */
+    }
+  }
+  const warnings: string[] = [];
+  if (unknown.size > 0) {
+    disableUnknownSteps(script.steps);
+    warnings.push(`含不存在的动作（已自动禁用）：${[...unknown].join("、")}`);
+  }
+  if (script.trigger?.type && !KNOWN_TRIGGERS.has(String(script.trigger.type))) {
+    warnings.push(`触发器类型「${script.trigger.type}」不存在，已改为手动触发`);
+    script.trigger = { type: "manual" };
+  }
+  return { script, warnings };
 }

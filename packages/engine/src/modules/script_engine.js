@@ -857,6 +857,118 @@ module.exports = (botInstance) => {
                 break;
             }
 
+            case 'dig': {
+                // 挖最近的指定方块：找 → 走近 → 装最佳工具 → 挖（与 automine 同款流程的单步版）。
+                const kw = String(step.block || '').toLowerCase().trim();
+                if (!kw) { emitLog('dig 缺少方块名'); break; }
+                const maxDist = Number(step.distance) || 16;
+                let ids = [];
+                try {
+                    const mc = botInstance.getMcData();
+                    ids = Object.values(mc.blocksByName || {})
+                        .filter(b => b.name.toLowerCase().includes(kw))
+                        .map(b => b.id);
+                } catch (e) { /* mcData 不可用走名字匹配 */ }
+                const found = bot.findBlock({
+                    matching: ids.length ? ids : (b => b && b.name && b.name.toLowerCase().includes(kw)),
+                    maxDistance: maxDist,
+                });
+                if (!found) { emitLog(`${maxDist}格内没有 ${step.block}`); break; }
+                const pos = found.position;
+                emitLog(`挖掘 ${found.name} (${pos.x}, ${pos.y}, ${pos.z})`);
+                await gotoWithTimeout(new goals.GoalNear(pos.x, pos.y, pos.z, 2), Number(step.timeout) * 1000);
+                if (ctx.aborted || !bot.entity) return;
+                const block = bot.blockAt(pos);
+                if (!block || block.name !== found.name) { emitLog('目标方块已消失/变化'); break; }
+                let tool = null;
+                try { tool = bot.pathfinder.bestHarvestTool(block); if (tool) await bot.equip(tool, 'hand'); } catch (e) { /* 无合适工具 */ }
+                if (ctx.aborted || !bot.entity) return;
+                const canDig = typeof bot.canDigBlock === 'function' ? bot.canDigBlock(block) : true;
+                if (!canDig) { emitLog(`当前无法挖掘 ${block.name}（工具/距离不满足）`); break; }
+                await bot.lookAt(pos.offset(0.5, 0.5, 0.5), true);
+                if (ctx.aborted || !bot.entity) return;
+                await bot.dig(block);
+                emitLog(`已挖掘 ${block.name}`);
+                break;
+            }
+
+            case 'place': {
+                // 在指定坐标放置背包里的方块：目标格必须是空气，且有相邻实体方块作放置参照面。
+                const kw = String(step.item || step.block || '').toLowerCase().trim();
+                if (!kw) { emitLog('place 缺少物品名'); break; }
+                const px = Math.floor(Number(step.x)), py = Math.floor(Number(step.y)), pz = Math.floor(Number(step.z));
+                if (isNaN(px) || isNaN(py) || isNaN(pz)) { emitLog('place 需要 x/y/z 坐标'); break; }
+                const item = bot.inventory.items().find(
+                    i => i.name.toLowerCase().includes(kw) || customName(i).toLowerCase().includes(kw),
+                );
+                if (!item) { emitLog(`背包没有: ${step.item || step.block}`); break; }
+                await gotoWithTimeout(new goals.GoalNear(px, py, pz, 3), Number(step.timeout) * 1000);
+                if (ctx.aborted || !bot.entity) return;
+                const { Vec3 } = require('vec3');
+                const targetPos = new Vec3(px, py, pz);
+                const targetBlock = bot.blockAt(targetPos);
+                if (!targetBlock || targetBlock.boundingBox !== 'empty') {
+                    emitLog(`(${px}, ${py}, ${pz}) 不是空位，无法放置`); break;
+                }
+                // 六个面找实体邻块当参照；face = 参照块指向目标格的方向
+                const faces = [
+                    new Vec3(0, -1, 0), new Vec3(0, 1, 0), new Vec3(-1, 0, 0),
+                    new Vec3(1, 0, 0), new Vec3(0, 0, -1), new Vec3(0, 0, 1),
+                ];
+                let ref = null, face = null;
+                for (const f of faces) {
+                    const nb = bot.blockAt(targetPos.plus(f));
+                    if (nb && nb.boundingBox === 'block') { ref = nb; face = f.scaled(-1); break; }
+                }
+                if (!ref) { emitLog('目标位置周围没有可参照的实体方块'); break; }
+                await bot.equip(item, 'hand');
+                if (ctx.aborted || !bot.entity) return;
+                emitLog(`放置 ${item.name} @ (${px}, ${py}, ${pz})`);
+                await bot.placeBlock(ref, face);
+                break;
+            }
+
+            case 'craft': {
+                // 合成物品：先试 2x2 随身合成，配方需要工作台时自动找最近的工作台走过去。
+                const kw = String(step.item || '').toLowerCase().trim();
+                if (!kw) { emitLog('craft 缺少物品名'); break; }
+                const count = Math.max(1, Number(step.count) || 1);
+                let itemDef = null;
+                try {
+                    const mc = botInstance.getMcData();
+                    itemDef = mc.itemsByName[kw]
+                        || Object.values(mc.itemsByName).find(i => i.name.includes(kw))
+                        || Object.values(mc.itemsByName).find(i => (i.displayName || '').toLowerCase().includes(kw));
+                } catch (e) { /* fallthrough */ }
+                if (!itemDef) { emitLog(`未知物品: ${step.item}`); break; }
+                let table = null;
+                let recipes = bot.recipesFor(itemDef.id, null, 1, null) || [];
+                if (!recipes.length) {
+                    // 随身合成不了 → 找工作台
+                    try {
+                        const mc = botInstance.getMcData();
+                        const tableId = mc.blocksByName.crafting_table?.id;
+                        if (tableId != null) table = bot.findBlock({ matching: tableId, maxDistance: 16 });
+                    } catch (e) { /* ignore */ }
+                    if (table) {
+                        const tp = table.position;
+                        emitLog(`前往工作台 (${tp.x}, ${tp.y}, ${tp.z})`);
+                        await gotoWithTimeout(new goals.GoalNear(tp.x, tp.y, tp.z, 2), Number(step.timeout) * 1000);
+                        if (ctx.aborted || !bot.entity) return;
+                        table = bot.blockAt(tp); // 走近后重取，确保引用有效
+                        recipes = bot.recipesFor(itemDef.id, null, 1, table) || [];
+                    }
+                }
+                if (!recipes.length) {
+                    emitLog(`无法合成 ${itemDef.name}（材料不足${table ? '' : '或附近16格没有工作台'}）`);
+                    break;
+                }
+                emitLog(`合成 ${itemDef.name} x${count}`);
+                await bot.craft(recipes[0], count, table || undefined);
+                emitLog(`已合成 ${itemDef.name} x${count}`);
+                break;
+            }
+
             default:
                 emitLog(`未知动作: ${action}`);
         }
@@ -1084,6 +1196,24 @@ module.exports = (botInstance) => {
             }
             case 'health_below':
                 return bot.health < (Number(trigger.value) || 5);
+            case 'food_below':
+                return bot.food < (Number(trigger.value) || 10);
+            case 'mob_nearby': {
+                // 敌对生物进入指定距离（默认 8 格）
+                const dist = Number(trigger.value) || 8;
+                return Object.values(bot.entities).some(e =>
+                    e && e !== bot.entity && e.position && /hostile/i.test(String(e.kind || '')) &&
+                    bot.entity.position.distanceTo(e.position) <= dist
+                );
+            }
+            case 'damage': {
+                // 受到伤害（血量下降时由 health 监听置位，3 秒内消费）
+                if (botInstance._justDamaged && Date.now() - botInstance._justDamaged < 3000) {
+                    botInstance._justDamaged = null;
+                    return true;
+                }
+                return false;
+            }
             case 'respawn':
                 if (botInstance._justRespawned) {
                     botInstance._justRespawned = false;
@@ -1124,8 +1254,16 @@ module.exports = (botInstance) => {
 
     const onRespawnForTrigger = () => { botInstance._justRespawned = true; };
 
+    // damage 触发器：health 事件里对比上一次血量，下降即置受伤标记（重生回血/吃东西不会触发）
+    const onHealthForTrigger = () => {
+        const prev = botInstance._lastHealthForTrigger;
+        botInstance._lastHealthForTrigger = bot.health;
+        if (typeof prev === 'number' && bot.health < prev) botInstance._justDamaged = Date.now();
+    };
+
     bot.on('message', onChatForTrigger);
     bot.on('respawn', onRespawnForTrigger);
+    bot.on('health', onHealthForTrigger);
 
     // ==================== 公开 API ====================
     botInstance.saveScript = (script, silent) => {
@@ -1230,5 +1368,6 @@ module.exports = (botInstance) => {
         if (botInstance._triggerTimer) clearInterval(botInstance._triggerTimer);
         bot.removeListener('message', onChatForTrigger);
         bot.removeListener('respawn', onRespawnForTrigger);
+        bot.removeListener('health', onHealthForTrigger);
     });
 };

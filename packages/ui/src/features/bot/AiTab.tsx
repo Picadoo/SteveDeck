@@ -5,6 +5,7 @@ import { cmd } from "@/lib/engine";
 import { copyText } from "@/lib/clipboard";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
+import { SCRIPT_SPEC, compactObservation } from "@mcbot/protocol";
 import type { BotSummary, BotScript, Observation } from "@mcbot/protocol";
 
 // AI 直连走引擎 HTTP（key 存引擎侧不进浏览器；socket ack 8s 超时太短，生成要 20-60s）
@@ -21,12 +22,8 @@ function authedFetch(pathname: string, init?: RequestInit): Promise<Response> {
 }
 type AiCfg = { baseUrl: string; model: string; hasKey: boolean };
 
-const SCRIPT_HELP = `脚本格式：
-{ "name":"...", "loop":false, "trigger":{"type":"manual"}, "steps":[ {"do":"chat","msg":"hi"}, {"do":"wait","s":2} ] }
-可用 do：chat(msg) cmd(cmd) whisper(player,msg) wait(s) log(msg) goto(x,y,z) return_home equip(item) equip_best_weapon drop(item,count) use_item attack(entity) jump swap_hands look(x,y,z) if(cond,steps) repeat(times,steps) while(cond,steps) run_script(name) stop set_var(name,value) math_var(name,op,value)
-可用 trigger.type：manual interval(value=秒) schedule(value=HH:MM) chat_match(value=关键词) health_below(value=数) respawn player_nearby inventory_full
-条件(cond)示例："health < 10"、"inventory_has diamond"、"players_nearby"、"no_players_nearby"`;
-
+// 脚本规范文本与引擎直连生成共用协议里的 SCRIPT_SPEC（单一事实源）；
+// 感知用紧凑版——完整版的耐久/朝向/操作日志对写脚本没用，徒占提示词长度。
 function buildPrompt(obs: Observation, goal: string): string {
   const goalText = goal.trim() || "（在这里写你想让机器人做什么，例如：先回家，然后每隔 30 秒发一次 /home，血量低于 8 就停止）";
   return [
@@ -34,11 +31,11 @@ function buildPrompt(obs: Observation, goal: string): string {
     "",
     "# 当前世界状态",
     "```json",
-    JSON.stringify(obs, null, 2),
+    JSON.stringify(compactObservation(obs)),
     "```",
     "",
     "# 脚本规范",
-    SCRIPT_HELP,
+    SCRIPT_SPEC,
     "",
     "# 我的目标",
     goalText,
@@ -109,6 +106,10 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
       if (r.ok && data?.script) {
         setGenScript(data.script as BotScript);
         pushToast(`已生成「${data.script.name}」（${data.script.steps.length} 步）`, "success");
+        // 引擎侧白名单校验的告警（如模型编了不存在的动作已被禁用）——必须让用户知道再导入
+        if (Array.isArray(data.warnings)) {
+          for (const w of data.warnings) pushToast(String(w), "info");
+        }
       } else {
         pushToast(data?.error || "生成失败", "error");
       }
