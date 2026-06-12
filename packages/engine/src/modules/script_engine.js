@@ -744,8 +744,19 @@ module.exports = (botInstance) => {
             }
 
             case 'return_home': {
+                // 归家点一等公民化：优先用名为「家/home」的保存地点——复用 goto_location 的
+                // 完整到达链（到达脚本 > 前置指令+传送检测 > 坐标寻路），跨世界也能回。
+                // 没存过「家」再退回追怪模块的返回点（兼容旧用法：开追怪时自动记的位置）。
+                const homeLoc = (botInstance.savedLocations || []).find(
+                    l => /^(家|home)$/i.test(String(l.name || '').trim())
+                );
+                if (homeLoc) {
+                    emitLog(`回家 → 保存地点「${homeLoc.name}」`);
+                    await executeAction({ ...step, do: 'goto_location', name: homeLoc.name }, ctx);
+                    break;
+                }
                 const rp = botInstance.mobHunterTask?.returnPoint;
-                if (!rp) { emitLog('未设置归家点'); break; }
+                if (!rp) { emitLog('未设置归家点：保存一个名为「家」的地点（推荐），或开启追怪模块'); break; }
                 emitLog(`回家 (${Math.floor(rp.x)}, ${Math.floor(rp.y)}, ${Math.floor(rp.z)})`);
                 // 统一走带超时的寻路助手：杜绝不可达归家点无限挂起 + 孤立 goto 的 unhandled reject(MODA-3)
                 await gotoWithTimeout(new goals.GoalBlock(

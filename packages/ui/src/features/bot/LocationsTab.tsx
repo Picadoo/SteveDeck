@@ -160,6 +160,7 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
         <div className="mt-2 flex items-center justify-between gap-2">
           <p className="text-[11px] text-muted">
             跨世界 / 要开菜单点的地方，用「录制到达」：录一遍开菜单点地点，以后一键回放。
+            名为「家」的地点会作为脚本「回家」的归家点。
           </p>
           <Button
             size="sm"

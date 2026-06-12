@@ -29,13 +29,13 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
   {
     key: "low-hp-retreat",
     name: "低血量自动回家",
-    desc: "血量低于 8 时喊一声并跑回归家点（先在「追怪/挂机」页设置归家点）。",
+    desc: "血量低于 8 时喊一声并跑回归家点（在「踩点」页保存一个名为「家」的地点即可）。",
     script: {
       name: "低血量自动回家",
       loop: false,
       trigger: { type: "health_below", value: 8 },
       steps: [
-        { do: "note", text: "需要先设置归家点，否则 return_home 不生效" },
+        { do: "note", text: "归家点 = 名为「家」的保存地点（推荐，支持前置指令/跨世界），没有则用追怪模块的返回点" },
         { do: "chat", msg: "血量过低，先撤了！" },
         { do: "return_home" },
       ],

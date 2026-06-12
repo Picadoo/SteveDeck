@@ -50,7 +50,7 @@ export const STEP_TYPES: StepTypeDef[] = [
       { k: "z", label: "Z", type: "number" },
     ],
   },
-  { do: "return_home", label: "回家", fields: [] },
+  { do: "return_home", label: "回家(名为「家」的地点)", fields: [] },
   { do: "equip", label: "装备物品", fields: [{ k: "item", label: "物品名", type: "text" }] },
   { do: "equip_best_weapon", label: "装备最强武器", fields: [] },
   {
