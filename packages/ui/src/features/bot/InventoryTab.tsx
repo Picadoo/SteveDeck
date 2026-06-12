@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { RefreshCw, Package, Shirt, Hand, Trash2, MousePointerClick, Star, X, Shield, LayoutGrid, BookOpen, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
@@ -416,6 +416,62 @@ function BookDialog({ botId, slot, onClose }: { botId: string; slot: number; onC
   );
 }
 
+/** 整理面板的单个格子：模块级 memo——只有自身 props 变才重渲，悬浮提示/选中切换不再波及全盘 */
+const OrgCell = memo(function OrgCell({
+  slot,
+  label,
+  it,
+  isSel,
+  anySel,
+  busy,
+  texBase,
+  onClick,
+  onEnter,
+  onLeave,
+}: {
+  slot: number;
+  label?: string;
+  it: InventoryItem | undefined;
+  isSel: boolean;
+  anySel: boolean;
+  busy: boolean;
+  texBase: string;
+  onClick: (slot: number) => void;
+  onEnter: (it: InventoryItem, el: HTMLElement) => void;
+  onLeave: () => void;
+}) {
+  return (
+    <button
+      disabled={busy}
+      onClick={() => onClick(slot)}
+      onMouseEnter={it ? (e) => onEnter(it, e.currentTarget) : undefined}
+      onMouseLeave={it ? onLeave : undefined}
+      className={cn(
+        "relative flex h-10 w-10 items-center justify-center rounded border text-[9px] transition-colors",
+        isSel
+          ? "border-accent bg-accent/25 ring-2 ring-accent"
+          : it
+            ? cn("border-border bg-surface-2/70", anySel ? "hover:border-warning hover:bg-warning/10" : "hover:border-accent hover:bg-accent/10")
+            : cn("border-border/50 bg-surface-2/25", anySel && "hover:border-accent hover:bg-accent/10"),
+        it?.held && !isSel && "ring-1 ring-accent/50",
+      )}
+    >
+      {it ? (
+        <>
+          <ItemIcon texture={it.texture} base={texBase} size={26} />
+          {it.count && it.count > 1 && (
+            <span className="absolute bottom-0 right-0.5 text-[9px] font-semibold text-white" style={{ textShadow: "1px 1px 0 #000" }}>
+              {it.count}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className="text-muted/40">{label ?? ""}</span>
+      )}
+    </button>
+  );
+});
+
 /**
  * 整理背包：常驻 MC 布局界面。
  * - 点一件物品=选中（高亮），再点目标格=移动/交换，界面不关，可一直整理；
@@ -438,8 +494,10 @@ function OrganizeDialog({
   const pushToast = useStore((s) => s.pushToast);
   const [busy, setBusy] = useState(false);
   const [sel, setSel] = useState<number | null>(initialSel ?? null);
-  const [tip, setTip] = useState<{ it: InventoryItem; x: number; y: number } | null>(null);
-  // tip 定位：先渲染再测量——优先放光标上方（不挡手），上面放不下才放下方；超长 lore 限高可滚动
+  // 性能要点（原版「有点卡」的根因）：
+  // - 提示锚定在格子上（mouseenter 一次），不再跟随鼠标——mousemove 零开销；
+  // - OrgCell 是模块级 memo 组件（原来定义在本函数体内，每次渲染都是新类型 → 41 格全量卸载重建）。
+  const [tip, setTip] = useState<{ it: InventoryItem; rect: DOMRect } | null>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const [tipStyle, setTipStyle] = useState<CSSProperties>({ left: -9999, top: -9999 });
   useLayoutEffect(() => {
@@ -448,13 +506,18 @@ function OrganizeDialog({
     const w = el.offsetWidth;
     const h = el.offsetHeight;
     const m = 10;
-    let left = tip.x + 14;
-    if (left + w > window.innerWidth - m) left = Math.max(m, tip.x - w - 14);
-    let top = tip.y - h - 14; // 优先上方
-    if (top < m) top = Math.min(tip.y + 18, window.innerHeight - h - m); // 上方放不下 → 下方
+    const r = tip.rect;
+    let left = r.left + r.width / 2 - w / 2;
+    left = Math.min(Math.max(m, left), window.innerWidth - w - m);
+    let top = r.top - h - 8; // 优先格子上方（不挡手）
+    if (top < m) top = Math.min(r.bottom + 8, window.innerHeight - h - m); // 放不下 → 下方
     if (top < m) top = m;
     setTipStyle({ left, top, maxHeight: window.innerHeight - top - m });
   }, [tip]);
+  const onCellEnter = useCallback((it: InventoryItem, el: HTMLElement) => {
+    setTip({ it, rect: el.getBoundingClientRect() });
+  }, []);
+  const onCellLeave = useCallback(() => setTip(null), []);
   const bySlot = useMemo(() => {
     const m = new Map<number, InventoryItem>();
     for (const it of items) if (it.name) m.set(it.slot, it);
@@ -465,61 +528,44 @@ function OrganizeDialog({
     if (sel !== null && !bySlot.get(sel)) setSel(null);
   }, [bySlot, sel]);
 
-  async function clickCell(slot: number) {
-    if (busy) return;
-    const it = bySlot.get(slot);
-    if (sel === null) {
-      if (it) setSel(slot); // 空手点空格无意义，忽略
-      return;
-    }
-    if (sel === slot) {
-      setSel(null);
-      return;
-    }
-    setBusy(true);
-    const r = await cmd.moduleAction(botId, "inventory", "move", { from: sel, to: slot });
-    setBusy(false);
-    if (r.ok) {
-      setSel(null); // 留在界面里继续整理
-    } else {
-      pushToast(r.error || "移动失败", "error");
-    }
-  }
+  const clickCell = useCallback(
+    async (slot: number) => {
+      if (busy) return;
+      const it = bySlot.get(slot);
+      if (sel === null) {
+        if (it) setSel(slot); // 空手点空格无意义，忽略
+        return;
+      }
+      if (sel === slot) {
+        setSel(null);
+        return;
+      }
+      setBusy(true);
+      const r = await cmd.moduleAction(botId, "inventory", "move", { from: sel, to: slot });
+      setBusy(false);
+      if (r.ok) {
+        setSel(null); // 留在界面里继续整理
+      } else {
+        pushToast(r.error || "移动失败", "error");
+      }
+    },
+    [busy, sel, bySlot, botId, pushToast],
+  );
 
-  const Cell = ({ slot, label }: { slot: number; label?: string }) => {
-    const it = bySlot.get(slot);
-    const isSel = slot === sel;
-    return (
-      <button
-        disabled={busy}
-        onClick={() => clickCell(slot)}
-        onMouseMove={it ? (e) => setTip({ it, x: e.clientX, y: e.clientY }) : undefined}
-        onMouseLeave={it ? () => setTip(null) : undefined}
-        className={cn(
-          "relative flex h-10 w-10 items-center justify-center rounded border text-[9px] transition-colors",
-          isSel
-            ? "border-accent bg-accent/25 ring-2 ring-accent"
-            : it
-              ? cn("border-border bg-surface-2/70", sel !== null ? "hover:border-warning hover:bg-warning/10" : "hover:border-accent hover:bg-accent/10")
-              : cn("border-border/50 bg-surface-2/25", sel !== null && "hover:border-accent hover:bg-accent/10"),
-          it?.held && !isSel && "ring-1 ring-accent/50",
-        )}
-      >
-        {it ? (
-          <>
-            <ItemIcon texture={it.texture} base={texBase} size={26} />
-            {it.count && it.count > 1 && (
-              <span className="absolute bottom-0 right-0.5 text-[9px] font-semibold text-white" style={{ textShadow: "1px 1px 0 #000" }}>
-                {it.count}
-              </span>
-            )}
-          </>
-        ) : (
-          <span className="text-muted/40">{label ?? ""}</span>
-        )}
-      </button>
-    );
-  };
+  const Cell = ({ slot, label }: { slot: number; label?: string }) => (
+    <OrgCell
+      slot={slot}
+      label={label}
+      it={bySlot.get(slot)}
+      isSel={slot === sel}
+      anySel={sel !== null}
+      busy={busy}
+      texBase={texBase}
+      onClick={clickCell}
+      onEnter={onCellEnter}
+      onLeave={onCellLeave}
+    />
+  );
 
   const selItem = sel !== null ? bySlot.get(sel) : null;
   return (
@@ -668,9 +714,8 @@ function ItemRow({
   onReadBook: () => void;
 }) {
   const pushToast = useStore((s) => s.pushToast);
-  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
+  const [tipOpen, setTipOpen] = useState(false);
   const tipRef = useRef<HTMLDivElement>(null);
-  const [tipStyle, setTipStyle] = useState<CSSProperties>({ left: -9999, top: -9999 });
   const act = async (action: "equip" | "hold" | "use" | "drop" | "offhand") => {
     const r = await cmd.moduleAction(botId, "inventory", action, { slot: item.slot });
     if (!r.ok) pushToast(r.error || "操作失败", "error");
@@ -690,39 +735,53 @@ function ItemRow({
   const name = item.display || item.name || "";
   const hasTip = full && (!!item.lore || (item.enchants?.length ?? 0) > 0 || !!item.texture);
 
-  useLayoutEffect(() => {
-    if (!tip || !tipRef.current) return;
+  // UIFEAT-6 v2：跟随光标改为 transform 直写 DOM——mousemove 全程零 React 渲染、零布局抖动。
+  // 尺寸只在提示框打开时测一次（sizeRef），之后每帧只算坐标 + 改 transform（合成器搞定）。
+  const rafRef = useRef<number | null>(null);
+  const posRef = useRef({ x: 0, y: 0 });
+  const sizeRef = useRef({ w: 0, h: 0 });
+  const place = () => {
     const el = tipRef.current;
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
+    if (!el) return;
+    const { x, y } = posRef.current;
+    const { w, h } = sizeRef.current;
     const m = 10;
     const safeBottom = window.innerHeight - 76;
-    let left = tip.x + 16;
-    if (left + w > window.innerWidth - m) left = Math.max(m, tip.x - w - 16);
-    let top = tip.y + 16;
-    if (top + h > safeBottom) top = tip.y - h - 12;
+    let left = x + 16;
+    if (left + w > window.innerWidth - m) left = Math.max(m, x - w - 16);
+    let top = y + 16;
+    if (top + h > safeBottom) top = y - h - 12;
     if (top < m) top = m;
-    setTipStyle({ left, top, maxHeight: safeBottom - top });
-  }, [tip]);
-
-  // UIFEAT-6：mousemove 每像素都 setState 会重渲 + 重算布局(offsetWidth/Height)；用 rAF 合并到每帧最多一次。
-  const rafRef = useRef<number | null>(null);
-  const posRef = useRef<{ x: number; y: number } | null>(null);
+    el.style.transform = `translate(${left}px, ${top}px)`;
+  };
   const onMove = (e: { clientX: number; clientY: number }) => {
     posRef.current = { x: e.clientX, y: e.clientY };
+    if (!tipOpen) {
+      setTipOpen(true); // 初次打开：渲染后由 useLayoutEffect 测量定位
+      return;
+    }
     if (rafRef.current != null) return;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
-      if (posRef.current) setTip(posRef.current);
+      place();
     });
   };
+  useLayoutEffect(() => {
+    if (!tipOpen) return;
+    const el = tipRef.current;
+    if (!el) return;
+    sizeRef.current = { w: el.offsetWidth, h: el.offsetHeight };
+    place();
+    el.style.visibility = "visible"; // 测量定位完再显示，避免左上角闪一帧
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipOpen]);
   const closeTimer = useRef<number | null>(null);
   const clearTip = () => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-    setTip(null);
+    setTipOpen(false);
   };
   // 关闭宽限期：鼠标从物品行移到提示框的瞬间会短暂离开行；150ms 内进入提示框则取消关闭，
   // 于是长 lore（RPG 物品）可以把鼠标移上去滚动看全（提示框 pointer-events 打开 + 可滚动）。
@@ -779,13 +838,12 @@ function ItemRow({
         </div>
       </div>
 
-      {tip && (
+      {tipOpen && (
         <div
           ref={tipRef}
           onMouseEnter={cancelClose}
           onMouseLeave={clearTip}
-          className="fixed z-[100] max-w-[18rem] overflow-y-auto overscroll-contain rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
-          style={tipStyle}
+          className="invisible fixed left-0 top-0 z-[100] max-h-[55vh] max-w-[18rem] overflow-y-auto overscroll-contain rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
         >
           <div className="text-sm font-semibold leading-snug">
             <McText text={name} onDark />
