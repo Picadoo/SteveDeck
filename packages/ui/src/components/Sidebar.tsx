@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Plus, LogOut, Heart, Drumstick, Server, ChevronDown, Cpu } from "lucide-react";
+import { Bot, Plus, LogOut, Heart, Drumstick, Server, ChevronDown, Cpu, Users } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { StatusDot, IconButton, Badge } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
@@ -7,6 +7,7 @@ import { disconnect } from "@/lib/engine";
 import { usePageVisible } from "@/lib/usePageVisible";
 import { healthPct, healthTone } from "@/lib/format";
 import AddBotDialog from "@/features/bot/AddBotDialog";
+import BatchAddDialog from "@/features/bot/BatchAddDialog";
 import type { BotSummary } from "@mcbot/protocol";
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -15,6 +16,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const setSelected = useStore((s) => s.setSelected);
   const conn = useStore((s) => s.conn);
   const [addOpen, setAddOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   // 引擎进程资源占用（只看本软件，不看宿主机其他程序）：5s 轮询，页面后台暂停；旧引擎无端点则不显示
@@ -80,9 +82,14 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <span className="text-sm font-semibold">机器人</span>
           <Badge tone="neutral">{bots.length}</Badge>
         </div>
-        <IconButton onClick={() => setAddOpen(true)} title="添加机器人">
-          <Plus className="h-4 w-4" />
-        </IconButton>
+        <div className="flex items-center gap-0.5">
+          <IconButton onClick={() => setBatchOpen(true)} title="批量假人（氛围组）">
+            <Users className="h-4 w-4" />
+          </IconButton>
+          <IconButton onClick={() => setAddOpen(true)} title="添加机器人">
+            <Plus className="h-4 w-4" />
+          </IconButton>
+        </div>
       </div>
 
       {/* 列表（按服务器分组） */}
@@ -155,6 +162,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <AddBotDialog open={addOpen} onClose={() => setAddOpen(false)} />
+      <BatchAddDialog open={batchOpen} onClose={() => setBatchOpen(false)} />
     </aside>
   );
 }
@@ -180,7 +188,14 @@ const BotRow = memo(function BotRow({
     >
       <StatusDot online={bot.online} />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{bot.username}</div>
+        <div className="flex items-center gap-1 truncate text-sm font-medium">
+          <span className="truncate">{bot.username}</span>
+          {bot.lite && (
+            <span className="shrink-0 rounded bg-surface-2 px-1 text-[9px] font-normal text-muted" title="轻量假人（氛围组）">
+              假
+            </span>
+          )}
+        </div>
         <div className="truncate text-[11px] text-muted">
           {bot.online ? `等级 ${bot.level ?? 0}` : "离线"}
         </div>

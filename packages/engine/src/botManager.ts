@@ -79,6 +79,9 @@ const SETTINGS_SANITIZERS: Record<string, (v: unknown) => unknown | undefined> =
   allowDig: (v) => (typeof v === "boolean" ? v : undefined),
   respawnCommand: (v) => (typeof v === "string" && v.length <= 256 ? v : undefined),
   returnOnDeath: (v) => (typeof v === "boolean" ? v : undefined),
+  // —— 假人（氛围组）——
+  lite: (v) => (typeof v === "boolean" ? v : undefined),
+  registerCommand: (v) => (typeof v === "string" && v.length <= 256 ? v : undefined),
   // —— 模块开关 / 配置 ——（对象/数组按引用并入，元素形状由各模块自身防御）
   combat: (v) => (typeof v === "boolean" ? v : undefined),
   combatConfig: (v) => (v && typeof v === "object" ? v : undefined),
@@ -301,6 +304,7 @@ class BotManager {
       reconnecting: inst
         ? inst.reconnectAttempts > 0 && !online && !inst.isExplicitlyQuitting && !inst._fatalReason
         : false,
+      lite: !!cfg.settings?.lite,
       fatalReason: (inst && inst._fatalReason) || null,
       // 瘦身：summary 只带地点元信息（列表展示用），完整 steps 在编辑/录制时经 ack 单独获取——
       // 移动中每 2s 一次的 BOT_STATUS 若携带录制好的到达脚本（可达数 KB/地点）纯属重复广播。

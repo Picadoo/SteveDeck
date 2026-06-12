@@ -87,6 +87,18 @@ export interface BotSettings {
   /** 直接坐标包移动：模组服里 mineflayer 物理算不动走不了路时开启，改为直接发位置包（像 MCC）。 */
   rawMove?: boolean;
   viewDistance?: "far" | "normal" | "short" | "tiny" | number;
+  /**
+   * 轻量假人模式（氛围组/批量挂机）：只保留连接、自动注册/登录、防挂机踢，
+   * 不挂载功能模块、不加载寻路插件——单只内存/CPU 压到最低，方便批量。
+   */
+  lite?: boolean;
+  /**
+   * 首次进服注册指令模板（AuthMe 类登录服）：{password}/{username} 占位替换。
+   * 发送一次后引擎置 registered=true，之后每次进服走 loginCommand。
+   */
+  registerCommand?: string;
+  /** 已发送过注册指令（引擎自动维护，不要手填） */
+  registered?: boolean;
   /** 寻路是否允许破坏方块。默认 false（多数服务器地图受保护，挖不动会卡路径）。 */
   allowDig?: boolean;
   /** 复活后自动执行的指令（如 /back、/spawn），用于多世界 RPG 服回到原处。 */
@@ -289,6 +301,8 @@ export interface BotSummary {
   modules: ModuleFlags;
   reconnecting: boolean;
   fatalReason: string | null;
+  /** 轻量假人（lite 模式）：界面打「假」标识、隐藏不适用的功能入口 */
+  lite?: boolean;
   /** 瘦身版地点列表（不含 steps 全文）；完整地点经 ack 单独获取 */
   savedLocations?: SavedLocationSummary[];
 }

@@ -307,7 +307,8 @@ class BotInstance {
                 auth,
                 version: this.config.version || "1.12.2",
                 // 省内存：只接收近处区块（区块数据是每个 bot 内存的大头）。可按 bot 配置覆盖：far/normal/short/tiny 或数字
-                viewDistance: this.config.settings?.viewDistance || 'short',
+                // lite 假人默认最小视距：区块缓存是单只 bot 内存的大头
+                viewDistance: this.config.settings?.viewDistance || (this.config.settings?.lite ? 'tiny' : 'short'),
                 hideErrors: true
             };
             if (auth === 'microsoft') {
@@ -377,9 +378,11 @@ class BotInstance {
                 });
             }
 
-            // 加载核心插件
-            this.bot.loadPlugin(pathfinder);
-            this.bot.loadPlugin(collectBlock);
+            // 加载核心插件（lite 假人不加载：寻路插件每物理 tick 都有监听开销，假人用不上）
+            if (!this.config.settings?.lite) {
+                this.bot.loadPlugin(pathfinder);
+                this.bot.loadPlugin(collectBlock);
+            }
 
             // 关键：捕获 bot._client 的错误，防止崩溃
             if (this.bot._client) {
@@ -404,7 +407,8 @@ class BotInstance {
                 this.uiLog('✅ 已进入服务器');
 
                 // 2. 模块挂载：逐个 try/catch 隔离——单个模块构造抛错不再连累后续模块与状态推送
-                const MODULE_NAMES = [
+                // lite 假人（氛围组）只挂防挂机踢：不挂任何功能模块，单只内存/CPU 压到最低
+                const MODULE_NAMES = this.config.settings?.lite ? ['anti_afk'] : [
                     'combat', 'fishing', 'scheduler', 'player_inventory',
                     'interact', 'automine', 'trash_cleaner', 'auto_farm', 'mob_hunter',
                     'follow', 'scoreboard', 'script_engine', 'window_gui',
@@ -425,21 +429,32 @@ class BotInstance {
                     logger.error(`[${this.config.username}] 模块状态恢复失败:`, err?.message || err);
                 }
 
-                // 4. 自动登录：配置了密码则延迟2秒发送登录指令。
-                // 指令模板可配（loginCommand）：{password}/{username} 占位替换；
-                // 模板没写 {password} 时把密码追加在末尾；默认 "/login {password}"。
+                // 4. 自动注册/登录：配置了密码则延迟2秒发送。
+                // - 首次进服且配了 registerCommand（AuthMe 类登录服）→ 发注册指令并持久化 registered，
+                //   本次会话不再发登录（注册成功通常自动登录；若服上已有此名，注册报错无害，下次会话走登录）
+                // - 其余情况发 loginCommand。两种模板都支持 {password}/{username} 占位，
+                //   模板没写 {password} 时把密码追加在末尾；登录默认 "/login {password}"。
                 // 适配 /l、/login、AuthMe 等各种离线服登录指令；正版(microsoft)服一般不设密码，自然跳过。
                 if (this.config.password) {
                     this.pushOneShot(() => {
                         try {
                             if (this.bot && this._epoch === epoch) {
-                                const tpl = String(this.config.loginCommand || '/login {password}');
+                                const s = this.config.settings || {};
+                                const firstAuth = !!(s.registerCommand && !s.registered);
+                                const tpl = firstAuth
+                                    ? String(s.registerCommand)
+                                    : String(this.config.loginCommand || '/login {password}');
                                 let cmd = tpl
                                     .replace(/\{username\}/g, this.config.username)
                                     .replace(/\{password\}/g, this.config.password);
                                 if (!tpl.includes('{password}')) cmd = `${cmd} ${this.config.password}`;
                                 this.bot.chat(cmd);
-                                logger.info(`[${this.config.username}] 已自动发送登录命令（模板: ${tpl}）`);
+                                if (firstAuth) {
+                                    s.registered = true;
+                                    this.config.settings = s;
+                                    if (typeof this.saveConfig === 'function') this.saveConfig();
+                                }
+                                logger.info(`[${this.config.username}] 已自动发送${firstAuth ? '注册' : '登录'}命令（模板: ${tpl}）`);
                             }
                         } catch (err) {
                             logger.error(`[${this.config.username}] 自动登录失败:`, err?.message || err);
