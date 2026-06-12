@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
+import McText from "@/components/McText";
+import { mcPlain } from "@/lib/format";
 
 /**
  * 悬浮字幕：把最近的聊天/actionbar/错误日志浮在交互画面上（实时视角、服务器菜单窗口），
@@ -89,9 +91,10 @@ export default function ChatOverlay({ botId, className }: { botId: string; class
               l.level === "actionbar" && "text-amber-200",
               l.level === "error" && "text-rose-300",
             )}
-            title={l.text}
+            title={mcPlain(l.text)}
           >
-            {l.text}
+            {/* 服务器消息常带 §色码：McText 渲染成彩色（字幕始终深底，onDark 提亮过暗色） */}
+            <McText text={l.text} onDark />
           </div>
         );
       })}
