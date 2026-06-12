@@ -569,6 +569,11 @@ module.exports = (botInstance) => {
             case 'deposit': {
                 // 把背包物品存入最近的箱子/容器（按名字关键词；留空=除装备外全部）。
                 // 复用 window_gui 暴露的 scanContainers / openContainerAt（含寻路靠近 + 开窗），不写死坐标。
+                // 可选 location：先去保存地点（走完整到达链，跨世界可用）再找最近箱子——「去仓库存箱」一步到位。
+                if (step.location) {
+                    await executeAction({ do: 'goto_location', name: step.location, timeout: step.timeout }, ctx);
+                    if (ctx.aborted || !bot.entity) return;
+                }
                 const kw = String(step.item || '').toLowerCase();
                 const containers = botInstance.scanContainers ? botInstance.scanContainers() : [];
                 if (!containers.length) { emitLog('附近没有可用容器'); break; }

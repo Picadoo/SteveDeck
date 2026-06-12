@@ -532,7 +532,7 @@ export const SCRIPT_SPEC = `脚本格式：
 可用 do（只能用以下列出的，禁止编造）：
 基础：chat(msg) cmd(cmd) whisper(player,msg) wait(s) log(msg) note(text，注释不执行) stop
 移动：goto(x,y,z) goto_location(name=已保存地点，自动执行该地点配置的前置指令/到达脚本，跨世界用它) goto_nearest(target=player/mob/名字,distance) return_home(回名为「家」的保存地点，没有则用追怪返回点) look(x,y,z) look_at(target) hold(key=forward/back/left/right/jump/sneak/sprint,s) sneak(active) jump
-物品：equip(item) equip_best_weapon equip_best_tool(block) drop(item,count) drop_all(keep=保留关键词) deposit(item，存入最近箱子) use_item swap_hands craft(item,count，自动找工作台) dig(block,distance，挖最近的该方块) place(item,x,y,z，在坐标放置方块)
+物品：equip(item) equip_best_weapon equip_best_tool(block) drop(item,count) drop_all(keep=保留关键词) deposit(item,location?=先去该保存地点再就近存箱) use_item swap_hands craft(item,count，自动找工作台) dig(block,distance，挖最近的该方块) place(item,x,y,z，在坐标放置方块)
 战斗/交互：attack(entity,count,interval) interact(target，右键实体/NPC)
 GUI菜单：wait_gui_item(item,timeout) find_and_click_slot(item,button=0左1右,matchLore) click_slot(slot,button) close_gui
 等待：wait_chat(pattern,timeout,save_to=存变量名) wait_until(cond,timeout) wait_spawn

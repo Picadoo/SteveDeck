@@ -73,8 +73,11 @@ export const STEP_TYPES: StepTypeDef[] = [
   },
   {
     do: "deposit",
-    label: "存入最近箱子",
-    fields: [{ k: "item", label: "物品名关键词(空=除装备全部)", type: "text" }],
+    label: "存入箱子(可先去仓库地点)",
+    fields: [
+      { k: "item", label: "物品名关键词(空=除装备全部)", type: "text" },
+      { k: "location", label: "仓库地点名(可空=就近找箱)", type: "text" },
+    ],
   },
   { do: "use_item", label: "使用手持物品", fields: [] },
   {

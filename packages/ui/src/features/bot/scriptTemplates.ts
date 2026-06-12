@@ -64,8 +64,8 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
       loop: false,
       trigger: { type: "inventory_full" },
       steps: [
-        { do: "note", text: "item 留空=除装备外全部存入；可改成只存某类，如 cobblestone" },
-        { do: "deposit", item: "" },
+        { do: "note", text: "item 留空=除装备外全部存入；location 填保存地点名=先去仓库再存（跨世界也行），留空=就近找箱" },
+        { do: "deposit", item: "", location: "" },
         { do: "log", msg: "背包已清空到箱子" },
       ],
     },
