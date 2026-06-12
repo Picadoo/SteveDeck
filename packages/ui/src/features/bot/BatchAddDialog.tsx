@@ -118,8 +118,10 @@ export default function BatchAddDialog({ open, onClose }: { open: boolean; onClo
         return pushToast("已取消（首个假人已创建）", "info");
       }
       if (!online) {
+        // 试连失败：自动回收这只假人——不留残骸，重试时也不会撞重名
+        if (probeId) await cmd.deleteBot(probeId).catch(() => null);
         setProgress(null);
-        return pushToast("首个假人 30 秒内未能上线，请检查服务器地址/版本/登录配置后重试（已创建的可手动删除）", "error");
+        return pushToast("首个假人 30 秒内未能上线（已自动回收），请检查服务器地址/版本/登录配置后重试", "error");
       }
       startIdx = 1;
     }
