@@ -4,7 +4,10 @@
  * 单一事实源：事件名、命令、负载与状态结构都定义在此，两端共同 import。
  */
 
-export const PROTOCOL_VERSION = 1;
+// v2: 新增 dig/place/craft/interact/note/stop 动作、food_below/mob_nearby/damage 触发器、
+//     goto_location 到达链、AI 生成 warnings 字段。约定：动作/触发器/接口形状变化必须升此号，
+//     UI 据此对比 engine:info 提示「引擎旧于客户端」。
+export const PROTOCOL_VERSION = 2;
 
 // ==================== 基础类型 ====================
 

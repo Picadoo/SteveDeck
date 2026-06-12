@@ -5,6 +5,7 @@ const os = require("os");
 process.env.MCBOT_DATA_DIR = path.join(os.tmpdir(), "mcbot-test-" + Date.now());
 
 const { io } = require("socket.io-client");
+const { PROTOCOL_VERSION } = require("@mcbot/protocol");
 const { startEngine } = require("../dist/index.js");
 
 const TOKEN = "testtoken123";
@@ -44,7 +45,8 @@ function emitAck(client, ev, payload) {
   await new Promise((res) => { client.on("connect", res); client.on("connect_error", res); setTimeout(res, 3000); });
   check("正确令牌可连接", client.connected);
   await delay(400);
-  check("收到 engine:info (protocolVersion=1)", !!got.info && got.info.protocolVersion === 1);
+  // 对照协议常量而非字面量：协议升版是常态（动作/触发器增改就该升），测试别跟着炸
+  check(`收到 engine:info (protocolVersion=${PROTOCOL_VERSION})`, !!got.info && got.info.protocolVersion === PROTOCOL_VERSION);
   check("收到初始 bots:snapshot", !!got.snapshot && Array.isArray(got.snapshot.bots));
 
   // 3. 添加机器人

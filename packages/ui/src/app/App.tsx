@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PROTOCOL_VERSION } from "@mcbot/protocol";
 import { useStore } from "@/store/useStore";
 import { connect, loadSaved, parseConnectionString, tryTauriAutoConnect } from "@/lib/engine";
 import { cn } from "@/lib/cn";
@@ -14,6 +15,7 @@ const isDesktop = () => typeof window !== "undefined" && window.matchMedia("(min
 
 export default function App() {
   const status = useStore((s) => s.conn.status);
+  const engine = useStore((s) => s.conn.engine);
   const theme = useStore((s) => s.theme);
   // 侧栏开合：桌面端默认展开且记忆上次选择；移动端为抽屉，默认收起
   const [navOpen, setNavOpen] = useState(() => {
@@ -109,6 +111,14 @@ export default function App() {
             {status === "connecting" && (
               <div className="shrink-0 bg-warning/15 px-4 py-1.5 text-center text-xs text-warning">
                 正在连接引擎…
+              </div>
+            )}
+            {/* 版本错位提示：新客户端连旧引擎时新功能会静默没反应（未知动作只打日志），必须让用户知道为什么 */}
+            {status === "online" && engine && engine.protocolVersion !== PROTOCOL_VERSION && (
+              <div className="shrink-0 bg-warning/15 px-4 py-1.5 text-center text-xs text-warning">
+                {engine.protocolVersion < PROTOCOL_VERSION
+                  ? `引擎版本较旧（协议 v${engine.protocolVersion}，客户端 v${PROTOCOL_VERSION}）——新增的脚本动作/触发器在该引擎上无效，请更新引擎`
+                  : `客户端版本较旧（协议 v${PROTOCOL_VERSION}，引擎 v${engine.protocolVersion}）——建议更新客户端`}
               </div>
             )}
             <main className="min-h-0 flex-1 overflow-hidden">
