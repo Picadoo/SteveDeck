@@ -569,15 +569,25 @@ module.exports = (botInstance) => {
             case 'deposit': {
                 // 把背包物品存入最近的箱子/容器（按名字关键词；留空=除装备外全部）。
                 // 复用 window_gui 暴露的 scanContainers / openContainerAt（含寻路靠近 + 开窗），不写死坐标。
-                // 可选 location：先去保存地点（走完整到达链，跨世界可用）再找最近箱子——「去仓库存箱」一步到位。
+                // 可选 location：先去保存地点（走完整到达链，跨世界可用）再存箱——「去仓库存箱」一步到位。
+                // 「给箱子命名」的玩法：站在箱子旁保存一个地点（如“仓库箱”），deposit 填该地点名——
+                // 下面会取离地点坐标最近的容器，而不是离 bot 最近的，保证开的就是那一个箱子。
+                let depositAnchor = null;
                 if (step.location) {
+                    depositAnchor = (botInstance.savedLocations || []).find(
+                        l => l.name === step.location || l.id === step.location
+                    ) || null;
                     await executeAction({ do: 'goto_location', name: step.location, timeout: step.timeout }, ctx);
                     if (ctx.aborted || !bot.entity) return;
                 }
                 const kw = String(step.item || '').toLowerCase();
                 const containers = botInstance.scanContainers ? botInstance.scanContainers() : [];
                 if (!containers.length) { emitLog('附近没有可用容器'); break; }
-                const near = containers[0];
+                let near = containers[0];
+                if (depositAnchor) {
+                    const d2 = (c) => (c.x - depositAnchor.x) ** 2 + (c.y - depositAnchor.y) ** 2 + (c.z - depositAnchor.z) ** 2;
+                    near = containers.slice().sort((a, b) => d2(a) - d2(b))[0];
+                }
                 emitLog(`前往容器 (${near.x}, ${near.y}, ${near.z}) 存物`);
                 try {
                     // openContainerAt 内部寻路靠近并开窗；返回序列化快照，存物用 bot.currentWindow 这个活窗口
