@@ -714,6 +714,19 @@ module.exports = (botInstance) => {
             task.blacklist = Array.isArray(config.blacklist)
                 ? config.blacklist : String(config.blacklist).split(',').map(k => k.trim()).filter(k => k);
         }
+        // 旧默认黑名单迁移：老默认值全是引擎本就按实体类型过滤的（盔甲架/掉落物/展示框…），
+        // 起不到保护友军作用。识别到原封不动的旧默认就整组换成新默认（用户自己改过的不动）。
+        {
+            const OLD_DEFAULTS = [
+                'armor_stand,item,item_frame',
+                'armor_stand,experience_orb,item,item_frame,painting',
+            ];
+            const cur = (task.blacklist || []).map(s => String(s).toLowerCase()).sort().join(',');
+            if (OLD_DEFAULTS.includes(cur)) {
+                task.blacklist = ['villager', 'iron_golem', 'snow_golem', 'wolf', 'cat', 'parrot', 'allay'];
+                if (active) emitLog('黑名单还是旧默认值，已自动更新为保护友军（村民/傀儡/宠物）');
+            }
+        }
         if (config.huntArea !== undefined) task.huntArea = config.huntArea;
         if (config.returnPoint !== undefined) task.returnPoint = config.returnPoint;
         if (config.safetyEnabled !== undefined) task.safetyEnabled = config.safetyEnabled;
@@ -752,13 +765,20 @@ module.exports = (botInstance) => {
                 prevCombatEnabled = null;
             }
 
-            if (!task.returnPoint && bot.entity) task.returnPoint = bot.entity.position.clone();
+            // 返回点脚枪提示：没显式设置时取启动时所在位置——在主城开的追怪，死后“回区”就是回主城。
+            // 把返回点坐标和来源写进启动日志，用户当场能发现不对。
+            const rpAuto = !task.returnPoint && bot.entity;
+            if (rpAuto) task.returnPoint = bot.entity.position.clone();
+            const rp = task.returnPoint;
+            const rpText = rp
+                ? `(${Math.floor(rp.x)}, ${Math.floor(rp.y)}, ${Math.floor(rp.z)})${rpAuto ? '（=当前位置，想换请到目标区域重开）' : ''}`
+                : '未设置';
 
             const modeText = task.mode === 'keyword'
                 ? `关键词: ${task.keywords.join(', ')}`
                 : `全部怪物 (黑名单: ${task.blacklist.length}个)`;
 
-            emitLog(`启动追怪系统\n  模式: ${modeText}\n  安全检测: ${task.safetyEnabled ? '开启' : '关闭'}\n  攻击范围: ${task.attackRange}格`);
+            emitLog(`启动追怪系统\n  模式: ${modeText}\n  安全检测: ${task.safetyEnabled ? '开启' : '关闭'}\n  攻击范围: ${task.attackRange}格\n  返回点: ${rpText}`);
 
             botInstance.timers = botInstance.timers || [];
             // MODA-2：清掉上一轮旧句柄并从 timers 数组移除，避免反复 toggle 时数组无界堆积失效句柄
