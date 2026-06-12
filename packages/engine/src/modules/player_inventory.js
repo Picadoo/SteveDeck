@@ -242,6 +242,32 @@ module.exports = (botInstance) => {
     botInstance.useSlot = async (slot) => {
         const it = bot.inventory.slots[slot];
         if (!it) throw new Error('该格为空');
+
+        // —— 用完恢复主手：使用背包物品不打乱用户摆好的手持 ——
+        // equip 会把目标物品抢到主手（背包物品=和原主手换位；快捷栏物品=切换选中格）。
+        // 记住原状态，动作完成后按名字找回原物品重新拿上 / 切回原快捷栏格 / 把用剩的挪回原格。
+        const oldQuickBar = typeof bot.quickBarSlot === 'number' ? bot.quickBarSlot : 0;
+        const heldWindowSlot = 36 + oldQuickBar;
+        const prevHeld = slot === heldWindowSlot ? null : bot.inventory.slots[heldWindowSlot];
+        const prevKey = prevHeld ? (customName(prevHeld) || prevHeld.name) : null;
+        const restoreHand = async () => {
+            try {
+                if (slot === heldWindowSlot) return; // 用的就是手上这格，没动过别的
+                if (prevKey) {
+                    const back = bot.inventory.items().find((i) => (customName(i) || i.name) === prevKey);
+                    if (back) await bot.equip(back, 'hand');
+                } else if (bot.quickBarSlot !== oldQuickBar) {
+                    // 原来空手且只是切换了快捷栏选择 → 切回原来的空格
+                    if (!bot.inventory.slots[heldWindowSlot]) bot.setQuickBarSlot(oldQuickBar);
+                } else {
+                    // 原来空手且物品被换进了选中格 → 把用剩的挪回原格，让手恢复成空
+                    const leftover = bot.inventory.slots[heldWindowSlot];
+                    if (leftover && !bot.inventory.slots[slot]) await bot.moveSlotItem(heldWindowSlot, slot);
+                }
+            } catch (e) { /* 恢复失败不影响使用本身 */ }
+            syncInventory();
+        };
+
         await bot.equip(it, 'hand');
         await sleep(120); // 等服务器确认手持
         const held = bot.heldItem;
@@ -260,7 +286,7 @@ module.exports = (botInstance) => {
                 try { await bot.activateEntity(ent); } catch (e) { /* ignore */ }
                 const who = (ent.displayName || ent.name || ent.username || ent.type || '生物');
                 emitItem(`对 ${who} 使用 ${label}`);
-                setTimeout(syncInventory, 400);
+                setTimeout(restoreHand, 400);
                 return;
             }
         }
@@ -281,7 +307,7 @@ module.exports = (botInstance) => {
                 await sleep(150);
                 if (placed || totalOf(name) < before) {
                     emitItem(`放置/使用 ${label}`);
-                    setTimeout(syncInventory, 300);
+                    setTimeout(restoreHand, 300);
                     return;
                 }
                 // 没生效（服务器区域保护，或本就是「右键空气」触发的自定义物品）→ 不 return，落到下面空气兜底
@@ -292,7 +318,7 @@ module.exports = (botInstance) => {
         try { bot.activateItem(); } catch (e) { /* ignore */ }
         setTimeout(() => {
             try { bot.deactivateItem(); } catch (e) { /* ignore */ }
-            syncInventory();
+            setTimeout(restoreHand, 200); // 等右键收尾再复原主手
         }, 400);
     };
 
