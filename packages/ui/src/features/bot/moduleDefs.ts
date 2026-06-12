@@ -79,7 +79,24 @@ export const MODULES: ModuleDef[] = [
         default: ["diamond_ore", "deepslate_diamond_ore"],
         placeholder: "diamond_ore, iron_ore",
       },
-      { key: "radius", label: "搜索半径", type: "number", default: 16, min: 4, max: 64 },
+      // 注意字段名必须叫 scanRadius——旧版用 radius，引擎读不到，「搜索半径」一直是死字段
+      { key: "scanRadius", label: "搜索半径", type: "number", default: 32, min: 4, max: 64 },
+      {
+        key: "areaRadius",
+        label: "挖矿区域半径（0=不限）",
+        type: "number",
+        default: 0,
+        min: 0,
+        max: 128,
+        hint: "以开启模块时所在位置为圆心。圈内挖完会原地等矿物刷新（监狱服矿区适用），不会游走出去；0=自由模式，挖完就推进换区。",
+      },
+      {
+        key: "allowPlace",
+        label: "允许搭方块脱困",
+        type: "switch",
+        default: false,
+        hint: "背包有圆石/泥土等时可垫脚搭柱——挖到坑底/基岩附近也能自己上来。受保护地图开了也搭不了，建议矿区服再开。",
+      },
     ],
   },
   {
@@ -133,6 +150,15 @@ export const MODULES: ModuleDef[] = [
         showIf: (c) => c.mode === "all_mobs",
       },
       { key: "attackRange", label: "攻击距离", type: "number", default: 4.5, min: 1, max: 6, step: 0.5 },
+      {
+        key: "areaRadius",
+        label: "追怪区域半径（0=不限）",
+        type: "number",
+        default: 0,
+        min: 0,
+        max: 128,
+        hint: "以开启模块时所在位置为圆心，只打圈内的怪、不追出圈。想圈刷怪点：站到刷怪点中间再开启。",
+      },
       { key: "playerDetectRadius", label: "玩家检测半径", type: "number", default: 16, min: 0, max: 64 },
       {
         key: "safetyEnabled",

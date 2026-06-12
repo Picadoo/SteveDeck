@@ -6,6 +6,8 @@ const gotoWithTimeout = require('../utils/gotoWithTimeout');
 
 const DEFAULT_CONFIG = {
     targets: [], scanRadius: 32, queueSize: 16, humanize: 'high',
+    areaRadius: 0,        // >0：以开启位置为中心的圆形挖矿区域（监狱服矿区）——只挖圈内、挖完原地等刷新、绝不走出去
+    allowPlace: false,    // 搭方块脱困：背包有圆石/泥土等时允许垫脚搭柱（坑底上得来）
     advance: { enabled: true, direction: 'down', toward: 'ore', stepSize: 8, maxFails: 5 },
     onFull: { dropTrash: [], fallbackScript: null, scriptTimeout: 120 },
     hazardAvoid: false, restock: { enabled: false, chest: null }, survival: { enabled: false },
@@ -18,6 +20,8 @@ function normalizeConfig(arg, direction) {
         if (direction) cfg.advance.direction = direction;
     } else if (arg && typeof arg === 'object') {
         Object.assign(cfg, arg);
+        // 兼容旧 UI 字段名 radius：之前 UI 发 radius、引擎读 scanRadius，「搜索半径」其实一直没生效
+        if (arg.scanRadius == null && arg.radius != null) cfg.scanRadius = Number(arg.radius) || cfg.scanRadius;
         cfg.advance = { ...DEFAULT_CONFIG.advance, ...(arg.advance || {}) };
         cfg.onFull = { ...DEFAULT_CONFIG.onFull, ...(arg.onFull || {}) };
     }
@@ -35,6 +39,8 @@ module.exports = (botInstance) => {
         _tickTimer: null,
         _veinQueue: [],          // 矿脉跟随：挖完一块后相邻的同矿排这里，优先于普通队列（FIFO 不随机挑）
         _blacklist: new Map(),   // 不可达黑名单: "x,y,z" -> 过期时间。寻路失败的矿暂时拉黑，不再反复撞墙
+        area: null,              // 圆形挖矿区域 {center:{x,y,z}, radius}；null=不限
+        _regenLogAt: 0,          // 「等待刷新」日志限流
     };
 
     const BLACKLIST_MS = 180000; // 拉黑 3 分钟：环境会变（别人挖通了/自己挖出新通道），到期自动解禁
@@ -96,6 +102,13 @@ module.exports = (botInstance) => {
         return horiz + (dy > 0 ? 3 : 1.8) * Math.abs(dy);
     }
 
+    // 区域判定按水平圆柱（矿坑有深度，Y 不设限）——监狱服矿区是平面圈出来的
+    function inMineArea(p) {
+        if (!task.area) return true;
+        const dx = p.x - task.area.center.x, dz = p.z - task.area.center.z;
+        return dx * dx + dz * dz <= task.area.radius * task.area.radius;
+    }
+
     function nextFromQueueOrScan() {
         // 矿脉队列也算"还有活"——矿脉吃到一半不回 SCAN（重扫会丢掉连挖顺序，白走一拍）
         if (task._veinQueue.length > 0 || task.queue.length > 0) { setState('APPROACH'); schedule(H.actionInterval(task.config.humanize, 400)); }
@@ -103,6 +116,16 @@ module.exports = (botInstance) => {
     }
 
     function advanceTarget() {
+        // 区域模式：在圈内随机挑个落点换位重扫（接近熔断后换视角用），绝不出圈
+        if (task.area) {
+            const a = Math.random() * Math.PI * 2;
+            const r = task.area.radius * Math.sqrt(Math.random());
+            return {
+                x: Math.floor(task.area.center.x + Math.cos(a) * r),
+                y: Math.floor(bot.entity.position.y),
+                z: Math.floor(task.area.center.z + Math.sin(a) * r),
+            };
+        }
         const pos = bot.entity.position;
         const p = pos.clone ? pos.clone() : { x: pos.x, y: pos.y, z: pos.z };
         const step = (task.config.advance.stepSize || 8) + Math.round((Math.random() * 2 - 1) * 2);
@@ -150,12 +173,31 @@ module.exports = (botInstance) => {
             if (task.targetIds.length === 0) { emitLog('目标方块名无效，已停机'); return botInstance.stopAutoMine(); }
         }
 
+        // 区域模式：人在圈外（死亡重生/被传送）先走回区域中心，再开始扫
+        if (task.area && bot.entity) {
+            const e = bot.entity.position;
+            const dx = e.x - task.area.center.x, dz = e.z - task.area.center.z;
+            if (dx * dx + dz * dz > (task.area.radius + 4) * (task.area.radius + 4)) {
+                emitLog('在挖矿区域外，返回区域中心');
+                const c = task.area.center;
+                try { await gotoWithTimeout(bot, new goals.GoalNear(c.x, c.y, c.z, 3), 30000); } catch (e2) { /* 走不回去下轮再试 */ }
+                return schedule(500);
+            }
+        }
+
         // 黑名单 GC + 过滤：寻路失败拉黑过的矿在有效期内不再入队（否则换区域回来又撞同一块墙）
         const now = Date.now();
         for (const [k, exp] of task._blacklist) { if (exp <= now) task._blacklist.delete(k); }
         const positions = (bot.findBlocks({ matching: task.targetIds, maxDistance: task.config.scanRadius, count: task.config.queueSize }) || [])
-            .filter(p => !task._blacklist.has(posKey(p)));
-        if (positions.length === 0) { setState('ADVANCE'); return schedule(H.actionInterval(task.config.humanize, 500)); }
+            .filter(p => !task._blacklist.has(posKey(p)) && inMineArea(p));
+        if (positions.length === 0) {
+            // 区域模式下矿是会刷新的（监狱服随机重生）：原地等刷新重扫，绝不游走出矿区
+            if (task.area) {
+                if (now - task._regenLogAt > 60000) { task._regenLogAt = now; emitLog('区域内暂无目标矿物，等待刷新…'); }
+                return schedule(8000 + Math.random() * 7000);
+            }
+            setState('ADVANCE'); return schedule(H.actionInterval(task.config.humanize, 500));
+        }
 
         task.queue = positions.slice().sort((a, b) => approachCost(a) - approachCost(b));
         setState('APPROACH');
@@ -307,22 +349,39 @@ module.exports = (botInstance) => {
             task.waitingScript = false;
             task._veinQueue = [];
             task._blacklist = new Map();
+            task._regenLogAt = 0;
             task.stats = { minedByType: {}, total: 0, startTime: Date.now(), lastMine: null, fullEvents: 0 };
             task.active = true;
             setState('SCAN');
+
+            // 挖矿区域：以开启时所在位置为圆心（走到矿区中间再开模块即圈地）。圈内挖完等刷新，不游走
+            task.area = null;
+            const ar = Number(task.config.areaRadius) || 0;
+            if (ar > 0 && bot.entity) {
+                const c = bot.entity.position;
+                task.area = { center: { x: c.x, y: c.y, z: c.z }, radius: ar };
+            }
 
             // 保守 Movements：不开极限跑酷，更像玩家（best-effort，失败不影响）
             try {
                 // 统一「无破坏模式」策略（受保护服不挖不搭，避免寻路卡死）；再关掉极限跑酷
                 const m = botInstance.makeMovements();
                 m.allowParkour = false;
+                if (task.config.allowPlace) {
+                    // 搭方块脱困（Baritone 式垫脚）：背包有这些方块时，pathfinder 可搭柱/搭桥——挖到坑底也上得来
+                    const mc = getMcData();
+                    m.scafoldingBlocks = ['cobblestone', 'dirt', 'netherrack', 'cobbled_deepslate', 'stone']
+                        .map(n => mc.itemsByName[n] && mc.itemsByName[n].id).filter(id => id != null);
+                    m.allow1by1towers = true;
+                }
                 if (bot.pathfinder && bot.pathfinder.setMovements) bot.pathfinder.setMovements(m);
             } catch (e) {}
 
             botInstance.config.settings = botInstance.config.settings || {};
             botInstance.config.settings.autoMine = { active: true, config: task.config };
             if (typeof botInstance.saveConfig === 'function') botInstance.saveConfig();
-            emitLog(`启动挖矿: ${task.config.targets.join(', ')} | 拟人:${task.config.humanize}`);
+            const areaText = task.area ? `半径${task.area.radius}格(中心=当前位置)` : '不限';
+            emitLog(`启动挖矿: ${task.config.targets.join(', ')} | 拟人:${task.config.humanize} | 区域:${areaText} | 搭路:${task.config.allowPlace ? '开' : '关'}`);
             schedule(300);
         } else {
             botInstance.stopAutoMine();
