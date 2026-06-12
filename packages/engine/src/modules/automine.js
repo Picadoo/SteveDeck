@@ -6,7 +6,7 @@ const gotoWithTimeout = require('../utils/gotoWithTimeout');
 
 const DEFAULT_CONFIG = {
     targets: [], scanRadius: 32, queueSize: 16, humanize: 'high',
-    areaRadius: 0,        // >0：以开启位置为中心的圆形挖矿区域（监狱服矿区）——只挖圈内、挖完原地等刷新、绝不走出去
+    mode: 'mine',         // mine=挖取采集, find=只定位不挖（探矿/找方块用）
     allowPlace: false,    // 搭方块脱困：背包有圆石/泥土等时允许垫脚搭柱（坑底上得来）
     advance: { enabled: true, direction: 'down', toward: 'ore', stepSize: 8, maxFails: 5 },
     onFull: { dropTrash: [], fallbackScript: null, scriptTimeout: 120 },
@@ -39,7 +39,8 @@ module.exports = (botInstance) => {
         _tickTimer: null,
         _veinQueue: [],          // 矿脉跟随：挖完一块后相邻的同矿排这里，优先于普通队列（FIFO 不随机挑）
         _blacklist: new Map(),   // 不可达黑名单: "x,y,z" -> 过期时间。寻路失败的矿暂时拉黑，不再反复撞墙
-        area: null,              // 圆形挖矿区域 {center:{x,y,z}, radius}；null=不限
+        area: null,              // 矩形挖矿区域 {x1,y1,z1,x2,y2,z2}；null=不限（sel1/sel2 定义）
+        _sel1: null,             // sel1 暂存坐标，等 sel2 定义完整区域
         _regenLogAt: 0,          // 「等待刷新」日志限流
     };
 
@@ -102,11 +103,13 @@ module.exports = (botInstance) => {
         return horiz + (dy > 0 ? 3 : 1.8) * Math.abs(dy);
     }
 
-    // 区域判定按水平圆柱（矿坑有深度，Y 不设限）——监狱服矿区是平面圈出来的
+    // 区域判定：矩形包围盒（sel1/sel2 两点定义的长方体）
     function inMineArea(p) {
         if (!task.area) return true;
-        const dx = p.x - task.area.center.x, dz = p.z - task.area.center.z;
-        return dx * dx + dz * dz <= task.area.radius * task.area.radius;
+        const a = task.area;
+        return p.x >= a.x1 && p.x <= a.x2 &&
+               p.y >= a.y1 && p.y <= a.y2 &&
+               p.z >= a.z1 && p.z <= a.z2;
     }
 
     function nextFromQueueOrScan() {
@@ -116,14 +119,13 @@ module.exports = (botInstance) => {
     }
 
     function advanceTarget() {
-        // 区域模式：在圈内随机挑个落点换位重扫（接近熔断后换视角用），绝不出圈
+        // 区域模式：在矩形区域内随机挑个落点换位重扫（接近熔断后换视角用），不出区
         if (task.area) {
-            const a = Math.random() * Math.PI * 2;
-            const r = task.area.radius * Math.sqrt(Math.random());
+            const a = task.area;
             return {
-                x: Math.floor(task.area.center.x + Math.cos(a) * r),
-                y: Math.floor(bot.entity.position.y),
-                z: Math.floor(task.area.center.z + Math.sin(a) * r),
+                x: Math.floor(a.x1 + Math.random() * (a.x2 - a.x1)),
+                y: Math.floor(a.y1 + Math.random() * (a.y2 - a.y1)),
+                z: Math.floor(a.z1 + Math.random() * (a.z2 - a.z1)),
             };
         }
         const pos = bot.entity.position;
@@ -173,14 +175,14 @@ module.exports = (botInstance) => {
             if (task.targetIds.length === 0) { emitLog('目标方块名无效，已停机'); return botInstance.stopAutoMine(); }
         }
 
-        // 区域模式：人在圈外（死亡重生/被传送）先走回区域中心，再开始扫
+        // 区域模式：人在区域外（死亡重生/被传送）先走回区域中心，再开始扫
         if (task.area && bot.entity) {
             const e = bot.entity.position;
-            const dx = e.x - task.area.center.x, dz = e.z - task.area.center.z;
-            if (dx * dx + dz * dz > (task.area.radius + 4) * (task.area.radius + 4)) {
+            const a = task.area;
+            if (e.x < a.x1 - 4 || e.x > a.x2 + 4 || e.z < a.z1 - 4 || e.z > a.z2 + 4) {
                 emitLog('在挖矿区域外，返回区域中心');
-                const c = task.area.center;
-                try { await gotoWithTimeout(bot, new goals.GoalNear(c.x, c.y, c.z, 3), 30000); } catch (e2) { /* 走不回去下轮再试 */ }
+                const cx = (a.x1 + a.x2) / 2, cy = (a.y1 + a.y2) / 2, cz = (a.z1 + a.z2) / 2;
+                try { await gotoWithTimeout(bot, new goals.GoalNear(cx, cy, cz, 3), 30000); } catch (e2) { /* 走不回去下轮再试 */ }
                 return schedule(500);
             }
         }
@@ -191,7 +193,7 @@ module.exports = (botInstance) => {
         const positions = (bot.findBlocks({ matching: task.targetIds, maxDistance: task.config.scanRadius, count: task.config.queueSize }) || [])
             .filter(p => !task._blacklist.has(posKey(p)) && inMineArea(p));
         if (positions.length === 0) {
-            // 区域模式下矿是会刷新的（监狱服随机重生）：原地等刷新重扫，绝不游走出矿区
+            // 区域模式下矿可能会刷新：原地等待重扫，不游走出区域
             if (task.area) {
                 if (now - task._regenLogAt > 60000) { task._regenLogAt = now; emitLog('区域内暂无目标矿物，等待刷新…'); }
                 return schedule(8000 + Math.random() * 7000);
@@ -249,6 +251,14 @@ module.exports = (botInstance) => {
         if (!block || (!task.targetIds.includes(block.type) && !task.config.targets.includes(block.name))) {
             return nextFromQueueOrScan();
         }
+
+        // 寻找模式：只定位不挖——到目标方块旁记录坐标，然后找下一个
+        if (task.config.mode === 'find') {
+            task.stats.found = (task.stats.found || 0) + 1;
+            emitLog(`发现 ${block.name} (${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)})`);
+            return nextFromQueueOrScan();
+        }
+
         // 装最佳工具；无合适工具则跳过告警（不空手硬挖）
         let tool = null;
         try { tool = bot.pathfinder.bestHarvestTool(block); if (tool) await bot.equip(tool, 'hand'); } catch (e) {}
@@ -354,12 +364,12 @@ module.exports = (botInstance) => {
             task.active = true;
             setState('SCAN');
 
-            // 挖矿区域：以开启时所在位置为圆心（走到矿区中间再开模块即圈地）。圈内挖完等刷新，不游走
+            // 挖矿区域：从配置还原 sel1/sel2 设定的矩形选区（重启不丢失）
             task.area = null;
-            const ar = Number(task.config.areaRadius) || 0;
-            if (ar > 0 && bot.entity) {
-                const c = bot.entity.position;
-                task.area = { center: { x: c.x, y: c.y, z: c.z }, radius: ar };
+            task._sel1 = null;
+            const savedArea = botInstance.config.settings?.autoMine?.area;
+            if (savedArea && savedArea.x1 !== undefined) {
+                task.area = savedArea;
             }
 
             // 保守 Movements：不开极限跑酷，更像玩家（best-effort，失败不影响）
@@ -380,8 +390,11 @@ module.exports = (botInstance) => {
             botInstance.config.settings = botInstance.config.settings || {};
             botInstance.config.settings.autoMine = { active: true, config: task.config };
             if (typeof botInstance.saveConfig === 'function') botInstance.saveConfig();
-            const areaText = task.area ? `半径${task.area.radius}格(中心=当前位置)` : '不限';
-            emitLog(`启动挖矿: ${task.config.targets.join(', ')} | 拟人:${task.config.humanize} | 区域:${areaText} | 搭路:${task.config.allowPlace ? '开' : '关'}`);
+            const areaText = task.area
+                ? `(${task.area.x1},${task.area.y1},${task.area.z1})~(${task.area.x2},${task.area.y2},${task.area.z2})`
+                : '不限';
+            const modeText = task.config.mode === 'find' ? '寻找(不挖)' : '挖取';
+            emitLog(`启动挖矿: ${task.config.targets.join(', ')} | 模式:${modeText} | 区域:${areaText} | 搭路:${task.config.allowPlace ? '开' : '关'}`);
             schedule(300);
         } else {
             botInstance.stopAutoMine();
@@ -402,11 +415,53 @@ module.exports = (botInstance) => {
     botInstance.getMineStats = () => {
         const s = task.stats;
         const runTime = s.startTime ? (Date.now() - s.startTime) / 60000 : 0;
-        return {
+        const out = {
             minedByType: s.minedByType, total: s.total,
             runTime: Math.floor(runTime), rate: (s.total / Math.max(runTime, 1)).toFixed(2),
             lastMine: s.lastMine ? new Date(s.lastMine).toLocaleTimeString() : '从未', fullEvents: s.fullEvents,
         };
+        if (task.config.mode === 'find') out.found = s.found || 0;
+        if (task.area) out.area = `(${task.area.x1},${task.area.y1},${task.area.z1})~(${task.area.x2},${task.area.y2},${task.area.z2})`;
+        return out;
+    };
+
+    // ==================== 区域选取（sel1/sel2 矩形选区，类 Baritone） ====================
+    botInstance.setMineAreaSel1 = () => {
+        if (!bot.entity) return { success: false, error: '机器人未在线' };
+        const p = bot.entity.position;
+        task._sel1 = { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) };
+        emitLog(`挖矿区域角1: (${task._sel1.x}, ${task._sel1.y}, ${task._sel1.z})`);
+        return { success: true, pos: task._sel1, needSel2: true };
+    };
+
+    botInstance.setMineAreaSel2 = () => {
+        if (!bot.entity) return { success: false, error: '机器人未在线' };
+        if (!task._sel1) return { success: false, error: '请先标记角1' };
+        const p = bot.entity.position;
+        const s2 = { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) };
+        task.area = {
+            x1: Math.min(task._sel1.x, s2.x), y1: Math.min(task._sel1.y, s2.y), z1: Math.min(task._sel1.z, s2.z),
+            x2: Math.max(task._sel1.x, s2.x), y2: Math.max(task._sel1.y, s2.y), z2: Math.max(task._sel1.z, s2.z),
+        };
+        task._sel1 = null;
+        botInstance.config.settings = botInstance.config.settings || {};
+        botInstance.config.settings.autoMine = botInstance.config.settings.autoMine || {};
+        botInstance.config.settings.autoMine.area = task.area;
+        if (typeof botInstance.saveConfig === 'function') botInstance.saveConfig();
+        const a = task.area;
+        emitLog(`挖矿区域已设定: (${a.x1},${a.y1},${a.z1}) ~ (${a.x2},${a.y2},${a.z2})`);
+        return { success: true, area: task.area };
+    };
+
+    botInstance.clearMineArea = () => {
+        task.area = null;
+        task._sel1 = null;
+        if (botInstance.config.settings?.autoMine) {
+            delete botInstance.config.settings.autoMine.area;
+            if (typeof botInstance.saveConfig === 'function') botInstance.saveConfig();
+        }
+        emitLog('已清除挖矿区域限制');
+        return { success: true };
     };
 
     // ==================== 清理 ====================

@@ -697,7 +697,12 @@ module.exports = (botInstance) => {
             runTime: Math.floor(runTime),
             killRate: (stats.totalKills / Math.max(runTime, 1)).toFixed(2),
             currentTarget: botInstance.mobHunterTask.currentTarget ? getEntityDisplayName(botInstance.mobHunterTask.currentTarget) : '无',
-            isPaused: botInstance.mobHunterTask.pausedByPlayer
+            isPaused: botInstance.mobHunterTask.pausedByPlayer,
+            area: botInstance.mobHunterTask.huntArea
+                ? (botInstance.mobHunterTask.huntArea.radius
+                    ? `半径${botInstance.mobHunterTask.huntArea.radius}`
+                    : `(${botInstance.mobHunterTask.huntArea.x1},${botInstance.mobHunterTask.huntArea.y1},${botInstance.mobHunterTask.huntArea.z1})~(${botInstance.mobHunterTask.huntArea.x2},${botInstance.mobHunterTask.huntArea.y2},${botInstance.mobHunterTask.huntArea.z2})`)
+                : undefined,
         };
     };
 
@@ -728,14 +733,6 @@ module.exports = (botInstance) => {
             }
         }
         if (config.huntArea !== undefined) task.huntArea = config.huntArea;
-        // UI 简化入口：areaRadius>0 = 以开启时所在位置为圆心的圆形区域（走到刷怪点中间再开即圈地）；0=不限。
-        // 引擎的 setHuntAreaCircle/Box API 仍可用，但 UI 一直没给入口——这条配置通道是普通用户唯一能用上区域的方式。
-        if (config.areaRadius !== undefined) {
-            const r = Number(config.areaRadius) || 0;
-            task.huntArea = (r > 0 && bot.entity)
-                ? { center: { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z }, radius: r }
-                : null;
-        }
         if (config.returnPoint !== undefined) task.returnPoint = config.returnPoint;
         if (config.safetyEnabled !== undefined) task.safetyEnabled = config.safetyEnabled;
         if (config.playerDetectRadius !== undefined) task.playerDetectRadius = config.playerDetectRadius;
@@ -787,7 +784,9 @@ module.exports = (botInstance) => {
                 : `全部怪物 (黑名单: ${task.blacklist.length}个)`;
 
             const areaText = task.huntArea
-                ? (task.huntArea.radius ? `半径${task.huntArea.radius}格圆形` : '矩形')
+                ? (task.huntArea.radius
+                    ? `半径${task.huntArea.radius}格`
+                    : `(${task.huntArea.x1},${task.huntArea.y1},${task.huntArea.z1})~(${task.huntArea.x2},${task.huntArea.y2},${task.huntArea.z2})`)
                 : '不限（追到哪打到哪）';
             emitLog(`启动追怪系统\n  模式: ${modeText}\n  安全检测: ${task.safetyEnabled ? '开启' : '关闭'}\n  攻击范围: ${task.attackRange}格\n  区域: ${areaText}\n  返回点: ${rpText}`);
 
@@ -859,6 +858,40 @@ module.exports = (botInstance) => {
             z1: Math.min(z1, z2), z2: Math.max(z1, z2)
         };
         emitLog(`设置矩形追怪区域\n  范围: (${x1},${y1},${z1}) 到 (${x2},${y2},${z2})`);
+        return { success: true };
+    };
+
+    // ===== 区域选取（sel1/sel2 矩形选区，类 Baritone） =====
+    botInstance._huntSel1 = null;
+
+    botInstance.setHuntSel1 = () => {
+        if (!bot.entity) return { success: false, error: '机器人未在线' };
+        const p = bot.entity.position;
+        botInstance._huntSel1 = { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) };
+        emitLog(`追怪区域角1: (${botInstance._huntSel1.x}, ${botInstance._huntSel1.y}, ${botInstance._huntSel1.z})`);
+        return { success: true, pos: botInstance._huntSel1, needSel2: true };
+    };
+
+    botInstance.setHuntSel2 = () => {
+        if (!bot.entity) return { success: false, error: '机器人未在线' };
+        if (!botInstance._huntSel1) return { success: false, error: '请先标记角1' };
+        const p = bot.entity.position;
+        const s1 = botInstance._huntSel1;
+        const s2 = { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) };
+        botInstance.mobHunterTask.huntArea = {
+            x1: Math.min(s1.x, s2.x), y1: Math.min(s1.y, s2.y), z1: Math.min(s1.z, s2.z),
+            x2: Math.max(s1.x, s2.x), y2: Math.max(s1.y, s2.y), z2: Math.max(s1.z, s2.z),
+        };
+        botInstance._huntSel1 = null;
+        const a = botInstance.mobHunterTask.huntArea;
+        emitLog(`追怪区域已设定: (${a.x1},${a.y1},${a.z1}) ~ (${a.x2},${a.y2},${a.z2})`);
+        return { success: true, area: a };
+    };
+
+    botInstance.clearHuntArea = () => {
+        botInstance.mobHunterTask.huntArea = null;
+        botInstance._huntSel1 = null;
+        emitLog('已清除追怪区域限制');
         return { success: true };
     };
 

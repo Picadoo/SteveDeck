@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings2, FileCode2, Pickaxe } from "lucide-react";
+import { Settings2, FileCode2, Pickaxe, MapPin } from "lucide-react";
 import { Card, Switch, Button, Input } from "@/components/ui/primitives";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
@@ -10,6 +10,7 @@ import AutoUsePanel from "./AutoUsePanel";
 import type { BotSummary } from "@mcbot/protocol";
 
 const STATS_MODULES = new Set(["auto_farm", "automine", "mob_hunter"]);
+const AREA_MODULES = new Set(["automine", "mob_hunter"]);
 
 // 统计字段的中文标签（只展示标量字段）
 const STAT_LABELS: Record<string, string> = {
@@ -20,6 +21,7 @@ const STAT_LABELS: Record<string, string> = {
   harvestRate: "效率/分",
   lastHarvest: "上次收割",
   total: "挖掘",
+  found: "发现",
   rate: "效率/分",
   lastMine: "上次挖掘",
   fullEvents: "满仓次数",
@@ -183,6 +185,10 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
 
             {st && <StatsGrid data={st} />}
 
+            {AREA_MODULES.has(def.key) && bot.online && (
+              <AreaActions bot={bot} moduleKey={def.key} stats={active ? st : undefined} />
+            )}
+
             {def.fields.length > 0 && (
               <Button size="sm" variant="ghost" className="mt-3 w-full" onClick={() => setEditing(def)}>
                 <Settings2 className="h-3.5 w-3.5" /> 配置
@@ -237,6 +243,62 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
           onSave={(cfg) => onSaveConfig(editing, cfg)}
         />
       )}
+    </div>
+  );
+}
+
+/** 区域选取：sel1/sel2 两点定义矩形区域（类 Baritone），用于挖矿/追怪限定活动范围 */
+function AreaActions({ bot, moduleKey, stats }: { bot: BotSummary; moduleKey: string; stats?: Record<string, unknown> }) {
+  const pushToast = useStore((s) => s.pushToast);
+  const [pendingSel1, setPendingSel1] = useState(false);
+  const [localArea, setLocalArea] = useState<string | null>(null);
+
+  const statsArea = stats?.area as string | undefined;
+  useEffect(() => {
+    if (statsArea) setLocalArea(statsArea);
+  }, [statsArea]);
+
+  const areaText = localArea || statsArea || null;
+
+  const doAction = async (act: string) => {
+    const r = await cmd.moduleAction(bot.id, moduleKey, act);
+    if (!r.ok) { pushToast(r.error || "操作失败", "error"); return; }
+    const d = r.data as Record<string, unknown> | undefined;
+    if (d?.needSel2) {
+      setPendingSel1(true);
+      const p = d.pos as { x: number; y: number; z: number };
+      pushToast(`角1 (${p.x}, ${p.y}, ${p.z}) — 走到对角按「角2」`, "success");
+    } else if (d?.area) {
+      setPendingSel1(false);
+      const a = d.area as { x1: number; y1: number; z1: number; x2: number; y2: number; z2: number };
+      setLocalArea(`(${a.x1},${a.y1},${a.z1})~(${a.x2},${a.y2},${a.z2})`);
+      pushToast("区域已设定", "success");
+    } else if (act === "clearArea") {
+      setPendingSel1(false);
+      setLocalArea(null);
+      pushToast("区域已清除", "success");
+    }
+  };
+
+  return (
+    <div className="mt-2 border-t border-border/40 pt-2">
+      <div className="flex items-center gap-1.5">
+        <MapPin className="h-3 w-3 shrink-0 text-muted" />
+        <span className="min-w-0 flex-1 truncate text-[11px] text-muted">
+          {areaText ? `区域: ${areaText}` : pendingSel1 ? "已标角1，走到对角按角2" : "无区域限制"}
+        </span>
+        <Button size="sm" variant="ghost" className="h-6 shrink-0 px-2 text-[11px]" onClick={() => doAction("sel1")}>
+          角1
+        </Button>
+        <Button size="sm" variant="ghost" className="h-6 shrink-0 px-2 text-[11px]" onClick={() => doAction("sel2")}>
+          角2
+        </Button>
+        {areaText && (
+          <Button size="sm" variant="ghost" className="h-6 shrink-0 px-2 text-[11px] text-red-400" onClick={() => doAction("clearArea")}>
+            清除
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

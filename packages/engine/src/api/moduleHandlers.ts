@@ -255,8 +255,33 @@ function dispatchAction(
       return ok(inst.getFarmStats?.() ?? null);
     case "automine:stats":
       return ok(inst.getMineStats?.() ?? null);
+    case "automine:sel1": {
+      const res = inst.setMineAreaSel1?.();
+      return res?.success ? ok(res) : fail(res?.error || "设置失败");
+    }
+    case "automine:sel2": {
+      const res = inst.setMineAreaSel2?.();
+      return res?.success ? ok(res) : fail(res?.error || "设置失败");
+    }
+    case "automine:clearArea":
+      return ok(inst.clearMineArea?.() ?? { success: true });
     case "mob_hunter:stats":
       return ok(inst.getMobHunterStats?.() ?? null);
+    case "mob_hunter:sel1": {
+      const res = inst.setHuntSel1?.();
+      if (res?.success) persistHunterArea(id, inst);
+      return res?.success ? ok(res) : fail(res?.error || "设置失败");
+    }
+    case "mob_hunter:sel2": {
+      const res = inst.setHuntSel2?.();
+      if (res?.success) persistHunterArea(id, inst);
+      return res?.success ? ok(res) : fail(res?.error || "设置失败");
+    }
+    case "mob_hunter:clearArea": {
+      const res = inst.clearHuntArea?.();
+      if (res?.success) persistHunterArea(id, inst);
+      return res?.success ? ok(res) : fail(res?.error || "设置失败");
+    }
     case "mob_hunter:areaCircle": {
       const res = inst.setHuntAreaCircle?.(Number(args.radius) || 50);
       if (res?.success) persistHunterArea(id, inst);
