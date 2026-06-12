@@ -474,23 +474,61 @@ export function buildObservation(id: string): any {
     /* ignore */
   }
 
-  // 一句话情景摘要
+  // 一句话情景摘要——服务器友好口径：RPG 服的真实状态（血量/魔法/等级/金币）在
+  // actionbar/计分板/Boss栏里，手持武器常是改了名的原版物品（stick 可能是把神器）。
+  // 原版生命/饱食保留作兜底，但不再是唯一口径。
   try {
     const s = obs.self;
     const env = obs.environment;
     const t = obs.threats;
     const bl = s.blocks;
+    const clip = (v: any, n: number) => {
+      const str = String(v ?? "").replace(/\s+/g, " ").trim();
+      return str.length > n ? str.slice(0, n) + "…" : str;
+    };
+    // 手持：优先自定义名；确为改名物品时括注原版 id 便于对照（Stick→stick 这类大小写差异不算改名）
+    const mh = s.equipment?.mainHand;
+    const isRenamed = mh?.name && mh?.id && mh.name.toLowerCase().replace(/ /g, "_") !== String(mh.id).toLowerCase();
+    const held = mh ? `手持${isRenamed ? `${clip(mh.name, 24)}(${mh.id})` : mh.name || mh.id}` : "";
+    // 服务器 HUD：actionbar 通常承载 RPG 血条/魔法/冷却，Boss栏常是活动/世界 Boss 公告
+    const st = obs.serverText || {};
+    const hud = st.actionBar ? `HUD:${clip(st.actionBar, 48)}` : "";
+    const boss =
+      Array.isArray(st.bossBars) && st.bossBars.length
+        ? `Boss栏:${clip(st.bossBars.map((b: any) => b.title).filter(Boolean).join("/"), 40)}`
+        : "";
+    // 计分板侧栏：等级/金币/职业等服务器自报状态（取前 4 行有效内容）。
+    // 纯装饰行（一一一/====/───── 这类同字符重复的分隔线）不进摘要，省下篇幅给真数据。
+    const isDeco = (txt: string) => {
+      const t = txt.replace(/\s/g, "");
+      return t.length >= 4 && new Set(t).size === 1;
+    };
+    const sbRows = obs.scoreboard?.sidebar;
+    const sb =
+      Array.isArray(sbRows) && sbRows.length
+        ? `计分板:${clip(
+            sbRows
+              .map((r: any) => String(r.name || "").trim())
+              .filter((n: string) => n && !isDeco(n))
+              .slice(0, 4)
+              .join(" "),
+            56,
+          )}`
+        : "";
     obs.summary = [
       env ? `${env.timeOfDay}${env.raining ? "·雨" : ""}` : "",
       `生命${s.healthPct ?? "?"}% 饱食${s.food}`,
+      hud,
       s.effects?.length ? `效果:${s.effects.map((e: any) => `${e.name}${e.level}`).join(",")}` : "",
       t?.hostileCount
         ? `敌对${t.hostileCount}${t.nearest ? `(最近${t.nearest.name} ${t.nearest.distance}m)` : ""}`
         : "无敌对",
       obs.nearbyPlayers.length ? `玩家${obs.nearbyPlayers.length}` : "",
-      s.heldItem ? `手持${s.heldItem}` : "",
+      held,
       bl ? `脚下${bl.below}` : "",
       `背包${obs.inventorySlots.used}/${obs.inventorySlots.total}`,
+      sb,
+      boss,
     ]
       .filter(Boolean)
       .join(" | ");
