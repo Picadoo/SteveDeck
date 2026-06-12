@@ -1163,7 +1163,7 @@ module.exports = (botInstance) => {
     }
 
     // ==================== 脚本运行入口 ====================
-    async function runScript(name) {
+    async function runScript(name, opts = {}) {
         const script = botInstance._scripts[name];
         if (!script) { emitLog(`脚本不存在: ${name}`); return; }
         if (botInstance._runningScript) {
@@ -1172,7 +1172,8 @@ module.exports = (botInstance) => {
             return;
         }
 
-        const ctx = { name, aborted: false, callDepth: 0, totalSteps: 0, loopIter: 0 };
+        // urgent：由保命触发器(health_below/damage)启动的脚本，运行期间不再被其它保命触发器抢占
+        const ctx = { name, aborted: false, callDepth: 0, totalSteps: 0, loopIter: 0, urgent: !!opts.urgent };
         botInstance._runningScript = ctx;
         emitStatus(name, 'running');
         emitLog(`启动脚本: ${name}`);
@@ -1202,16 +1203,55 @@ module.exports = (botInstance) => {
     }
 
     // ==================== 触发器系统 ====================
+    // 保命触发器：低血量/受伤是「现在不处理就死」的事件，允许抢占运行中的脚本——
+    // 否则挂着农场循环脚本时，「低血量自动回家」这类脚本在最需要它的场景反而永远不触发。
+    const URGENT_TRIGGERS = new Set(['health_below', 'damage']);
+
+    // 抢占：置 aborted 后等被中止脚本退出槽位（执行器在步与步之间、寻路/等待循环里都查 aborted，
+    // 正常 ≤1 秒），再启动保命脚本。_preempting 防止 2 秒轮询期间重复发起。
+    async function preemptThenRun(name) {
+        if (botInstance._preempting) return;
+        botInstance._preempting = true;
+        try {
+            const deadline = Date.now() + 5000;
+            while (botInstance._runningScript && Date.now() < deadline) await sleep(150);
+            if (botInstance._runningScript) {
+                emitLog(`当前脚本未能及时停止，保命脚本「${name}」本次放弃`);
+                return;
+            }
+            await runScript(name, { urgent: true });
+        } finally {
+            botInstance._preempting = false;
+        }
+    }
+
     function checkTriggers() {
         if (!bot || !bot.entity) return;
-        if (botInstance._runningScript) return;
+        const running = botInstance._runningScript;
+        if (running) {
+            // 槽位被占：只评估保命触发器。保命脚本自身运行中不再被抢占（防互相抢占死循环）。
+            if (running.urgent || botInstance._preempting) return;
+            for (const [name, script] of Object.entries(botInstance._scripts)) {
+                if (!script.trigger || !URGENT_TRIGGERS.has(script.trigger.type)) continue;
+                if (name === running.name) continue;
+                try {
+                    if (shouldTrigger(name, script.trigger)) {
+                        emitLog(`保命触发器 ${name} (${script.trigger.type}) 抢占当前脚本「${running.name}」`);
+                        running.aborted = true;
+                        preemptThenRun(name);
+                        return;
+                    }
+                } catch (e) {}
+            }
+            return;
+        }
 
         for (const [name, script] of Object.entries(botInstance._scripts)) {
             if (!script.trigger || script.trigger.type === 'manual') continue;
             try {
                 if (shouldTrigger(name, script.trigger)) {
                     emitLog(`触发器激活: ${name} (${script.trigger.type})`);
-                    runScript(name);
+                    runScript(name, { urgent: URGENT_TRIGGERS.has(script.trigger.type) });
                     return;
                 }
             } catch (e) {}
