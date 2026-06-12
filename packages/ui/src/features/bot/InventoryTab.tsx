@@ -76,28 +76,31 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
   const [syncing, setSyncing] = useState(false);
   const texBase = `${connUrl.replace(/\/+$/, "")}/textures/${bot.version || "1.12.2"}`;
 
-  // 使用频率记账
+  // 使用频率记账（useCallback：引用稳定才不击穿 ItemRow 的 memo）
   const [usage, setUsage] = useState<UsageMap>(() => loadUsage(bot.id));
   useEffect(() => setUsage(loadUsage(bot.id)), [bot.id]);
-  function recordUse(item: InventoryItem, action: UseAction) {
-    setUsage((prev) => {
-      const k = itemKey(item);
-      const prevE = prev[k];
-      const next: UsageMap = {
-        ...prev,
-        [k]: {
-          key: k,
-          display: item.display || item.name || "",
-          texture: item.texture,
-          count: (prevE?.count || 0) + 1,
-          lastUsed: Date.now(),
-          lastAction: action,
-        },
-      };
-      saveUsage(bot.id, next);
-      return next;
-    });
-  }
+  const recordUse = useCallback(
+    (item: InventoryItem, action: UseAction) => {
+      setUsage((prev) => {
+        const k = itemKey(item);
+        const prevE = prev[k];
+        const next: UsageMap = {
+          ...prev,
+          [k]: {
+            key: k,
+            display: item.display || item.name || "",
+            texture: item.texture,
+            count: (prevE?.count || 0) + 1,
+            lastUsed: Date.now(),
+            lastAction: action,
+          },
+        };
+        saveUsage(bot.id, next);
+        return next;
+      });
+    },
+    [bot.id],
+  );
   function forgetUse(key: string) {
     setUsage((prev) => {
       const next = { ...prev };
@@ -274,7 +277,7 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
                         full={full}
                         texBase={texBase}
                         onUse={recordUse}
-                        onReadBook={() => setBookSlot(it.slot)}
+                        onReadBook={setBookSlot}
                       />
                     ))}
                   </div>
@@ -696,7 +699,9 @@ function FreqRow({
   );
 }
 
-function ItemRow({
+// memo：BotPanel 每 2s 收到状态推送会整树重渲，背包未变时 36 行直接跳过
+// （item 对象在两次背包同步之间引用稳定；onUse/onReadBook 上游已保证引用稳定）
+const ItemRow = memo(function ItemRow({
   item,
   botId,
   online,
@@ -711,7 +716,7 @@ function ItemRow({
   full: boolean;
   texBase: string;
   onUse: (item: InventoryItem, action: UseAction) => void;
-  onReadBook: () => void;
+  onReadBook: (slot: number) => void;
 }) {
   const pushToast = useStore((s) => s.pushToast);
   const [tipOpen, setTipOpen] = useState(false);
@@ -882,7 +887,7 @@ function ItemRow({
             <Shield className="h-3.5 w-3.5" />
           </SlotBtn>
           {book && (
-            <SlotBtn title={item.texture === "writable_book" ? "翻看 / 编辑（书与笔）" : "翻看"} onClick={onReadBook}>
+            <SlotBtn title={item.texture === "writable_book" ? "翻看 / 编辑（书与笔）" : "翻看"} onClick={() => onReadBook(item.slot)}>
               <BookOpen className="h-3.5 w-3.5 text-accent" />
             </SlotBtn>
           )}
@@ -903,7 +908,7 @@ function ItemRow({
       <span className="shrink-0 pt-0.5 text-[10px] text-muted/50 tabular-nums">#{item.slot}</span>
     </div>
   );
-}
+});
 
 function SlotBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
   return (

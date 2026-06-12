@@ -128,27 +128,47 @@ function Console({ botId }: { botId: string }) {
             // 首选 seq（appendLog 赋的单调序号）：滑动窗口/过滤/切级别下都稳定且唯一——
             // 旧的「内容+下标」复合 key 在满 500 条滑窗后每条新日志都让全部 key 左移（500 行重建）。
             // 旧日志（无 seq，热重载残留）退回复合 key。
-            <div
+            <LogRow
               key={l.seq ?? `${l.time}-${l.text.slice(0, 24)}-${i}`}
-              className={cn(
-                "whitespace-pre-wrap break-words",
-                l.level === "error" && "text-danger",
-                l.level === "warn" && "text-warning",
-              )}
-            >
-              <span className="mr-2 select-none text-muted">{l.time}</span>
-              {l.segments && l.segments.length > 0 && clickableChat ? (
-                <SegmentLine segments={l.segments} botId={botId} />
-              ) : (
-                <McText text={l.text} />
-              )}
-            </div>
+              line={l}
+              botId={botId}
+              clickable={clickableChat}
+            />
           ))
         )}
       </div>
     </div>
   );
 }
+
+// 单行日志：memo——每来一条新日志只渲染新行，老的 499 行直接跳过
+// （日志行对象在 store 滑窗里引用稳定；渣机挂机刷日志时这是日志页最大的持续开销）
+const LogRow = memo(function LogRow({
+  line,
+  botId,
+  clickable,
+}: {
+  line: LogLine;
+  botId: string;
+  clickable: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "whitespace-pre-wrap break-words",
+        line.level === "error" && "text-danger",
+        line.level === "warn" && "text-warning",
+      )}
+    >
+      <span className="mr-2 select-none text-muted">{line.time}</span>
+      {line.segments && line.segments.length > 0 && clickable ? (
+        <SegmentLine segments={line.segments} botId={botId} />
+      ) : (
+        <McText text={line.text} />
+      )}
+    </div>
+  );
+});
 
 // MC 颜色名 → CSS（JSON 聊天的 color 是 "red"/"gold" 或 "#RRGGBB"）
 const MC_COLOR: Record<string, string> = {
