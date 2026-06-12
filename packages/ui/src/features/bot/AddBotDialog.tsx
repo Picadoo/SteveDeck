@@ -11,7 +11,7 @@ const EMPTY = {
   username: "",
   host: "",
   port: "25565",
-  version: "1.20.1",
+  version: "",
   loginPassword: "",
   loginCommand: "",
   note: "",
@@ -72,7 +72,7 @@ export default function AddBotDialog({
       ...f,
       host: c.host || "",
       port: String(c.port ?? 25565),
-      version: c.version || f.version,
+      version: c.version === "auto" ? "" : c.version || f.version,
       loginCommand: c.loginCommand || "",
       note: c.note || "",
     }));
@@ -90,7 +90,8 @@ export default function AddBotDialog({
         username: initial.username || "",
         host: initial.host || "",
         port: String(initial.port ?? 25565),
-        version: initial.version || "1.20.1",
+        // "auto" 是引擎内部值（自动识别），编辑框里显示为空更直观
+        version: initial.version === "auto" ? "" : initial.version || "",
         loginPassword: "", // 编辑态密码框始终留空：后端不回明文，留空＝不修改
         loginCommand: initial.loginCommand || "",
         note: initial.note || "",
@@ -199,8 +200,8 @@ export default function AddBotDialog({
               <Input value={form.port} onChange={(e) => set("port", e.target.value)} placeholder="25565" inputMode="numeric" />
             </Field>
           </div>
-          <Field label="游戏版本">
-            <Input value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="1.20.1" />
+          <Field label="游戏版本（留空自动识别）">
+            <Input value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="自动识别" />
           </Field>
         </div>
 

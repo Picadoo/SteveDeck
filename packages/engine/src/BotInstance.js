@@ -286,7 +286,7 @@ class BotInstance {
         if (this.destroyed) return;    // 已被显式停止/删除：拒绝任何（含陈旧定时器触发的）复活(CORE-1)
         this.isExplicitlyQuitting = false;
         const epoch = ++this._epoch;   // 本次连接世代，供下方延迟回调（自动登录等）比对
-        this.uiLog(`正在连接 ${this.config.host}:${this.config.port || 25565}（版本 ${this.config.version || '1.12.2'}）…`);
+        this.uiLog(`正在连接 ${this.config.host}:${this.config.port || 25565}（版本 ${!this.config.version || this.config.version === 'auto' ? '自动识别' : this.config.version}）…`);
 
         // Forge 模组服：首次连接前 ping 探测服务器模组表（正确 modid），缓存供 ModList 声明。
         // 任何 1.12.2 Forge 服开启「Forge 模式」即自动适配，无需手填模组。
@@ -300,12 +300,14 @@ class BotInstance {
 
         try {
             const auth = this.config.auth || 'offline';
+            // 版本 "auto"/未填：不传 version，mineflayer 连接前会先 ping 服务器自动识别协议版本
+            const wantVersion = this.config.version && this.config.version !== 'auto' ? this.config.version : undefined;
             const botOpts = {
                 host: this.config.host,
                 port: this.config.port || 25565,
                 username: this.config.username,
                 auth,
-                version: this.config.version || "1.12.2",
+                ...(wantVersion ? { version: wantVersion } : {}),
                 // 省内存：只接收近处区块（区块数据是每个 bot 内存的大头）。可按 bot 配置覆盖：far/normal/short/tiny 或数字
                 // lite 假人默认最小视距：区块缓存是单只 bot 内存的大头
                 viewDistance: this.config.settings?.viewDistance || (this.config.settings?.lite ? 'tiny' : 'short'),

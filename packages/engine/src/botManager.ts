@@ -268,7 +268,8 @@ class BotManager {
       id: cfg.id,
       username: cfg.username,
       host: cfg.host,
-      version: cfg.version,
+      // 在线时报真实协商版本（auto 模式下 cfg.version 只是 "auto"，贴图地址等要用真版本）
+      version: (online && bot.version) || (cfg.version !== "auto" ? cfg.version : undefined),
       note: cfg.note ?? null,
       uptime: online ? Math.floor((Date.now() - (inst.spawnedAt || Date.now())) / 1000) : null,
       online,
@@ -430,15 +431,24 @@ class BotManager {
     if (!input?.username || !input?.host) throw new Error("用户名和服务器地址必填");
     const verr = validateBotInput(input); // API-6
     if (verr) throw new Error(verr);
-    const dup = this.configs.find((c) => c.username === input.username && c.host === input.host);
-    if (dup) throw new Error(`机器人 ${input.username}@${input.host} 已存在`);
+    // 地址里带端口（mc.example.com:30066）→ 自动拆分，端口以地址里的为准
+    let host = String(input.host).trim();
+    let port = input.port;
+    const hp = host.match(/^([^:]+):(\d{1,5})$/);
+    if (hp) {
+      host = hp[1];
+      port = Number(hp[2]);
+    }
+    const dup = this.configs.find((c) => c.username === input.username && c.host === host);
+    if (dup) throw new Error(`机器人 ${input.username}@${host} 已存在`);
 
     const cfg: BotConfig = {
       id: randomUUID(),
       username: input.username,
-      host: input.host,
-      port: input.port ?? 25565,
-      version: input.version ?? "1.20.1",
+      host,
+      port: port ?? 25565,
+      // 版本不填 = "auto"：连接前 ping 服务器自动识别（mineflayer 原生支持），不再瞎猜默认版本
+      version: input.version?.trim() || "auto",
       auth: input.auth ?? "offline",
       loginPassword: input.loginPassword,
       loginCommand: input.loginCommand?.trim() || undefined,
@@ -485,9 +495,20 @@ class BotManager {
       }
     };
     chg("username", patch.username as any);
-    chg("host", patch.host as any);
-    chg("port", patch.port as any);
-    chg("version", patch.version as any);
+    // 地址里带端口（mc.example.com:30066）→ 自动拆分（与 addBot 同规则）
+    let pHost = typeof patch.host === "string" ? patch.host.trim() : patch.host;
+    let pPort = patch.port;
+    if (typeof pHost === "string") {
+      const hp = pHost.match(/^([^:]+):(\d{1,5})$/);
+      if (hp) {
+        pHost = hp[1];
+        pPort = Number(hp[2]);
+      }
+    }
+    chg("host", pHost as any);
+    chg("port", pPort as any);
+    // 版本清空 = 回到自动识别
+    chg("version", (typeof patch.version === "string" ? patch.version.trim() || "auto" : patch.version) as any);
     // 密码保留契约：仅当传入「非空字符串」才更新；空串/undefined＝不修改，保留已存旧密码
     // （前端编辑态不再回填明文，留空表示「保持不变」，绝不能用空覆盖掉真实密码）。
     if (typeof patch.loginPassword === "string" && patch.loginPassword.length > 0) {
