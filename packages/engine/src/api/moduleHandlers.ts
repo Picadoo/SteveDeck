@@ -255,11 +255,12 @@ function dispatchAction(
 
     // ===== 机器人视角（prismarine-viewer web） =====
     case "viewer:start":
+      // 模块未挂载（旧版 lite 假人/模块挂载失败）时给友好提示，而不是 TypeError 炸 handler
+      if (typeof inst.startViewer !== "function")
+        return fail("该机器人未加载视角模块（重启机器人后重试）");
       return ok(inst.startViewer(!!args.firstPerson));
     case "viewer:stop":
       return ok({ stopped: inst.stopViewer?.() ?? false });
-    case "viewer:clickWalk":
-      return ok({ clickWalk: inst.setViewerClickWalk?.(!!args.enabled) ?? false });
     case "auto_farm:scan":
       inst.scanFarmland?.();
       return ok();

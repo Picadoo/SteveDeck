@@ -35,14 +35,6 @@ function pickPort() {
 module.exports = (botInstance) => {
   const bot = botInstance.bot;
 
-  // 点击地面寻路开关（持久于实例，跨视角重启保留）。走动/操控模式下前端会关掉它，
-  // 这样拖动画面转视角/用摇杆时不会误触发走路。
-  if (botInstance._viewerClickWalk === undefined) botInstance._viewerClickWalk = true;
-  botInstance.setViewerClickWalk = (enabled) => {
-    botInstance._viewerClickWalk = !!enabled;
-    return botInstance._viewerClickWalk;
-  };
-
   // per-bot 代际计数（UIFEAT-2/3）：每次 startViewer 自增并记为「当前代」。
   // stopViewer 延迟落地，并只在「调度它时的那一代仍是当前代」才真正释放——
   // 若期间又来一次 start（代际前进），这条 stop 即变 no-op，避免晚到/乱序的 stop 拆掉新实例。
@@ -118,22 +110,6 @@ module.exports = (botInstance) => {
         botInstance._viewerFirstPerson = firstPerson;
         botInstance._viewerPort = port;
         portOwners.set(port, botInstance); // 记录端口归属(MODB-6)
-        // 点击视角里的方块 → 机器人寻路走过去（走动/操控模式下前端会关掉 clickWalk）
-        try {
-          const { goals } = require('mineflayer-pathfinder');
-          bot.viewer.on('blockClicked', (block) => {
-            if (botInstance._viewerClickWalk === false) return;
-            if (block && block.position) {
-              try {
-                bot.pathfinder.setGoal(new goals.GoalNear(block.position.x, block.position.y, block.position.z, 1));
-              } catch {
-                /* ignore */
-              }
-            }
-          });
-        } catch {
-          /* ignore */
-        }
         return { port, firstPerson };
       } catch (e) {
         lastErr = e;

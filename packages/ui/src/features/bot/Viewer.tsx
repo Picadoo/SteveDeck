@@ -52,10 +52,10 @@ function saveMarks(botId: string, m: Mark[]): void {
 
 /**
  * 机器人实时视角（同一组件，可内嵌可弹出放大）。看 / 控 / 走三件事彻底分离：
- *  - 第三人称＝自由看：用 prismarine-viewer 原生 OrbitControls 拖动转相机、滚轮缩放，点地面寻路过去。
+ *  - 第三人称＝自由看：用 prismarine-viewer 原生 OrbitControls 拖动转相机、滚轮缩放。
  *    **不覆盖全屏指针层**，所以转镜头丝滑、不动机器人朝向。
  *  - 第一人称＝转视线：镜头=机器人眼睛，此时才挂全屏拖动层 → 拖动=转机器人 yaw/pitch（转身体即转镜头，自洽）。
- *  - 走动：摇杆 / 跳 / 左右转（control.set / control.turn），与看/转解耦；开走动时关「点地寻路」防误触。
+ *  - 走动：摇杆 / 跳 / 左右转（control.set / control.turn），与看/转解耦。
  * 内嵌默认懒启动（按需开渲染服务，省资源）；弹出则自动开。
  */
 export default function Viewer({
@@ -83,7 +83,7 @@ export default function Viewer({
   const [nonce, setNonce] = useState(0); // 「重试」：自增触发启动 effect 重跑（重启渲染服务）
   // 默认第三人称（仿原版 F5）：看得到机器人本体，自由转镜头
   const [firstPerson, setFirstPerson] = useState(false);
-  const [walk, setWalk] = useState(false); // 操控模式：显示摇杆并关掉点地寻路
+  const [walk, setWalk] = useState(false); // 操控模式：显示摇杆
   const [showMods, setShowMods] = useState(false); // 模块快速开关折叠（默认收起，不挤占视角）
   const [showHelp, setShowHelp] = useState(false); // 操作说明默认收起，点 ? 展开
   const [cmdText, setCmdText] = useState("");
@@ -183,12 +183,6 @@ export default function Viewer({
       cmd.control.stop(bot.id);
     };
   }, [bot.id]);
-
-  // 走动模式时关「点地寻路」（拖动/摇杆不误触发寻路）；非走动恢复
-  useEffect(() => {
-    if (!started) return;
-    cmd.viewer.clickWalk(bot.id, !walk);
-  }, [started, walk, bot.id]);
 
   // 桌面键盘操控：操控模式下 WASD=移动 / 空格=跳 / Shift=疾跑（手机无键盘，无副作用）。
   // 仅在「操控」开启时挂载，避免劫持普通页面按键；输入框内不拦截；卸载清掉所有按住状态。
@@ -637,7 +631,7 @@ export default function Viewer({
 
       {showHelp && (
         <p className="rounded-lg border border-border bg-surface-2/40 px-3 py-2 text-[11px] leading-relaxed text-muted">
-          <span className="text-fg">第三人称</span>：拖动转相机（像 F5）、滚轮缩放、点地面寻路过去；
+          <span className="text-fg">第三人称</span>：拖动转相机（像 F5）、滚轮缩放；
           <span className="text-fg">第一人称</span>：镜头=机器人视线，拖动转视线。开「操控」后：电脑用 <span className="text-fg">WASD / 空格 / Shift</span>、手机用摇杆走动，按住左右转身；退出操控自动回第三人称。
         </p>
       )}
