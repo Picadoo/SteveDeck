@@ -927,6 +927,10 @@ class BotInstance {
     stop() {
         this.isExplicitlyQuitting = true;
         this.destroyed = true;          // 置销毁标记：任何延迟回调/陈旧定时器触发的 init() 都会 bail(CORE-1)
+        // 归零重连计数：summary 的 reconnecting 按 attempts>0 推导，正在重连循环中被手动
+        // 停止的 bot 若不归零，UI 会永远显示「重连中」（实际已不会再重连）
+        this.reconnectAttempts = 0;
+        this.reconnectBackoff = 1;
         this.cleanup();
         this.io.to(this._room).to('admin').emit('status', { user: this.config.username, ownerId: this.config.ownerId, online: false });
     }

@@ -296,7 +296,11 @@ class BotManager {
               null,
           }
         : {},
-      reconnecting: inst ? inst.reconnectAttempts > 0 && !online : false,
+      // 「重连中」必须同时满足：有重试计数、不在线、且不是用户主动停止/致命断开——
+      // 后两种状态不会再重连，显示「重连中」是骗人的（手动停止后假显示就是这里的历史 bug）
+      reconnecting: inst
+        ? inst.reconnectAttempts > 0 && !online && !inst.isExplicitlyQuitting && !inst._fatalReason
+        : false,
       fatalReason: (inst && inst._fatalReason) || null,
       // 瘦身：summary 只带地点元信息（列表展示用），完整 steps 在编辑/录制时经 ack 单独获取——
       // 移动中每 2s 一次的 BOT_STATUS 若携带录制好的到达脚本（可达数 KB/地点）纯属重复广播。
