@@ -609,6 +609,9 @@ class BotInstance {
             if (position === 'game_info') {
                 const abText = raw.replace(/§./gi, '').trim();
                 this._actionBar = { text: abText, at: Date.now() };
+                // lite 假人：actionbar 只存值（AI 观测仍可用），不广播日志——RPG 服 HUD 高频变化，
+                // 几十只假人各推一份是广播量最大头；假人控制台不需要 HUD 字幕
+                if (this.config.settings?.lite) return;
                 if (abText && abText !== this._lastAbText && Date.now() - (this._lastAbAt || 0) > 1500) {
                     this._lastAbText = abText;
                     this._lastAbAt = Date.now();
@@ -624,8 +627,11 @@ class BotInstance {
 
             // 可点击/可悬浮聊天：提取 click(点→执行命令/开链接) / hover(悬浮→展示物品/文字)。
             // 这类通知消息立即作为独立日志发(带 segments,便于前端渲染按钮)，不进 debounce 合并。
+            // lite 假人不走直发（RPG 服通知几乎都带 click/hover，会绕过合并窗）——一律进缓冲批量发。
             const segments = [];
-            try { extractChatSegments(jsonMsg.json || jsonMsg, {}, segments); } catch (e) { /* ignore */ }
+            if (!this.config.settings?.lite) {
+                try { extractChatSegments(jsonMsg.json || jsonMsg, {}, segments); } catch (e) { /* ignore */ }
+            }
             if (segments.some((s) => s.click || s.hover)) {
                 this.io.to(this._room).to('admin').emit('log', {
                     user: this.config.username, ownerId: this.config.ownerId,
@@ -635,17 +641,24 @@ class BotInstance {
             }
 
             this.msgBuffer += raw + "\n";
-            if (this.msgTimeout) clearTimeout(this.msgTimeout);
-            this.msgTimeout = setTimeout(() => {
-                this.io.to(this._room).to('admin').emit('log', {
-                    user: this.config.username,
-                    ownerId: this.config.ownerId,
-                    msg: this.msgBuffer.trim(),
-                    time: new Date().toLocaleTimeString(),
-                    chat: true // 服务器聊天（区别于机器人操作日志）
-                });
-                this.msgBuffer = "";
-            }, 100);
+            // 固定窗口批量（首条开窗、到点必发，不随新消息重置——重置式防抖在刷屏服会饿死永不冲刷）：
+            // 普通 bot 100ms 近实时；lite 假人 3s——同服几十只假人每只都转发同一条聊天，
+            // 是「批量撑在线」场景的广播量大头，拉长合并窗把忙服聊天广播降一个数量级（控制台仍可读）
+            if (!this.msgTimeout) {
+                const flushDelay = this.config.settings?.lite ? 3000 : 100;
+                this.msgTimeout = setTimeout(() => {
+                    this.msgTimeout = null;
+                    if (!this.msgBuffer) return;
+                    this.io.to(this._room).to('admin').emit('log', {
+                        user: this.config.username,
+                        ownerId: this.config.ownerId,
+                        msg: this.msgBuffer.trim(),
+                        time: new Date().toLocaleTimeString(),
+                        chat: true // 服务器聊天（区别于机器人操作日志）
+                    });
+                    this.msgBuffer = "";
+                }, flushDelay);
+            }
         });
 
         this.bot.on('end', () => {

@@ -5,7 +5,10 @@ import { Button, Input, Switch } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
-import type { BotSettings, McAuth } from "@mcbot/protocol";
+import type { BotSettings, BotSummary, McAuth } from "@mcbot/protocol";
+
+// 关闭态用的稳定空数组：弹窗常驻挂载，直接订阅 s.bots 会让每次状态推送都白渲染一轮
+const EMPTY_BOTS: BotSummary[] = [];
 
 const EMPTY = {
   username: "",
@@ -54,7 +57,7 @@ export default function AddBotDialog({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!editId;
-  const bots = useStore((s) => s.bots);
+  const bots = useStore((s) => (open ? s.bots : EMPTY_BOTS));
   // 已有服务器去重（按 host）：加多个号时一键复用服务器信息，省得反复输地址/端口/版本/Forge 等
   const servers = useMemo(() => {
     const seen = new Map<string, { id: string; label: string }>();
