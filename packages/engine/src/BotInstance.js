@@ -725,7 +725,15 @@ class BotInstance {
             }
             // 死亡返回：开关开启且有死亡点 → 等重生+复活指令(若有)生效后，寻路走回死亡点。
             // 模组服寻路可能因 varint 失败（本期不优化）；走不到不卡死（move 只设目标，后台寻路）。
-            if (this.config.settings?.returnOnDeath && dp) {
+            // 互斥：追怪激活且会自己回区时让位——否则两边各设一次寻路目标（2s 回区、3.5s 回死亡点）互相覆盖来回抖。
+            const hunterWillReturn = this.mobHunterTask?.active &&
+                this.mobHunterTask.autoReturnOnDeath && !this.mobHunterTask.stopOnDeath;
+            if (this.config.settings?.returnOnDeath && dp && hunterWillReturn) {
+                this.io.to(this._room).to('admin').emit('log', {
+                    user: this.config.username, ownerId: this.config.ownerId,
+                    msg: '追怪运行中，死亡返回让位给追怪的回区逻辑', time: new Date().toLocaleTimeString()
+                });
+            } else if (this.config.settings?.returnOnDeath && dp) {
                 const epoch = this._epoch;
                 this.pushOneShot(() => {
                     if (this._epoch !== epoch || !this.bot?.entity) return;
