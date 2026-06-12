@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  prismarine-viewer@1.33.0: c2d8e8376ac5b3e5c7801c7e6cb2441448ab0c293e0e86733a9dc2ab20ef24e0
+  prismarine-viewer@1.33.0: 30bf27d6005b433cf36acdbf08bff03b1375949125b16ca0a17eee92d827bce9
 
 importers:
 
@@ -66,7 +66,7 @@ importers:
         version: 2.4.5
       prismarine-viewer:
         specifier: ^1.33.0
-        version: 1.33.0(patch_hash=c2d8e8376ac5b3e5c7801c7e6cb2441448ab0c293e0e86733a9dc2ab20ef24e0)
+        version: 1.33.0(patch_hash=30bf27d6005b433cf36acdbf08bff03b1375949125b16ca0a17eee92d827bce9)
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -4140,7 +4140,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  prismarine-viewer@1.33.0(patch_hash=c2d8e8376ac5b3e5c7801c7e6cb2441448ab0c293e0e86733a9dc2ab20ef24e0):
+  prismarine-viewer@1.33.0(patch_hash=30bf27d6005b433cf36acdbf08bff03b1375949125b16ca0a17eee92d827bce9):
     dependencies:
       '@tweenjs/tween.js': 23.1.3
       compression: 1.8.1
