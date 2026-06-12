@@ -728,6 +728,14 @@ module.exports = (botInstance) => {
             }
         }
         if (config.huntArea !== undefined) task.huntArea = config.huntArea;
+        // UI 简化入口：areaRadius>0 = 以开启时所在位置为圆心的圆形区域（走到刷怪点中间再开即圈地）；0=不限。
+        // 引擎的 setHuntAreaCircle/Box API 仍可用，但 UI 一直没给入口——这条配置通道是普通用户唯一能用上区域的方式。
+        if (config.areaRadius !== undefined) {
+            const r = Number(config.areaRadius) || 0;
+            task.huntArea = (r > 0 && bot.entity)
+                ? { center: { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z }, radius: r }
+                : null;
+        }
         if (config.returnPoint !== undefined) task.returnPoint = config.returnPoint;
         if (config.safetyEnabled !== undefined) task.safetyEnabled = config.safetyEnabled;
         if (config.playerDetectRadius !== undefined) task.playerDetectRadius = config.playerDetectRadius;
@@ -778,7 +786,10 @@ module.exports = (botInstance) => {
                 ? `关键词: ${task.keywords.join(', ')}`
                 : `全部怪物 (黑名单: ${task.blacklist.length}个)`;
 
-            emitLog(`启动追怪系统\n  模式: ${modeText}\n  安全检测: ${task.safetyEnabled ? '开启' : '关闭'}\n  攻击范围: ${task.attackRange}格\n  返回点: ${rpText}`);
+            const areaText = task.huntArea
+                ? (task.huntArea.radius ? `半径${task.huntArea.radius}格圆形` : '矩形')
+                : '不限（追到哪打到哪）';
+            emitLog(`启动追怪系统\n  模式: ${modeText}\n  安全检测: ${task.safetyEnabled ? '开启' : '关闭'}\n  攻击范围: ${task.attackRange}格\n  区域: ${areaText}\n  返回点: ${rpText}`);
 
             botInstance.timers = botInstance.timers || [];
             // MODA-2：清掉上一轮旧句柄并从 timers 数组移除，避免反复 toggle 时数组无界堆积失效句柄
