@@ -35,6 +35,8 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
   const setInvMode = useStore((s) => s.setInvMode);
   const pushToast = useStore((s) => s.pushToast);
   const [info, setInfo] = useState<ConnInfo | null>(null);
+  // 内置引擎只监听 127.0.0.1（安全考虑），二维码里的局域网地址手机必然连不上——别摆个死二维码骗人
+  const [builtinEngine, setBuiltinEngine] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -43,6 +45,11 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
     fetchConnectionInfo().then((r) => {
       if (alive) setInfo(r);
     });
+    if (isTauri()) {
+      getEngineConfig().then((c) => {
+        if (alive) setBuiltinEngine(!c || c.mode !== "remote");
+      });
+    }
     return () => {
       alive = false;
     };
@@ -78,7 +85,13 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
         {isTauri() && <EngineSourceSection />}
 
         <Section title="连接手机 / 其他设备">
-          {info?.qrcodeDataUrl ? (
+          {isTauri() && builtinEngine ? (
+            <p className="rounded-lg bg-surface-2 px-3 py-2.5 text-[11px] leading-relaxed text-muted">
+              内置引擎出于安全只监听本机（127.0.0.1），手机扫码连不上。要用手机控制：把引擎部署到
+              服务器/NAS（Docker），在上面的「引擎来源」切到远程模式后，手机即可扫那台引擎的二维码，
+              或直接用手机浏览器打开远程引擎地址。
+            </p>
+          ) : info?.qrcodeDataUrl ? (
             <div className="flex flex-col items-center gap-2">
               <img src={info.qrcodeDataUrl} alt="连接二维码" className="h-40 w-40 rounded-lg bg-white p-1" />
               <p className="text-center text-[11px] text-muted">
