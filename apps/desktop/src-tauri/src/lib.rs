@@ -85,6 +85,22 @@ fn set_engine_config(app: tauri::AppHandle, mode: String, url: String, token: St
 #[tauri::command]
 fn restart_app(app: tauri::AppHandle) {
     kill_engine(&app); // DESK-1：app.restart() 不触发 RunEvent::Exit，先显式杀内置引擎，避免旧 node 残留 + 端口竞争
+    // DESK-8：app.restart() 与单实例锁有竞态——新进程启动时旧进程还没释放锁，
+    // 新实例被单实例插件当成「第二个实例」直接退出，表现为「点了立即重启后应用直接消失」。
+    // Windows 上改为：旧进程立即退出，由分离的辅助进程等 ~1 秒（锁已释放）再拉起新实例。
+    #[cfg(windows)]
+    {
+        if let Ok(exe) = std::env::current_exe() {
+            use std::os::windows::process::CommandExt;
+            let mut helper = std::process::Command::new("cmd");
+            // ping -n 2 ≈ 1 秒延时（timeout 在无控制台的进程里会因输入重定向直接报错，不可用）
+            helper.raw_arg(format!("/C ping -n 2 127.0.0.1 >NUL & start \"\" \"{}\"", exe.display()));
+            helper.creation_flags(0x0800_0000); // CREATE_NO_WINDOW：不闪黑窗
+            let _ = helper.spawn();
+        }
+        app.exit(0);
+    }
+    #[cfg(not(windows))]
     app.restart();
 }
 

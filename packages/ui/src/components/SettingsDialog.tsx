@@ -14,6 +14,8 @@ import {
   getEngineConfig,
   setEngineConfig,
   restartApp,
+  parseConnectionString,
+  normalizeUrl,
 } from "@/lib/engine";
 
 interface ConnInfo {
@@ -175,7 +177,25 @@ function EngineSourceSection() {
   }, []);
 
   async function save() {
-    const ok = await setEngineConfig(mode, url.trim(), token.trim());
+    let u = url.trim();
+    let t = token.trim();
+    if (mode === "remote") {
+      // 用户常把整条 mcbot:// 连接串粘进地址框——这本来就是我们自己生成的格式，认它：自动拆出地址和令牌
+      const parsed = parseConnectionString(u);
+      if (parsed) {
+        u = parsed.url;
+        if (parsed.token) t = parsed.token;
+      } else if (u) {
+        u = normalizeUrl(u); // 允许省略 http://（如 192.168.1.10:8723）
+      }
+      if (!u) {
+        pushToast("请填写引擎地址（http://主机:端口，或直接粘贴 mcbot:// 连接串）", "error");
+        return;
+      }
+      setUrl(u);
+      setToken(t);
+    }
+    const ok = await setEngineConfig(mode, u, t);
     if (ok) {
       setDirty(false);
       setNeedRestart(true);
