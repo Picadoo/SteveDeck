@@ -33,7 +33,12 @@ module.exports = (botInstance) => {
         queue: [], targetIds: [], advanceFails: 0, approachFails: 0, waitingScript: false, _current: null,
         stats: { minedByType: {}, total: 0, startTime: null, lastMine: null, fullEvents: 0 },
         _tickTimer: null,
+        _veinQueue: [],          // 矿脉跟随：挖完一块后相邻的同矿排这里，优先于普通队列（FIFO 不随机挑）
+        _blacklist: new Map(),   // 不可达黑名单: "x,y,z" -> 过期时间。寻路失败的矿暂时拉黑，不再反复撞墙
     };
+
+    const BLACKLIST_MS = 180000; // 拉黑 3 分钟：环境会变（别人挖通了/自己挖出新通道），到期自动解禁
+    const posKey = (p) => `${p.x},${p.y},${p.z}`;
 
     const emitLog = (msg) => botInstance.io.to(botInstance._room).to('admin').emit('log', {
         user: bot.username, ownerId: botInstance.config.ownerId, msg, time: new Date().toLocaleTimeString(),
@@ -80,8 +85,20 @@ module.exports = (botInstance) => {
         return dx * dx + dy * dy + dz * dz;
     }
 
+    // 接近代价（Baritone 思路的简化版）：垂直格比水平格贵得多——向上要搭/绕（无破坏
+    // 模式不搭，实际更贵），向下要找得到下去的路。纯直线距离会优先选头顶/脚下的矿，
+    // 结果绕半天；按代价排能让它先吃同层的。
+    function approachCost(p) {
+        const e = bot.entity.position;
+        const dx = e.x - p.x, dz = e.z - p.z;
+        const dy = p.y - e.y;
+        const horiz = Math.sqrt(dx * dx + dz * dz);
+        return horiz + (dy > 0 ? 3 : 1.8) * Math.abs(dy);
+    }
+
     function nextFromQueueOrScan() {
-        if (task.queue.length > 0) { setState('APPROACH'); schedule(H.actionInterval(task.config.humanize, 400)); }
+        // 矿脉队列也算"还有活"——矿脉吃到一半不回 SCAN（重扫会丢掉连挖顺序，白走一拍）
+        if (task._veinQueue.length > 0 || task.queue.length > 0) { setState('APPROACH'); schedule(H.actionInterval(task.config.humanize, 400)); }
         else { setState('SCAN'); schedule(H.actionInterval(task.config.humanize, 300)); }
     }
 
@@ -133,20 +150,33 @@ module.exports = (botInstance) => {
             if (task.targetIds.length === 0) { emitLog('目标方块名无效，已停机'); return botInstance.stopAutoMine(); }
         }
 
-        const positions = bot.findBlocks({ matching: task.targetIds, maxDistance: task.config.scanRadius, count: task.config.queueSize }) || [];
+        // 黑名单 GC + 过滤：寻路失败拉黑过的矿在有效期内不再入队（否则换区域回来又撞同一块墙）
+        const now = Date.now();
+        for (const [k, exp] of task._blacklist) { if (exp <= now) task._blacklist.delete(k); }
+        const positions = (bot.findBlocks({ matching: task.targetIds, maxDistance: task.config.scanRadius, count: task.config.queueSize }) || [])
+            .filter(p => !task._blacklist.has(posKey(p)));
         if (positions.length === 0) { setState('ADVANCE'); return schedule(H.actionInterval(task.config.humanize, 500)); }
 
-        task.queue = positions.slice().sort((a, b) => distSqTo(a) - distSqTo(b));
+        task.queue = positions.slice().sort((a, b) => approachCost(a) - approachCost(b));
         setState('APPROACH');
         return schedule(H.aimDelay(task.config.humanize));
     }
 
     async function doApproach() {
-        if (task.queue.length === 0) { setState('SCAN'); return schedule(200); }
-        const idx = H.pickTargetIndex(task.queue.length, task.config.humanize);
-        const pos = task.queue[idx];
+        // 矿脉优先：挖完一块先把相邻的同矿吃干净（FIFO 不随机挑——真人也是连着挖整条矿脉）
+        let pos = null;
+        while (task._veinQueue.length > 0) {
+            const cand = task._veinQueue.shift();
+            const b = bot.blockAt(cand);
+            if (b && task.targetIds.includes(b.type)) { pos = cand; break; } // 失效的(被挖/塌掉)直接丢
+        }
+        if (!pos) {
+            if (task.queue.length === 0) { setState('SCAN'); return schedule(200); }
+            const idx = H.pickTargetIndex(task.queue.length, task.config.humanize);
+            pos = task.queue[idx];
+            task.queue.splice(idx, 1);
+        }
         task._current = pos;
-        task.queue.splice(idx, 1);
         try {
             // 带超时：不可达目标的 goto 可能永不返回（挂死在 APPROACH）；超时 throw 进熔断计数
             await gotoWithTimeout(bot, new goals.GoalNear(pos.x, pos.y, pos.z, 2), 20000); // 留余量，更像玩家
@@ -155,6 +185,7 @@ module.exports = (botInstance) => {
             return schedule(H.aimDelay(task.config.humanize)); // 瞄准延迟
         } catch (e) {
             // 寻路失败熔断：连续够不到目标（隔墙/卡住）时不死循环，转 ADVANCE 换区域重扫
+            task._blacklist.set(posKey(pos), Date.now() + BLACKLIST_MS); // 这块先拉黑，重扫不再入队
             task.approachFails++;
             if (task.approachFails >= (task.config.advance.maxFails || 5)) {
                 task.approachFails = 0;
@@ -189,6 +220,25 @@ module.exports = (botInstance) => {
             task.stats.minedByType[name] = (task.stats.minedByType[name] || 0) + 1;
             task.stats.total++;
             task.stats.lastMine = Date.now();
+
+            // 矿脉跟随：矿脉是连通的——挖完一块扫 26 邻域，相邻同矿排到矿脉队列优先吃完，
+            // 不再挖一块就按旧队列走人（半条矿脉留在身后）。逐块接力即可吃完整条矿脉。
+            if (pos.offset) {
+                const veinStart = task._veinQueue.length === 0;
+                let added = 0;
+                for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+                    if (!dx && !dy && !dz) continue;
+                    const np = pos.offset(dx, dy, dz);
+                    const nb = bot.blockAt(np);
+                    if (!nb || !task.targetIds.includes(nb.type)) continue;
+                    const k = posKey(np);
+                    if (task._blacklist.has(k)) continue;
+                    if (task._veinQueue.some(v => posKey(v) === k)) continue;
+                    task._veinQueue.push(np);
+                    added++;
+                }
+                if (veinStart && added > 0) emitLog(`矿脉跟随: 发现相邻 ${added} 块 ${name}，连挖`);
+            }
         } catch (e) { /* 挖掘失败跳过 */ }
 
         if (H.shouldPause(task.config.humanize)) {
@@ -255,6 +305,8 @@ module.exports = (botInstance) => {
             task.targetIds = [];
             task.advanceFails = 0;
             task.waitingScript = false;
+            task._veinQueue = [];
+            task._blacklist = new Map();
             task.stats = { minedByType: {}, total: 0, startTime: Date.now(), lastMine: null, fullEvents: 0 };
             task.active = true;
             setState('SCAN');
