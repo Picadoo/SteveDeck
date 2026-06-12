@@ -23,7 +23,9 @@ module.exports = (botInstance) => {
         active: false,
         mode: 'keyword',
         keywords: [],
-        blacklist: ['armor_stand', 'item', 'item_frame', 'painting', 'experience_orb'],
+        // 黑名单只在「全部怪物」模式下生效：名字含这些词的不打。
+        // 默认保护村民/傀儡/宠物——盔甲架、掉落物、展示框那些本来就按实体类型过滤了，不用写在这。
+        blacklist: ['villager', 'iron_golem', 'snow_golem', 'wolf', 'cat', 'parrot', 'allay'],
         huntArea: null,
         returnPoint: null,
         safetyEnabled: true,
@@ -72,6 +74,8 @@ module.exports = (botInstance) => {
     let lastIdleScanAt = 0;
     let prevCombatEnabled = null; // 互斥：记录杀戮光环原状态
     let hunterListenersAttached = false;
+    let noTargetSince = 0;  // 连续找不到目标的起点（诊断用）
+    let lastDiagAt = 0;     // 上次诊断播报时间
     const damageHistory = new Map(); // id -> { lastHitAt, lastDistance, name, hurtByPlayerAt }
 
     const emitLog = (msg) => {
@@ -96,6 +100,21 @@ module.exports = (botInstance) => {
         return botInstance.mobHunterTask.blacklist.some(item => lowerName.includes(stripCodes(item).toLowerCase()));
     };
 
+    // 展平聊天组件取纯文本：兼容三种形态——纯字符串、JSON 组件({text,extra})、
+    // NBT 解码形态({type,value} 包一层，1.20.3+ 协议的实体元数据是这种)。任一形态嵌套均可。
+    const flattenName = (node) => {
+        if (node == null) return '';
+        if (typeof node === 'string') return node;
+        if (Array.isArray(node)) return node.map(flattenName).join('');
+        if (typeof node === 'object') {
+            if ('value' in node) return typeof node.value === 'object' ? flattenName(node.value) : String(node.value);
+            let s = node.text != null ? flattenName(node.text) : '';
+            if (node.extra != null) s += flattenName(node.extra);
+            return s;
+        }
+        return '';
+    };
+
     const getEntityDisplayName = (entity) => {
         if (!entity) return 'unknown';
         try {
@@ -105,12 +124,7 @@ module.exports = (botInstance) => {
                     return stripCodes(customName).replace(/[{}"]/g, '').trim();
                 }
                 if (customName && typeof customName === 'object') {
-                    // JSON 聊天组件：展平全部 text + extra（旧实现只取 extra[0]，多段名牌会丢字）
-                    const flat = (customName.text || '') +
-                        (Array.isArray(customName.extra)
-                            ? customName.extra.map(x => (typeof x === 'string' ? x : (x && x.text) || '')).join('')
-                            : '');
-                    const cleaned = stripCodes(flat).trim();
+                    const cleaned = stripCodes(flattenName(customName)).trim();
                     if (cleaned) return cleaned;
                 }
             }
@@ -502,6 +516,42 @@ module.exports = (botInstance) => {
         }
     };
 
+    // 「开了却不打」诊断：连续 10 秒找不到目标就把视野里实际看到的名字播报出来——
+    // 用户照着日志就知道关键词该填什么、或目标是不是被黑名单/让位规则滤掉了，不用猜。
+    // 30 秒最多一条，不刷屏。复用本轮 findBestTarget 刚刷新过的 hologramStands。
+    const diagnoseNoTarget = () => {
+        const now = Date.now();
+        if (!noTargetSince) { noTargetSince = now; return; }
+        if (now - noTargetSince < 10000 || now - lastDiagAt < 30000) return;
+        lastDiagAt = now;
+        const task = botInstance.mobHunterTask;
+        const counts = new Map();
+        let players = 0;
+        for (const e of Object.values(bot.entities)) {
+            if (!e || !e.position || e === bot.entity) continue;
+            let d;
+            try { d = bot.entity.position.distanceTo(e.position); } catch (err) { continue; }
+            if (d > 32) continue;
+            if (e.type === 'player') { if (e.username !== bot.username) players++; continue; }
+            if (isArmorStand(e) || e.type === 'object' || e.type === 'orb' || e.type === 'other') continue;
+            let name = getEntityDisplayName(e);
+            const holo = hologramNameFor(e);
+            if (holo && holo !== name) name = `${name}〔名牌:${holo}〕`;
+            counts.set(name, (counts.get(name) || 0) + 1);
+        }
+        const playerNote = players ? `；附近有 ${players} 个玩家（玩家 8 格内的怪会让位）` : '';
+        if (counts.size === 0) {
+            emitLog(`追怪诊断: 32 格内没有可打的生物${playerNote}`);
+            return;
+        }
+        const list = [...counts.entries()].slice(0, 8)
+            .map(([n, c]) => (c > 1 ? `${n}×${c}` : n)).join('、');
+        const why = task.mode === 'keyword'
+            ? `都不含关键词 [${task.keywords.join(', ')}]——按上面看到的名字改关键词即可`
+            : '都被黑名单或让位规则滤掉了';
+        emitLog(`追怪诊断: 看到 ${list}，但${why}${playerNote}`);
+    };
+
     // ===== 主循环 =====
     const huntCycle = async () => {
         const task = botInstance.mobHunterTask;
@@ -545,8 +595,10 @@ module.exports = (botInstance) => {
                 if (target) {
                     task.currentTarget = target;
                     targetAcquiredAt = Date.now();
+                    noTargetSince = 0;
                     emitLog(`锁定目标: ${getEntityDisplayName(target)}`);
                 } else {
+                    diagnoseNoTarget();
                     idleScan();
                 }
             }
@@ -673,6 +725,12 @@ module.exports = (botInstance) => {
         if (config.stopOnDeath !== undefined) task.stopOnDeath = config.stopOnDeath;
         if (config.maxDeaths !== undefined) task.maxDeaths = config.maxDeaths;
 
+        // 关键词模式 + 空关键词 = 永远无目标。这是「开了却一动不动」最常见的原因，拒绝启动并说清楚。
+        if (active && task.mode === 'keyword' && (!task.keywords || task.keywords.length === 0)) {
+            task.active = false;
+            return { success: false, error: '关键词模式要先填关键词（怪物头顶显示什么就填什么）；想见怪就打请切到「全部怪物」模式' };
+        }
+
         if (active) {
             task.stats = { kills: {}, totalKills: 0, deaths: 0, startTime: Date.now(), playersDetected: 0 };
             task.currentTarget = null;
@@ -681,6 +739,8 @@ module.exports = (botInstance) => {
             damageHistory.clear();
             lastAttackAt = 0;
             resumeAfter = 0;
+            noTargetSince = 0;
+            lastDiagAt = 0;
             invalidateMovements();
 
             // 互斥：暂停杀戮光环，避免双攻击循环互相干扰
@@ -750,6 +810,7 @@ module.exports = (botInstance) => {
             }
             emitLog(`追怪系统已关闭`);
         }
+        return { success: true };
     };
 
     botInstance.setHuntAreaCircle = (radius) => {

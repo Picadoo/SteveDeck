@@ -63,10 +63,13 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
             inst.toggleAutoFarm?.(active, config || {});
             persistSettings(id, (s) => (s.autoFarm = active ? config || inst.farmTask?.config || {} : undefined));
             break;
-          case "mob_hunter":
-            inst.toggleMobHunter?.(active, config || {});
+          case "mob_hunter": {
+            // 启动校验（如关键词模式空关键词）失败要回给 UI，否则开关假装开了但引擎根本没动
+            const res = inst.toggleMobHunter?.(active, config || {});
+            if (res && res.success === false) return ack?.(fail(res.error || "启动失败"));
             persistSettings(id, (s) => (s.mobHunter = { active, config: config || {} }));
             break;
+          }
           case "follow":
             inst.toggleFollow?.(active, config || {});
             persistSettings(id, (s) => ((s as any).follow = { active, config: config || {} }));

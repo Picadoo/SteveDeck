@@ -15,6 +15,8 @@ export interface FieldDef {
   options?: { value: string; label: string }[];
   placeholder?: string;
   hint?: string;
+  /** 按当前配置决定是否显示（如：黑名单只在「全部怪物」模式下有意义） */
+  showIf?: (cfg: Record<string, unknown>) => boolean;
 }
 
 export interface ModuleDef {
@@ -109,20 +111,36 @@ export const MODULES: ModuleDef[] = [
         type: "select",
         default: "keyword",
         options: [
-          { value: "keyword", label: "关键词匹配" },
-          { value: "all_mobs", label: "全部怪物(黑名单)" },
+          { value: "keyword", label: "关键词匹配（只打指定名字）" },
+          { value: "all_mobs", label: "全部怪物（黑名单除外）" },
         ],
       },
-      { key: "keywords", label: "关键词（逗号分隔）", type: "tags", default: [], placeholder: "zombie, skeleton" },
+      {
+        key: "keywords",
+        label: "关键词（逗号分隔）",
+        type: "tags",
+        default: [],
+        placeholder: "僵尸, 庄稼汉",
+        hint: "怪物头顶显示什么就填什么（支持 RPG 全息名牌，颜色码自动忽略）。不填不会开打。",
+        showIf: (c) => c.mode !== "all_mobs",
+      },
       {
         key: "blacklist",
-        label: "黑名单",
+        label: "黑名单（这些不打）",
         type: "tags",
-        default: ["armor_stand", "item", "item_frame"],
+        default: ["villager", "iron_golem", "snow_golem", "wolf", "cat", "parrot", "allay"],
+        hint: "名字含这些词的不动手，默认保护村民/傀儡/宠物。掉落物、盔甲架本来就不会打，不用填。",
+        showIf: (c) => c.mode === "all_mobs",
       },
       { key: "attackRange", label: "攻击距离", type: "number", default: 4.5, min: 1, max: 6, step: 0.5 },
       { key: "playerDetectRadius", label: "玩家检测半径", type: "number", default: 16, min: 0, max: 64 },
-      { key: "safetyEnabled", label: "检测到玩家暂停", type: "switch", default: true },
+      {
+        key: "safetyEnabled",
+        label: "检测到玩家暂停",
+        type: "switch",
+        default: true,
+        hint: "有玩家进入检测半径就停手装老实，离开几秒后恢复。自己站旁边测试时记得先关掉，否则它一直「暂停中」。",
+      },
       { key: "canDig", label: "允许破坏方块", type: "switch", default: false },
       { key: "canPlace", label: "允许放置方块", type: "switch", default: false },
     ],

@@ -40,9 +40,14 @@ export default function ModuleConfigDialog({
       }
     >
       <div className="space-y-3.5">
-        {def.fields.map((f) => (
-          <FieldRow key={f.key} field={f} value={cfg[f.key]} onChange={(v) => set(f.key, v)} />
-        ))}
+        {def.fields
+          .filter((f) => !f.showIf || f.showIf(cfg))
+          .map((f) => (
+            <div key={f.key}>
+              <FieldRow field={f} value={cfg[f.key]} onChange={(v) => set(f.key, v)} />
+              {f.hint && <p className="mt-1 text-[11px] leading-relaxed text-muted">{f.hint}</p>}
+            </div>
+          ))}
       </div>
     </Modal>
   );
