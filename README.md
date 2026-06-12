@@ -8,57 +8,67 @@
 
 # SteveDeck
 
-**你的 Steve 舰队，一块甲板全管住。**
+**不只是挂机——你能在浏览器里「玩」这个机器人。**
 
-面向玩家的 Minecraft 挂机机器人控制台 — 引擎 7×24 跑在服务器上，Windows 桌面 / Android / 手机浏览器作为瘦客户端遥控，随时随地管理你的机器人大军。
+Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / Android / 手机浏览器作为客户端遥控。核心差异点：**完整的实时交互系统**——3D 视角、键盘操控、背包管理、GUI 窗口点击、聊天字幕，像是在浏览器里打开了一个低配 MC 客户端。
 
 ---
 
-## ✨ 核心功能
+## 👁️ 实时交互（不是只能看日志的 bot）
 
-<table>
-<tr>
-<td width="50%">
+这是 SteveDeck 和大多数 MC bot 的根本区别：
 
-### 🤖 托管模块（一键开关）
-- **自动挖矿** — 矿脉跟随、搭方块脱困、区域选取 (sel1/sel2)、寻找模式
-- **追怪系统** — 关键词/全部怪物模式、RPG 全息名牌识别、矩形区域限定
-- **自动农场** — 收割·补种·骨粉催熟，六种作物
-- **自动钓鱼** — 持杆自动抛竿收竿
-- **自动战斗** — 杀戮光环，PVP/PVE 可切换
-- **跟随** — 类 Baritone follow，按玩家名/关键词/最近
-- **垃圾清理** — 自动丢弃腐肉等无用物品
+- **3D 实时视角** — 基于 prismarine-viewer 的浏览器内 Minecraft 画面，第一 / 第三人称切换，点击地面走位
+- **键盘直控** — WASD 移动、空格跳跃、Shift 潜行，像在玩 MC
+- **背包管理** — 完整背包界面，拖拽 / 丢弃 / 使用物品 / 装备武器防具，不改主手还原
+- **GUI 窗口** — 打开箱子、村民交易、服务器菜单，点击槽位操作，支持按名字/Lore 搜索按钮
+- **聊天字幕** — 聊天消息和 ActionBar 浮在 3D 视角上方，像游戏内 HUD
+- **告示牌 / 书本** — 读取告示牌内容、翻阅成书
 
-</td>
-<td width="50%">
+> 你的机器人不是一个黑盒——你随时能看到它在做什么、它看到了什么，并且直接接管操作。
 
-### 🧩 积木脚本
-- 可视化**触发器 + 动作**编辑器，零代码
-- 保命触发器**抢占**正在运行的脚本
-- 预置模板：挂机防踢、低血量回家、受伤反击、背包满存箱…
+---
+
+## 🤖 自动化模块
+
+一键开关，配置后全自动挂机：
+
+| 模块 | 说明 |
+|---|---|
+| **自动挖矿** | 矿脉跟随、Baritone 式区域选取 (sel1/sel2)、搭方块脱困、Find 探矿模式 |
+| **追怪系统** | 关键词 / 全部怪物两种模式，RPG 全息名牌识别，矩形区域限定，玩家在旁自动装死 |
+| **自动农场** | 收割 · 补种 · 骨粉催熟，六种作物 |
+| **自动钓鱼** | 持杆自动抛竿收竿 |
+| **自动战斗** | 杀戮光环，PVP/PVE 可切 |
+| **跟随** | 类 Baritone follow，按玩家名 / 关键词 / 最近 |
+| **垃圾清理** | 自动丢弃腐肉等垃圾 |
+
+---
+
+## 🧩 积木脚本
+
+零代码的**触发器 + 动作**可视化编辑器：
+
+- 血量低于阈值 → 自动回家 / 吃药
+- 背包满了 → 去指定箱子存物品
+- 被攻击 → 装备武器反击
+- 定时 → 跳一下防踢 / 执行命令
+- 保命触发器（血量 / 受伤）**可以抢占**正在运行的脚本
+- 预置 8 个常用模板，选了就能用
 - 支持自定义 JS 脚本（进阶）
 
-### 🗺️ 踩点系统
-- 保存/命名地点，支持**多世界跳转**（附带到达指令链）
-- 脚本引用地点名即可跨世界自动导航
-- 死亡后自动返回原位
+---
 
-</td>
-</tr>
-</table>
-
-### 📡 多端遥控
+## 📡 多端接入
 
 | 方式 | 说明 |
 |---|---|
 | **Windows 桌面** | Tauri 2 原生应用，内置引擎开箱即用 |
-| **Android** | Tauri 2 Android 客户端 |
-| **手机/平板浏览器** | 引擎内置网页客户端，打开即用，支持 PWA 添加到主屏 |
-| **扫码直连** | 引擎启动时打印二维码 + 连接串 `mcbot://host:port?token=xxx` |
+| **Android** | Tauri 2 客户端 |
+| **手机浏览器** | 引擎内置网页客户端 `http://<IP>:8723/`，支持 PWA |
+| **扫码** | 引擎启动打印二维码 + 连接串 `mcbot://host:port?token=xxx` |
 
-### 👁️ 实时视角
-
-浏览器内的 Minecraft 3D 视角（基于 prismarine-viewer）—— 第一人称 / 第三人称切换，可视化操控机器人走位、查看周围环境，不用打开 MC 客户端。
+**无账号、无注册。** 引擎启动生成令牌，填地址 + 令牌（或扫码）即连。
 
 ---
 
@@ -67,95 +77,42 @@
 ```
 SteveDeck/
 ├── packages/
-│   ├── protocol/    # 共享 TS 类型与事件常量（单一事实源）
-│   ├── engine/      # 引擎核心：Node + mineflayer，WS/HTTP API
+│   ├── protocol/    # 共享 TS 类型与事件常量
+│   ├── engine/      # Node + mineflayer 引擎，WS/HTTP API
 │   └── ui/          # React + Vite + Tailwind 共享界面
 ├── apps/
-│   ├── desktop/     # Tauri 2 → Windows 客户端
-│   └── mobile/      # Tauri 2 → Android 客户端
-└── docker/          # 引擎 Docker 镜像与 compose
+│   ├── desktop/     # Tauri 2 → Windows
+│   └── mobile/      # Tauri 2 → Android
+└── docker/          # Docker 镜像与 compose
 ```
 
 ---
 
 ## 🚀 快速开始
 
-### 开发环境
-
 ```bash
-pnpm install
-pnpm build              # 构建 protocol → engine → ui
-pnpm start:engine       # 启动引擎（打印连接信息 + 二维码）
-```
+# 开发
+pnpm install && pnpm build && pnpm start:engine
 
-### Docker 部署（推荐生产环境）
-
-```bash
-# 复制环境变量模板
-cp .env.example .env
-# 编辑 .env，设置 ENGINE_PUBLIC_HOST=<你的公网IP>
-
-# 一键启动
+# Docker 部署（推荐）
+cp .env.example .env          # 编辑 ENGINE_PUBLIC_HOST=<公网IP>
 docker compose -f docker/docker-compose.yml up -d --build
+# 手机浏览器打开 http://<IP>:8723/ 即可使用
+
+# Windows 安装包
+pnpm -C apps/desktop tauri build    # 需要 Rust
 ```
-
-引擎自带网页客户端 — 手机浏览器打开 `http://<服务器IP>:8723/` 即可使用。
-
-### Windows 桌面版
-
-```bash
-pnpm -C apps/desktop tauri build    # 需要 Rust 工具链
-```
-
----
-
-## 🔗 连接模型
-
-**无账号、无注册。** 引擎首次启动生成访问令牌，打印连接串与二维码。客户端填「引擎地址 + 令牌」或扫码即可遥控。
-
-```
-mcbot://119.91.120.244:8723?token=xxxxxxxx
-```
-
----
-
-## 🛡️ 安全特性
-
-- 访问令牌鉴权，未授权连接被拒
-- 聊天指令安全过滤（防注入恶意命令）
-- 玩家检测自动暂停（追怪/战斗模块）
-- 无破坏模式寻路（默认不挖不搭，保护地图）
 
 ---
 
 ## 📖 文档
 
-| 文档 | 说明 |
-|---|---|
-| [使用指南](docs/USER_GUIDE.md) | 部署引擎、连接客户端、使用各功能 |
-| [构建指南](docs/BUILD.md) | 引擎/Docker、Windows 桌面、Android 构建 |
-| [性能说明](docs/PERFORMANCE.md) | 引擎与客户端的性能优化措施 |
-| [项目状态](docs/STATUS.md) | 各阶段完成情况 |
-
----
-
-## 🧰 一键命令速查
-
-```bash
-pnpm install                # 安装依赖
-pnpm build                  # 构建所有包
-pnpm test                   # 运行引擎测试
-pnpm start:engine           # 本地启动引擎
-
-# Docker
-docker compose -f docker/docker-compose.yml up -d --build
-
-# Windows 安装包
-pnpm -C apps/desktop tauri build
-```
+- [使用指南](docs/USER_GUIDE.md) — 部署、连接、功能说明
+- [构建指南](docs/BUILD.md) — 引擎 / Docker / 桌面 / Android
+- [性能说明](docs/PERFORMANCE.md) — 引擎与客户端优化
 
 ---
 
 ## 📝 License
 
-[MIT](LICENSE) &copy; 2026 Picadoo
+[MIT](LICENSE)
