@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, RefreshCw, Trash2, Users } from "lucide-react";
+import { Loader2, Play, RefreshCw, Square, Trash2, Users } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import { Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import { generateFakeNames } from "@/lib/fakeNames";
+import type { BotSummary } from "@mcbot/protocol";
+
+// 关闭态用的稳定空数组：弹窗常驻挂载在 Sidebar，若直接订阅 s.bots，
+// 每次状态推送（2s/bot）都会让关闭的弹窗白渲染一轮
+const EMPTY_BOTS: BotSummary[] = [];
 
 function parseNames(raw: string): string[] {
   return [...new Set(raw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean))].filter((n) =>
@@ -21,7 +26,7 @@ function parseNames(raw: string): string[] {
  */
 export default function BatchAddDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pushToast = useStore((s) => s.pushToast);
-  const bots = useStore((s) => s.bots);
+  const bots = useStore((s) => (open ? s.bots : EMPTY_BOTS));
   const [host, setHost] = useState("");
   const [port, setPort] = useState("25565");
   const [version, setVersion] = useState("");
@@ -44,7 +49,17 @@ export default function BatchAddDialog({ open, onClose }: { open: boolean; onClo
 
   const validNames = useMemo(() => parseNames(names), [names]);
 
-  const liteBots = useMemo(() => bots.filter((b) => b.lite), [bots]);
+  // 现有假人按服务器分组（批量操作按服务器粒度，不再「全服一锅端」）
+  const liteByHost = useMemo(() => {
+    const m = new Map<string, BotSummary[]>();
+    for (const b of bots) {
+      if (!b.lite) continue;
+      const arr = m.get(b.host) ?? [];
+      arr.push(b);
+      m.set(b.host, arr);
+    }
+    return [...m.entries()];
+  }, [bots]);
 
   useEffect(() => {
     if (open && !names) setNames(generateFakeNames(genCount).join("\n"));
@@ -147,46 +162,44 @@ export default function BatchAddDialog({ open, onClose }: { open: boolean; onClo
     if (!cancelRef.current) onClose();
   }
 
-  // 批量删除带二次确认（5 秒内再点一次才真删，防误触全灭）
-  const [deleting, setDeleting] = useState(false);
-  const [confirmDel, setConfirmDel] = useState(false);
+  // 按服务器批量操作：busyHost=正在执行的服；删除带 5 秒二次确认（confirmDelHost 记录待确认的服）
+  const [busyHost, setBusyHost] = useState<string | null>(null);
+  const [confirmDelHost, setConfirmDelHost] = useState<string | null>(null);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  async function deleteAllLite() {
-    if (!confirmDel) {
-      setConfirmDel(true);
+
+  async function deleteHostLite(host: string, list: BotSummary[]) {
+    if (confirmDelHost !== host) {
+      setConfirmDelHost(host);
       if (confirmTimer.current) clearTimeout(confirmTimer.current);
-      confirmTimer.current = setTimeout(() => setConfirmDel(false), 5000);
+      confirmTimer.current = setTimeout(() => setConfirmDelHost(null), 5000);
       return;
     }
     if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    setConfirmDel(false);
-    const ids = liteBots.map((b) => b.id);
-    if (!ids.length) return pushToast("没有假人可删", "info");
-    setDeleting(true);
+    setConfirmDelHost(null);
+    setBusyHost(host);
     let ok = 0;
-    for (const id of ids) {
-      const r = await cmd.deleteBot(id).catch(() => ({ ok: false }));
+    for (const b of list) {
+      const r = await cmd.deleteBot(b.id).catch(() => ({ ok: false }));
       if (r.ok) ok++;
     }
-    setDeleting(false);
-    pushToast(`已删除 ${ok}/${ids.length} 个假人`, ok === ids.length ? "success" : "info");
+    setBusyHost(null);
+    pushToast(`${host}：已删除 ${ok}/${list.length} 个假人`, ok === list.length ? "success" : "info");
   }
 
-  // 批量启停：服主场景——白天人多让假人下线、晚上人少再拉起来撑场面
-  const [bulkOp, setBulkOp] = useState<"stop" | "start" | null>(null);
-  async function toggleAllLite(action: "stop" | "start") {
-    const targets = liteBots.filter((b) => (action === "stop" ? b.online || b.reconnecting : !b.online));
-    if (!targets.length) return pushToast(action === "stop" ? "假人都已离线" : "假人都已在线", "info");
-    setBulkOp(action);
+  // 启停：服主白天人多让假人下线、晚上再拉起来（上线沿用错峰间隔，停止瞬时执行）
+  async function toggleHostLite(host: string, list: BotSummary[]) {
+    const anyOnline = list.some((b) => b.online || b.reconnecting);
+    const targets = list.filter((b) => (anyOnline ? b.online || b.reconnecting : !b.online));
+    if (!targets.length) return;
+    setBusyHost(host);
     for (let i = 0; i < targets.length; i++) {
-      await (action === "stop" ? cmd.stop(targets[i].id) : cmd.reconnect(targets[i].id)).catch(() => null);
-      // 启动错峰沿用创建时的间隔逻辑（停止瞬时无所谓）
-      if (action === "start" && i < targets.length - 1 && gapSec > 0) {
+      await (anyOnline ? cmd.stop(targets[i].id) : cmd.reconnect(targets[i].id)).catch(() => null);
+      if (!anyOnline && i < targets.length - 1 && gapSec > 0) {
         await new Promise((res) => setTimeout(res, Math.min(gapSec, 3) * 1000));
       }
     }
-    setBulkOp(null);
-    pushToast(action === "stop" ? `已停止 ${targets.length} 个假人` : `正在拉起 ${targets.length} 个假人`, "success");
+    setBusyHost(null);
+    pushToast(`${host}：${anyOnline ? `已停止 ${targets.length} 个假人` : `正在拉起 ${targets.length} 个假人`}`, "success");
   }
 
   const busy = progress !== null;
@@ -211,29 +224,6 @@ export default function BatchAddDialog({ open, onClose }: { open: boolean; onClo
           </>
         ) : (
           <>
-            {liteBots.length > 0 && (
-              <div className="mr-auto flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  className={confirmDel ? "bg-danger/15 text-danger" : "text-danger hover:bg-danger/10"}
-                  onClick={deleteAllLite}
-                  disabled={deleting || bulkOp !== null}
-                >
-                  {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                  {confirmDel ? `再点一次确认删 ${liteBots.length} 个` : `清除全部假人（${liteBots.length}）`}
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="text-muted"
-                  onClick={() => toggleAllLite(liteBots.some((b) => b.online) ? "stop" : "start")}
-                  disabled={deleting || bulkOp !== null}
-                  title="服主场景：白天人多让假人下线，晚上再拉起来"
-                >
-                  {bulkOp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                  {liteBots.some((b) => b.online) ? "全部下线" : "全部上线"}
-                </Button>
-              </div>
-            )}
             <Button variant="ghost" onClick={onClose}>
               取消
             </Button>
@@ -246,9 +236,58 @@ export default function BatchAddDialog({ open, onClose }: { open: boolean; onClo
     >
       <div className="space-y-3.5">
         <p className="text-[11px] leading-relaxed text-muted">
-          假人是<span className="text-fg">轻量模式</span>：只连接 + 自动注册/登录 + 防挂机踢，不带视角/模块/脚本，
-          单只占用极低，适合批量撑在线。创建后和普通机器人一样可单独启停/删除/聊天。
+          假人是<span className="text-fg">轻量模式</span>：只连接 + 自动注册/登录 + 防挂机踢，不带模块/脚本，
+          单只占用极低，适合批量撑在线。创建后可单独启停/删除/聊天，视角/背包点开才加载。
         </p>
+
+        {liteByHost.length > 0 && (
+          <div className="rounded-lg border border-border/60 p-2.5">
+            <div className="mb-1.5 text-[11px] font-medium text-muted">现有假人（按服务器批量操作）</div>
+            <div className="space-y-1">
+              {liteByHost.map(([h, list]) => {
+                const online = list.filter((b) => b.online).length;
+                const anyOnline = list.some((b) => b.online || b.reconnecting);
+                const busyThis = busyHost === h;
+                return (
+                  <div key={h} className="flex items-center gap-2 rounded-md bg-surface-2/40 px-2 py-1.5 text-xs">
+                    <span className="min-w-0 flex-1 truncate" title={h}>
+                      {h}
+                      <span className="ml-1.5 tabular-nums text-muted">{online}/{list.length} 在线</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleHostLite(h, list)}
+                      disabled={busyHost !== null || busy}
+                      className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted hover:bg-surface-2 hover:text-fg disabled:opacity-50"
+                      title={anyOnline ? "全部下线" : "全部上线（按错峰间隔）"}
+                    >
+                      {busyThis ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : anyOnline ? (
+                        <Square className="h-3 w-3" />
+                      ) : (
+                        <Play className="h-3 w-3" />
+                      )}
+                      {anyOnline ? "下线" : "上线"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteHostLite(h, list)}
+                      disabled={busyHost !== null || busy}
+                      className={
+                        "flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] disabled:opacity-50 " +
+                        (confirmDelHost === h ? "bg-danger/15 text-danger" : "text-danger/80 hover:bg-danger/10 hover:text-danger")
+                      }
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      {confirmDelHost === h ? `确认删 ${list.length} 只？` : "删除"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-2">
           <label className="col-span-2 block">
             <span className="mb-1 block text-sm">服务器地址</span>

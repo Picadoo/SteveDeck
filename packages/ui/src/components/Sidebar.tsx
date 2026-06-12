@@ -55,7 +55,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     [setSelected],
   );
 
-  // 按服务器（host）分组
+  // 按服务器（host）分组；组内假人（lite）单独折叠——几十只假人不再撑爆列表
   const groups = useMemo(() => {
     const map = new Map<string, BotSummary[]>();
     for (const b of bots) {
@@ -63,13 +63,22 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       arr.push(b);
       map.set(b.host, arr);
     }
-    return Array.from(map.entries()).map(([host, list]) => ({
-      host,
-      label: list.find((b) => b.note)?.note || host,
-      list,
-      online: list.filter((b) => b.online).length,
-    }));
+    return Array.from(map.entries()).map(([host, list]) => {
+      const real = list.filter((b) => !b.lite);
+      const fake = list.filter((b) => b.lite);
+      return {
+        host,
+        label: list.find((b) => b.note && !b.lite)?.note || list.find((b) => b.note)?.note || host,
+        real,
+        fake,
+        fakeOnline: fake.filter((b) => b.online).length,
+        online: list.filter((b) => b.online).length,
+        total: list.length,
+      };
+    });
   }, [bots]);
+  // 假人子组展开态（默认收起）；选中的假人所在组强制展开，避免「选了却看不见」
+  const [fakeOpen, setFakeOpen] = useState<Record<string, boolean>>({});
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-surface">
@@ -119,17 +128,43 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                       {g.label}
                     </span>
                     <span className="shrink-0 tabular-nums">
-                      {g.online}/{g.list.length}
+                      {g.online}/{g.total}
                     </span>
                   </button>
 
                   {!isCollapsed && (
                     <ul className="space-y-0.5">
-                      {g.list.map((b) => (
+                      {g.real.map((b) => (
                         <li key={b.id}>
                           <BotRow bot={b} active={b.id === selectedId} onSelect={onSelect} />
                         </li>
                       ))}
+                      {g.fake.length > 0 && (() => {
+                        const open = fakeOpen[g.host] || g.fake.some((b) => b.id === selectedId);
+                        return (
+                          <li>
+                            <button
+                              onClick={() => setFakeOpen((o) => ({ ...o, [g.host]: !open }))}
+                              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[11px] text-muted transition-colors hover:bg-surface-2/60 hover:text-fg"
+                              title="批量假人（氛围组），点击展开/收起"
+                            >
+                              <Users className="h-3.5 w-3.5 shrink-0 text-accent/60" />
+                              <span className="min-w-0 flex-1 truncate">假人 ×{g.fake.length}</span>
+                              <span className="shrink-0 tabular-nums">{g.fakeOnline} 在线</span>
+                              <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", !open && "-rotate-90")} />
+                            </button>
+                            {open && (
+                              <ul className="space-y-0.5 pl-2">
+                                {g.fake.map((b) => (
+                                  <li key={b.id}>
+                                    <BotRow bot={b} active={b.id === selectedId} onSelect={onSelect} />
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </li>
+                        );
+                      })()}
                     </ul>
                   )}
                 </div>
