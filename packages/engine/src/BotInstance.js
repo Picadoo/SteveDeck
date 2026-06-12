@@ -409,8 +409,9 @@ class BotInstance {
                 this.uiLog('✅ 已进入服务器');
 
                 // 2. 模块挂载：逐个 try/catch 隔离——单个模块构造抛错不再连累后续模块与状态推送
-                // lite 假人（氛围组）只挂防挂机踢：不挂任何功能模块，单只内存/CPU 压到最低
-                const MODULE_NAMES = this.config.settings?.lite ? ['anti_afk'] : [
+                // lite 假人（氛围组）：防挂机踢 + 视角/背包（这两个只挂函数/轻监听，重活都在用户点开时才发生），
+                // 其余功能模块（战斗/寻路/脚本等常驻监听）一律不挂，单只内存/CPU 压到最低
+                const MODULE_NAMES = this.config.settings?.lite ? ['anti_afk', 'bot_viewer', 'player_inventory'] : [
                     'combat', 'fishing', 'scheduler', 'player_inventory',
                     'interact', 'automine', 'trash_cleaner', 'auto_farm', 'mob_hunter',
                     'follow', 'scoreboard', 'script_engine', 'window_gui',
