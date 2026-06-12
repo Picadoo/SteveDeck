@@ -17,6 +17,10 @@ export interface FieldDef {
   hint?: string;
   /** 按当前配置决定是否显示（如：黑名单只在「全部怪物」模式下有意义） */
   showIf?: (cfg: Record<string, unknown>) => boolean;
+  /** 拼写校验：值应当存在于该注册表（items=物品名 blocks=方块名）；输错即时红字提醒 */
+  registry?: "items" | "blocks";
+  /** exact=必须精确等于某个名字（默认）；includes=子串能匹配到至少一个名字即可（如垃圾清理） */
+  registryMatch?: "exact" | "includes";
 }
 
 export interface ModuleDef {
@@ -78,6 +82,7 @@ export const MODULES: ModuleDef[] = [
         type: "tags",
         default: ["diamond_ore", "deepslate_diamond_ore"],
         placeholder: "diamond_ore, iron_ore",
+        registry: "blocks",
       },
       {
         key: "mode",
@@ -206,6 +211,8 @@ export const MODULES: ModuleDef[] = [
         type: "tags",
         default: ["rotten_flesh", "poisonous_potato"],
         placeholder: "rotten_flesh, cobblestone",
+        registry: "items",
+        registryMatch: "includes",
       },
     ],
   },

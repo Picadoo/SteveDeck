@@ -1,23 +1,56 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import { Button, Input, Switch } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
+import { cmd } from "@/lib/engine";
+import { closestName } from "@/lib/closestName";
 import type { ModuleDef, FieldDef } from "./moduleDefs";
+
+type RegistryNames = { items: string[]; blocks: string[] };
+
+// 注册表按 bot 缓存：物品/方块名列表一次拉取（~2k 条），同会话内不重复请求
+const registryCache = new Map<string, RegistryNames>();
+
+function useRegistryNames(botId: string, enabled: boolean): RegistryNames | null {
+  const [data, setData] = useState<RegistryNames | null>(() => registryCache.get(botId) ?? null);
+  useEffect(() => {
+    if (!enabled || data) return;
+    let dead = false;
+    cmd
+      .moduleAction<RegistryNames>(botId, "registry", "names")
+      .then((r) => {
+        if (!dead && r.ok && r.data) {
+          registryCache.set(botId, r.data);
+          setData(r.data);
+        }
+      })
+      .catch(() => {
+        /* 离线/失败 → 不校验，静默降级 */
+      });
+    return () => {
+      dead = true;
+    };
+  }, [botId, enabled, data]);
+  return data;
+}
 
 export default function ModuleConfigDialog({
   def,
+  botId,
   open,
   initial,
   onClose,
   onSave,
 }: {
   def: ModuleDef;
+  botId: string;
   open: boolean;
   initial: Record<string, unknown>;
   onClose: () => void;
   onSave: (config: Record<string, unknown>) => void;
 }) {
   const [cfg, setCfg] = useState<Record<string, unknown>>(initial);
+  const registry = useRegistryNames(botId, open && def.fields.some((f) => f.registry));
 
   function set(key: string, value: unknown) {
     setCfg((c) => ({ ...c, [key]: value }));
@@ -44,7 +77,7 @@ export default function ModuleConfigDialog({
           .filter((f) => !f.showIf || f.showIf(cfg))
           .map((f) => (
             <div key={f.key}>
-              <FieldRow field={f} value={cfg[f.key]} onChange={(v) => set(f.key, v)} />
+              <FieldRow field={f} value={cfg[f.key]} onChange={(v) => set(f.key, v)} registry={registry} />
               {f.hint && <p className="mt-1 text-[11px] leading-relaxed text-muted">{f.hint}</p>}
             </div>
           ))}
@@ -57,11 +90,29 @@ function FieldRow({
   field,
   value,
   onChange,
+  registry,
 }: {
   field: FieldDef;
   value: unknown;
   onChange: (v: unknown) => void;
+  registry: RegistryNames | null;
 }) {
+  // tags 拼写校验（hook 必须在所有分支 return 之前调用）
+  const tagsArr = field.type === "tags" && Array.isArray(value) ? (value as string[]) : null;
+  const regNames = field.registry && registry ? registry[field.registry] : null;
+  const issues = useMemo(() => {
+    if (!tagsArr || !regNames || regNames.length === 0) return [];
+    const out: { tag: string; suggest: string | null }[] = [];
+    for (const t of tagsArr) {
+      const k = t.toLowerCase().trim();
+      if (!k) continue;
+      const hit =
+        field.registryMatch === "includes" ? regNames.some((n) => n.includes(k)) : regNames.includes(k);
+      if (!hit) out.push({ tag: t, suggest: closestName(k, regNames) });
+    }
+    return out;
+  }, [tagsArr, regNames, field.registryMatch]);
+
   if (field.type === "switch") {
     return (
       <div className="flex items-center justify-between">
@@ -89,7 +140,7 @@ function FieldRow({
   }
 
   if (field.type === "tags") {
-    const arr = Array.isArray(value) ? (value as string[]) : [];
+    const arr = tagsArr ?? [];
     return (
       <label className="block">
         <span className="mb-1.5 block text-sm">{field.label}</span>
@@ -106,6 +157,29 @@ function FieldRow({
             )
           }
         />
+        {issues.length > 0 && (
+          <div className="mt-1 space-y-0.5">
+            {issues.map((i) => (
+              <p key={i.tag} className="text-[11px] text-danger">
+                「{i.tag}」
+                {field.registryMatch === "includes" ? "匹配不到任何物品" : "不是有效名字"}
+                {i.suggest && (
+                  <>
+                    ，是不是{" "}
+                    <button
+                      type="button"
+                      className="font-medium underline underline-offset-2"
+                      onClick={() => onChange(arr.map((t) => (t === i.tag ? i.suggest! : t)))}
+                    >
+                      {i.suggest}
+                    </button>
+                    ？
+                  </>
+                )}
+              </p>
+            ))}
+          </div>
+        )}
       </label>
     );
   }

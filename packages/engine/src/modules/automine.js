@@ -3,6 +3,7 @@
 const { goals, Movements } = require('mineflayer-pathfinder');
 const H = require('./mining/humanizer');
 const gotoWithTimeout = require('../utils/gotoWithTimeout');
+const { closestName } = require('../utils/closestName');
 
 const DEFAULT_CONFIG = {
     targets: [], scanRadius: 32, queueSize: 16, humanize: 'high',
@@ -81,6 +82,19 @@ module.exports = (botInstance) => {
 
     function buildTargetIds() {
         const mc = getMcData();
+        // 拼写体检：无效方块名会被静默丢弃（部分拼错时模块照常跑、用户不知道漏了），
+        // 启动后第一次构建时逐个点名 + 就近建议
+        if (!task._warnedBadTargets) {
+            task._warnedBadTargets = true;
+            const bad = task.config.targets.filter(n => !mc.blocksByName[n]);
+            if (bad.length) {
+                const names = Object.keys(mc.blocksByName);
+                for (const b of bad) {
+                    const tip = closestName(b, names);
+                    emitLog(`⚠ 方块名「${b}」无效，已忽略${tip ? `——是不是想填 ${tip}？` : ''}`);
+                }
+            }
+        }
         return task.config.targets
             .map(name => mc.blocksByName[name] && mc.blocksByName[name].id)
             .filter(id => id !== undefined && id !== null);
@@ -355,6 +369,7 @@ module.exports = (botInstance) => {
         if (active) {
             task.config = normalizeConfig(arg, direction);
             task.targetIds = [];
+            task._warnedBadTargets = false;
             task.advanceFails = 0;
             task.waitingScript = false;
             task._veinQueue = [];

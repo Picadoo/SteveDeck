@@ -1,3 +1,5 @@
+const { closestName } = require('../utils/closestName');
+
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
 
@@ -48,6 +50,21 @@ module.exports = (botInstance) => {
         botInstance.trashCleanerTask.trashItems = items;
 
         if (active) {
+            // 拼写体检：items 走子串匹配，拼错（如 rotten_flsh）只会永远匹配不到、静默不干活——
+            // 开启时就把匹配不到任何物品的条目点名出来 + 就近建议
+            try {
+                const mc = botInstance.getMcData?.();
+                if (mc?.itemsArray) {
+                    const names = mc.itemsArray.map(i => i.name);
+                    for (const raw of items) {
+                        const k = String(raw).toLowerCase().trim();
+                        if (k && !names.some(n => n.includes(k))) {
+                            const tip = closestName(k, names);
+                            emitLog(`⚠ 「${raw}」匹配不到任何物品${tip ? `——是不是想填 ${tip}？` : ''}`);
+                        }
+                    }
+                }
+            } catch (e) { /* 校验失败不挡功能 */ }
             emitLog("自动清理开启：将定期清理指定垃圾");
             // 每 10 秒扫描一次背包
             if (botInstance.trashCleanerTask.timer) {

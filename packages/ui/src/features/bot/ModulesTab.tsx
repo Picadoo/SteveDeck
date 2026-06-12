@@ -237,6 +237,7 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
       {editing && (
         <ModuleConfigDialog
           def={editing}
+          botId={bot.id}
           open
           initial={getCfg(editing)}
           onClose={() => setEditing(null)}

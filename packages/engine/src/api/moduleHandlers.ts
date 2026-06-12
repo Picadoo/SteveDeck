@@ -155,6 +155,18 @@ function dispatchAction(
   args: any,
 ): CommandAck | Promise<CommandAck> {
   switch (`${module}:${action}`) {
+    // ===== 注册表查询：当前 bot 版本的物品/方块名列表（UI 配置输入拼写校验用） =====
+    case "registry:names": {
+      if (!inst.bot?.version) return fail("机器人未连接");
+      const mc = inst.getMcData?.();
+      if (!mc?.itemsArray) return fail("注册表不可用");
+      return ok({
+        version: inst.bot.version,
+        items: mc.itemsArray.map((i: any) => i.name),
+        blocks: mc.blocksArray.map((b: any) => b.name),
+      });
+    }
+
     case "window:get":
       return ok(inst.getWindow?.() ?? null);
     case "window:click":
