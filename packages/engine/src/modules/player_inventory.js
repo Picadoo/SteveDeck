@@ -239,9 +239,22 @@ module.exports = (botInstance) => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const totalOf = (nm) => bot.inventory.items().filter((i) => i.name === nm).reduce((s, i) => s + (i.count || 0), 0);
 
-    botInstance.useSlot = async (slot) => {
+    botInstance.useSlot = async (slot, opts = {}) => {
         const it = bot.inventory.slots[slot];
         if (!it) throw new Error('该格为空');
+
+        // 潜行使用（开关控制）：进右键前按住 sneak，用完松开。
+        // 用途：① 很多服自定义物品只在 sneak+右键 触发；② 避免右键误触脚下/面前方块（开箱子/踩压力板）。
+        const wantSneak = !!opts.sneak;
+        const prevSneak = wantSneak ? !!bot.getControlState?.('sneak') : false;
+        if (wantSneak) {
+            try { bot.setControlState('sneak', true); } catch (e) { /* ignore */ }
+        }
+        const releaseSneak = () => {
+            if (wantSneak && !prevSneak) {
+                try { bot.setControlState('sneak', false); } catch (e) { /* ignore */ }
+            }
+        };
 
         // —— 用完恢复主手：使用背包物品不打乱用户摆好的手持 ——
         // equip 会把目标物品抢到主手（背包物品=和原主手换位；快捷栏物品=切换选中格）。
@@ -265,7 +278,10 @@ module.exports = (botInstance) => {
                     if (leftover && !bot.inventory.slots[slot]) await bot.moveSlotItem(heldWindowSlot, slot);
                 }
             } catch (e) { /* 恢复失败不影响使用本身 */ }
-            syncInventory();
+            finally {
+                releaseSneak(); // finally 保证松开潜行（含「用的就是手上这格」的 early return 路径）
+                syncInventory();
+            }
         };
 
         await bot.equip(it, 'hand');

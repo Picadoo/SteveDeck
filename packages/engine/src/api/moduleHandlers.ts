@@ -517,9 +517,9 @@ function dispatchAction(
         .catch((e: any) => fail(String(e?.message ?? e)));
     case "inventory:use":
       // 录制要趁物品还在原槽位：先记录再执行（useSlot 会把物品移到手上）
-      inst.recorder?.note?.("use", { slot: Number(args.slot) });
+      inst.recorder?.note?.("use", { slot: Number(args.slot), sneak: !!args.sneak });
       return inst
-        .useSlot(Number(args.slot))
+        .useSlot(Number(args.slot), { sneak: !!args.sneak })
         .then(() => ok())
         .catch((e: any) => fail(String(e?.message ?? e)));
     case "inventory:offhand":

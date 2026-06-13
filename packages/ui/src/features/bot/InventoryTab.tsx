@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { RefreshCw, Package, Shirt, Hand, Trash2, MousePointerClick, Star, X, Shield, LayoutGrid, BookOpen, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
+import { RefreshCw, Package, Shirt, Hand, Trash2, MousePointerClick, Star, X, Shield, LayoutGrid, BookOpen, ChevronLeft, ChevronRight, Loader2, Plus, ArrowDownToLine } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { Button } from "@/components/ui/primitives";
@@ -138,8 +138,33 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
       .map((e) => ({ entry: e, live: liveByKey.get(e.key) || null }));
   }, [usage, items]);
 
+  // 潜行使用开关（全局习惯，localStorage 持久）：开启后「使用」在 sneak 状态下右键——
+  // 适配只在潜行+右键触发的自定义物品，并避免误触脚下/面前方块。
+  const [sneakUse, setSneakUse] = useState(() => {
+    try {
+      return localStorage.getItem("mcbot.inv.sneak") === "1";
+    } catch {
+      return false;
+    }
+  });
+  // 稳定引用：传进 memo(ItemRow) 不击穿其 memo；act 读 .current 总拿最新值
+  const sneakRef = useRef(sneakUse);
+  sneakRef.current = sneakUse;
+  const toggleSneak = () => {
+    setSneakUse((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("mcbot.inv.sneak", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
   async function quickUse(live: InventoryItem, action: UseAction) {
-    const r = await cmd.moduleAction(bot.id, "inventory", action, { slot: live.slot });
+    const extra = action === "use" && sneakRef.current ? { sneak: true } : {};
+    const r = await cmd.moduleAction(bot.id, "inventory", action, { slot: live.slot, ...extra });
     if (!r.ok) pushToast(r.error || "操作失败", "error");
     else recordUse(live, action);
   }
@@ -157,6 +182,18 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
           {groups.equip.length > 0 && <span className="ml-1.5">· 装备 {groups.equip.length}</span>}
         </span>
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleSneak}
+            title="开启后「使用」物品时潜行右键（适配只在潜行触发的自定义物品，避免误触脚下/面前方块）"
+            className={cn(
+              "flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] transition-colors",
+              sneakUse
+                ? "border-accent/40 bg-accent/15 text-accent"
+                : "border-border text-muted hover:text-fg",
+            )}
+          >
+            <ArrowDownToLine className="h-3.5 w-3.5" /> 潜行使用
+          </button>
           <Button size="sm" variant="secondary" disabled={!bot.online} onClick={() => setOrganize({ open: true })}>
             <LayoutGrid className="h-3.5 w-3.5" /> 整理背包
           </Button>
@@ -278,6 +315,7 @@ export default function InventoryTab({ bot }: { bot: BotSummary }) {
                         texBase={texBase}
                         onUse={recordUse}
                         onReadBook={setBookSlot}
+                        sneakRef={sneakRef}
                       />
                     ))}
                   </div>
@@ -709,6 +747,7 @@ const ItemRow = memo(function ItemRow({
   texBase,
   onUse,
   onReadBook,
+  sneakRef,
 }: {
   item: InventoryItem;
   botId: string;
@@ -717,12 +756,14 @@ const ItemRow = memo(function ItemRow({
   texBase: string;
   onUse: (item: InventoryItem, action: UseAction) => void;
   onReadBook: (slot: number) => void;
+  sneakRef: React.RefObject<boolean>;
 }) {
   const pushToast = useStore((s) => s.pushToast);
   const [tipOpen, setTipOpen] = useState(false);
   const tipRef = useRef<HTMLDivElement>(null);
   const act = async (action: "equip" | "hold" | "use" | "drop" | "offhand") => {
-    const r = await cmd.moduleAction(botId, "inventory", action, { slot: item.slot });
+    const extra = action === "use" && sneakRef.current ? { sneak: true } : {};
+    const r = await cmd.moduleAction(botId, "inventory", action, { slot: item.slot, ...extra });
     if (!r.ok) pushToast(r.error || "操作失败", "error");
     // 丢弃/放副手/挪格子不算「使用」，其余计入常用
     else if (action === "equip" || action === "hold" || action === "use") onUse(item, action);
