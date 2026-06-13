@@ -461,6 +461,9 @@ export const cmd = {
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "move", action: "control", args: states }),
     turn: (id: string, dyaw: number, dpitch = 0) =>
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "move", action: "turn", args: { dyaw, dpitch } }),
+    // 绝对水平朝向（camera-relative 操控：让史蒂夫面朝相机方向，pitch 不变）
+    face: (id: string, yaw: number) =>
+      emitAck(ClientCommands.MODULE_ACTION, { id, module: "move", action: "turn", args: { yaw } }),
     stop: (id: string) => emitAck(ClientCommands.MODULE_ACTION, { id, module: "move", action: "stop" }),
     // 模拟按键的一次性动作：攻击/使用/换手/丢弃/选快捷栏
     tap: (id: string, action: "attack" | "use" | "swap" | "drop" | "slot", slot?: number) =>

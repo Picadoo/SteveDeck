@@ -410,11 +410,14 @@ function dispatchAction(
     case "move:turn": {
       const b = inst.bot;
       if (!b?.entity) return fail("机器人离线");
-      const yaw = b.entity.yaw + (Number(args.dyaw) || 0);
-      const pitch = Math.max(
-        -Math.PI / 2,
-        Math.min(Math.PI / 2, b.entity.pitch + (Number(args.dpitch) || 0)),
-      );
+      // args.yaw 给定 = 绝对朝向（camera-relative 操控，让史蒂夫面朝相机方向，pitch 不变）；
+      // 否则 dyaw/dpitch = 相对转身（拖拽转视线）
+      const yaw =
+        typeof args.yaw === "number" ? args.yaw : b.entity.yaw + (Number(args.dyaw) || 0);
+      const pitch =
+        typeof args.yaw === "number"
+          ? b.entity.pitch
+          : Math.max(-Math.PI / 2, Math.min(Math.PI / 2, b.entity.pitch + (Number(args.dpitch) || 0)));
       try {
         b.look(yaw, pitch, false);
       } catch {

@@ -248,6 +248,22 @@ export default function Viewer({
     };
   }, [started, walk, bot.id]);
 
+  // camera-relative 操控（桌面端体验）：iframe 上报相机水平朝向 → 操控模式下让史蒂夫持续
+  // 面朝相机方向，于是原生 WASD（相对史蒂夫）自动变「相对镜头」：W 朝镜头前方走、A/D 相对
+  // 镜头平移、S 朝镜头后退。不操控时不转身（可自由转镜头看四周，史蒂夫不动）。
+  const walkRef = useRef(walk);
+  walkRef.current = walk;
+  useEffect(() => {
+    if (!started) return;
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data;
+      if (!d || d.type !== "mcbot:camYaw" || typeof d.yaw !== "number") return;
+      if (walkRef.current) cmd.control.face(bot.id, d.yaw);
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [started, bot.id]);
+
   const pos = bot.pos;
   const pct = healthPct(bot);
 
