@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { X, ArrowUp, ArrowDown, Trash2, Code2, Blocks } from "lucide-react";
+import { X, ArrowUp, ArrowDown, Trash2, Code2, Blocks, Plus } from "lucide-react";
 import { Button, Input, Switch } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { STEP_TYPES, STEP_MAP, TRIGGER_TYPES, type StepFieldDef } from "./stepDefs";
@@ -315,7 +315,8 @@ export default function ScriptEditor({
 }
 
 function StepList({ steps, onChange, depth }: { steps: any[]; onChange: (s: any[]) => void; depth: number }) {
-  function add(doType: string) {
+  // atIndex 给定 → 在该下标处插入（中间插入）；省略 → 追加到末尾
+  function add(doType: string, atIndex?: number) {
     const def = STEP_MAP[doType];
     const step: any = { do: doType, [STEP_KEY]: newStepKey() }; // UIFEAT-5：新增即分配稳定 key
     def?.fields.forEach((f) => {
@@ -323,7 +324,13 @@ function StepList({ steps, onChange, depth }: { steps: any[]; onChange: (s: any[
         f.type === "number" ? 0 : f.type === "bool" ? false : f.type === "select" ? f.options?.[0]?.value ?? "" : "";
     });
     def?.containers?.forEach((c) => (step[c.key] = []));
-    onChange([...steps, step]);
+    if (atIndex == null) {
+      onChange([...steps, step]);
+    } else {
+      const a = steps.slice();
+      a.splice(atIndex, 0, step);
+      onChange(a);
+    }
   }
   const update = (i: number, k: string, v: any) => {
     const a = steps.slice();
@@ -353,22 +360,29 @@ function StepList({ steps, onChange, depth }: { steps: any[]; onChange: (s: any[
           depth={depth}
           onField={(k, v) => update(i, k, v)}
           onMove={(d) => move(i, d)}
+          onInsert={(doType) => add(doType, i + 1)}
           onDelete={() => del(i)}
         />
       ))}
-      <select
-        value=""
-        onChange={(e) => e.target.value && add(e.target.value)}
-        className="h-8 w-full rounded-lg border border-dashed border-border bg-surface px-2 text-xs text-muted outline-none focus:ring-2 focus:ring-accent/50"
-      >
-        <option value="">+ 添加步骤…</option>
-        {/* 常用步骤在前；不切实际/易错的（advanced）收进「高级」分组，不删除以兼容老脚本 */}
-        {STEP_TYPES.filter((t) => !t.advanced).map((t) => <option key={t.do} value={t.do}>{t.label}</option>)}
-        <optgroup label="高级（不常用）">
-          {STEP_TYPES.filter((t) => t.advanced).map((t) => <option key={t.do} value={t.do}>{t.label}</option>)}
-        </optgroup>
-      </select>
+      <StepPicker onPick={(d) => add(d)} label="+ 添加步骤…" />
     </div>
+  );
+}
+
+// 步骤类型选择器（底部追加 + 卡片中间插入 共用）：常用在前，高级收进分组
+function StepPicker({ onPick, label }: { onPick: (doType: string) => void; label: string }) {
+  return (
+    <select
+      value=""
+      onChange={(e) => e.target.value && onPick(e.target.value)}
+      className="h-8 w-full rounded-lg border border-dashed border-border bg-surface px-2 text-xs text-muted outline-none focus:ring-2 focus:ring-accent/50"
+    >
+      <option value="">{label}</option>
+      {STEP_TYPES.filter((t) => !t.advanced).map((t) => <option key={t.do} value={t.do}>{t.label}</option>)}
+      <optgroup label="高级（不常用）">
+        {STEP_TYPES.filter((t) => t.advanced).map((t) => <option key={t.do} value={t.do}>{t.label}</option>)}
+      </optgroup>
+    </select>
   );
 }
 
@@ -379,6 +393,7 @@ function StepCard({
   depth,
   onField,
   onMove,
+  onInsert,
   onDelete,
 }: {
   step: any;
@@ -387,9 +402,11 @@ function StepCard({
   depth: number;
   onField: (k: string, v: any) => void;
   onMove: (d: number) => void;
+  onInsert: (doType: string) => void;
   onDelete: () => void;
 }) {
   const def = STEP_MAP[step.do];
+  const [insertOpen, setInsertOpen] = useState(false);
   return (
     <div className={cn("rounded-lg border border-border p-2.5", depth > 0 ? "bg-surface-2/20" : "bg-surface-2/40")}>
       <div className="mb-1.5 flex items-center justify-between">
@@ -397,9 +414,19 @@ function StepCard({
         <div className="flex gap-1">
           <IconBtn onClick={() => onMove(-1)} disabled={index === 0}><ArrowUp className="h-3.5 w-3.5" /></IconBtn>
           <IconBtn onClick={() => onMove(1)} disabled={index === total - 1}><ArrowDown className="h-3.5 w-3.5" /></IconBtn>
+          <IconBtn onClick={() => setInsertOpen((v) => !v)} title="在此步骤下方插入"><Plus className={cn("h-3.5 w-3.5", insertOpen && "text-accent")} /></IconBtn>
           <IconBtn onClick={onDelete}><Trash2 className="h-3.5 w-3.5 text-danger" /></IconBtn>
         </div>
       </div>
+
+      {insertOpen && (
+        <div className="mb-2">
+          <StepPicker
+            onPick={(d) => { onInsert(d); setInsertOpen(false); }}
+            label="+ 在此下方插入步骤…"
+          />
+        </div>
+      )}
 
       {def ? (
         <>
@@ -463,9 +490,9 @@ function StepCard({
   );
 }
 
-function IconBtn({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+function IconBtn({ onClick, disabled, title, children }: { onClick: () => void; disabled?: boolean; title?: string; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} disabled={disabled} className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-30">
+    <button onClick={onClick} disabled={disabled} title={title} className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-30">
       {children}
     </button>
   );
