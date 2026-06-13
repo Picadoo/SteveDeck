@@ -23,10 +23,12 @@ import {
   PawPrint,
   Circle,
   SlidersHorizontal,
+  CircleStop,
 } from "lucide-react";
 import { Card } from "@/components/ui/primitives";
 import { loadOverviewPrefs, saveOverviewPrefs, OVERVIEW_CARDS } from "@/lib/overviewPrefs";
 import { cmd } from "@/lib/engine";
+import { useStore } from "@/store/useStore";
 import { usePageVisible } from "@/lib/usePageVisible";
 import McText from "@/components/McText";
 import { cnMob } from "@/lib/mobNames";
@@ -58,6 +60,7 @@ function stableKeys<T>(items: T[], idOf: (item: T) => string): string[] {
 }
 
 export default function OverviewTab({ bot }: { bot: BotSummary }) {
+  const pushToast = useStore((s) => s.pushToast);
   const [obs, setObs] = useState<Observation | null>(null);
   const [stats, setStats] = useState<Record<string, any>>({});
   const [prefs, setPrefs] = useState(loadOverviewPrefs);
@@ -151,8 +154,22 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
 
   return (
     <div className="space-y-4">
-      {/* 配置：哪些卡片显示 + 刷新间隔 */}
-      <div className="flex justify-end">
+      {/* 顶部：全停（急停所有主动行为，留定时脚本）+ 配置 */}
+      <div className="flex items-center justify-between">
+        {bot.online ? (
+          <button
+            onClick={async () => {
+              const r = await cmd.moduleAction(bot.id, "bot", "stopAll");
+              pushToast(r.ok ? "已停止所有操作（定时脚本保留）" : (r.error || "停止失败"), r.ok ? "success" : "error");
+            }}
+            title="停止脚本 + 正在执行的模块 + 移动操控；定时脚本保留（到点照常运行）"
+            className="flex items-center gap-1 rounded-lg border border-danger/40 bg-danger/10 px-2.5 py-1 text-[11px] font-medium text-danger transition-colors hover:bg-danger/20"
+          >
+            <CircleStop className="h-3.5 w-3.5" /> 全停所有操作
+          </button>
+        ) : (
+          <span />
+        )}
         <button
           onClick={() => setCfgOpen((v) => !v)}
           className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-muted transition-colors hover:bg-surface-2 hover:text-fg"
