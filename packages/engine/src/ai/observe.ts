@@ -1,7 +1,7 @@
 import { botManager } from "../botManager";
 
 // 物品/装备摘要助手（CJS 工具，引擎以 require 复用）
-const { itemBrief, enchantNames } = require("../utils/items");
+const { itemBrief, enchantNames, customName } = require("../utils/items");
 
 /** 读取最大生命属性（RPG 服常 >20），取不到回退 20。 */
 function maxHealthOf(bot: any): number {
@@ -316,14 +316,17 @@ export function buildObservation(id: string): any {
 
   try {
     const invItems = bot.inventory.items();
-    obs.inventory = invItems.map((it: any) => ({
-      slot: it.slot,
-      name: it.name,
-      count: it.count,
-      displayName: it.displayName,
-      enchants: enchantNames(it),
-      durabilityPct: durabilityPct(it),
-    }));
+    obs.inventory = invItems.map((it: any) => {
+      const custom = customName(it);
+      const isRenamed = custom && custom.toLowerCase().replace(/ /g, "_") !== String(it.name).toLowerCase();
+      return {
+        slot: it.slot,
+        name: isRenamed ? `${custom}(${it.name})` : custom || it.displayName || it.name,
+        count: it.count,
+        enchants: enchantNames(it),
+        durabilityPct: durabilityPct(it),
+      };
+    });
     // slot 9-44 = main inventory (36 slots)
     const mainSlots = bot.inventory.slots.filter((_: any, i: number) => i >= 9 && i <= 44);
     const emptyCount = mainSlots.filter((s: any) => !s).length;

@@ -309,7 +309,7 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
                   </label>
                   <label className="block">
                     <span className="mb-1 block text-[11px] text-muted">模型</span>
-                    <Input value={cfgForm.model} onChange={(e) => setCfgForm((f) => ({ ...f, model: e.target.value }))} placeholder="deepseek-chat" />
+                    <Input value={cfgForm.model} onChange={(e) => setCfgForm((f) => ({ ...f, model: e.target.value }))} placeholder="deepseek-chat（始终指向最新版）" />
                   </label>
                 </div>
                 <label className="block">
