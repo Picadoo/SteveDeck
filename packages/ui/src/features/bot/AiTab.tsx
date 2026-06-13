@@ -42,12 +42,16 @@ function buildPrompt(obs: Observation, goal: string): string {
   ].join("\n");
 }
 
+// 切 tab 时 AiTab 会 unmount→remount，用模块级 Map 保留用户写到一半的目标文本
+const goalCache = new Map<string, string>();
+
 export default function AiTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [obs, setObs] = useState<Observation | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [goal, setGoal] = useState("");
+  const [goal, _setGoal] = useState(() => goalCache.get(bot.id) || "");
+  const setGoal = (v: string) => { _setGoal(v); goalCache.set(bot.id, v); };
   const [jsonExpanded, setJsonExpanded] = useState(false);
 
   // AI 直连：配置状态 + 生成流程

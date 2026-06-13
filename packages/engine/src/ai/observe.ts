@@ -493,35 +493,12 @@ export function buildObservation(id: string): any {
     const mh = s.equipment?.mainHand;
     const isRenamed = mh?.name && mh?.id && mh.name.toLowerCase().replace(/ /g, "_") !== String(mh.id).toLowerCase();
     const held = mh ? `手持${isRenamed ? `${clip(mh.name, 24)}(${mh.id})` : mh.name || mh.id}` : "";
-    // 服务器 HUD：actionbar 通常承载 RPG 血条/魔法/冷却，Boss栏常是活动/世界 Boss 公告
-    const st = obs.serverText || {};
-    const hud = st.actionBar ? `HUD:${clip(st.actionBar, 48)}` : "";
-    const boss =
-      Array.isArray(st.bossBars) && st.bossBars.length
-        ? `Boss栏:${clip(st.bossBars.map((b: any) => b.title).filter(Boolean).join("/"), 40)}`
-        : "";
-    // 计分板侧栏：等级/金币/职业等服务器自报状态（取前 4 行有效内容）。
-    // 纯装饰行（一一一/====/───── 这类同字符重复的分隔线）不进摘要，省下篇幅给真数据。
-    const isDeco = (txt: string) => {
-      const t = txt.replace(/\s/g, "");
-      return t.length >= 4 && new Set(t).size === 1;
-    };
-    const sbRows = obs.scoreboard?.sidebar;
-    const sb =
-      Array.isArray(sbRows) && sbRows.length
-        ? `计分板:${clip(
-            sbRows
-              .map((r: any) => String(r.name || "").trim())
-              .filter((n: string) => n && !isDeco(n))
-              .slice(0, 4)
-              .join(" "),
-            56,
-          )}`
-        : "";
+    // summary 只放核心生存状态（一行看清死不死、危不危险、能不能继续挂）。
+    // 计分板/Boss栏/HUD/actionbar 在 JSON 的 serverText/scoreboard 里已经有完整数据，
+    // 不往 summary 里塞——AI 读 JSON 结构化数据比读一坨挤在一行的文字准确得多。
     obs.summary = [
       env ? `${env.timeOfDay}${env.raining ? "·雨" : ""}` : "",
       `生命${s.healthPct ?? "?"}% 饱食${s.food}`,
-      hud,
       s.effects?.length ? `效果:${s.effects.map((e: any) => `${e.name}${e.level}`).join(",")}` : "",
       t?.hostileCount
         ? `敌对${t.hostileCount}${t.nearest ? `(最近${t.nearest.name} ${t.nearest.distance}m)` : ""}`
@@ -530,8 +507,6 @@ export function buildObservation(id: string): any {
       held,
       bl ? `脚下${bl.below}` : "",
       `背包${obs.inventorySlots.used}/${obs.inventorySlots.total}`,
-      sb,
-      boss,
     ]
       .filter(Boolean)
       .join(" | ");
