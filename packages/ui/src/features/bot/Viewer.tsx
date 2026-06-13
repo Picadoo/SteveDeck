@@ -528,6 +528,19 @@ export default function Viewer({
         >
           <RefreshCw className="h-3.5 w-3.5" /> 重载
         </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-danger hover:bg-danger/10"
+          disabled={!bot.online}
+          title="停止脚本 + 正在执行的模块 + 移动操控；定时脚本保留（到点照常运行）"
+          onClick={async () => {
+            const r = await cmd.moduleAction(bot.id, "bot", "stopAll");
+            pushToast(r.ok ? "已停止所有操作（定时脚本保留）" : (r.error || "停止失败"), r.ok ? "success" : "error");
+          }}
+        >
+          <Square className="h-3.5 w-3.5" /> 全停
+        </Button>
         <span className="mx-0.5 h-4 w-px bg-border" />
         <Button size="sm" variant="ghost" onClick={() => setShowMods((v) => !v)}>
           模块

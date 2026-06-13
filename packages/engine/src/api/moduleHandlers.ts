@@ -155,6 +155,10 @@ function dispatchAction(
   args: any,
 ): CommandAck | Promise<CommandAck> {
   switch (`${module}:${action}`) {
+    // ===== 一键停止所有主动行为（脚本 + 模块 + 移动），保留定时脚本 =====
+    case "bot:stopAll":
+      return ok(inst.stopAllActions?.() ?? { success: false });
+
     // ===== 注册表查询：当前 bot 版本的物品/方块名列表（UI 配置输入拼写校验用） =====
     case "registry:names": {
       if (!inst.bot?.version) return fail("机器人未连接");

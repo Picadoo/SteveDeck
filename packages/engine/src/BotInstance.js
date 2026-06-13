@@ -979,6 +979,30 @@ class BotInstance {
         this.reconnectTimer = setTimeout(() => this.init(), 1000);
     }
 
+    // 一键停止所有「主动行为」：脚本 + 正在执行的功能模块 + 移动/操控。
+    // 有意保留 scheduler 的定时脚本（那是到点触发的调度，不属于"正在执行"，用户明确要保留）。
+    stopAllActions() {
+        const b = this.bot;
+        // 1. 运行中的脚本（手动启动的循环/临时脚本 + 自定义 JS）
+        try { this.stopScript?.(); } catch (e) { /* ignore */ }
+        try { this.stopCustomJs?.(); } catch (e) { /* ignore */ }
+        // 2. 正在执行的功能模块（逐个关，单个失败不连累其余）
+        try { if (this.combatConfig) this.combatConfig.enabled = false; } catch (e) { /* ignore */ }
+        try { this.setFishing ? this.setFishing(false) : (this.fishingActive = false); } catch (e) { /* ignore */ }
+        try { this.stopAutoMine?.(); } catch (e) { /* ignore */ }
+        try { this.toggleAutoFarm?.(false, {}); } catch (e) { /* ignore */ }
+        try { this.toggleMobHunter?.(false, {}); } catch (e) { /* ignore */ }
+        try { this.toggleFollow?.(false, {}); } catch (e) { /* ignore */ }
+        try { this.toggleTrashCleaner?.(false, []); } catch (e) { /* ignore */ }
+        try { this.toggleAutoUse?.(false, {}); } catch (e) { /* ignore */ }
+        // 3. 移动 / 操控：立刻停下，不再寻路/按键
+        try { if (b?.pathfinder) b.pathfinder.setGoal(null); } catch (e) { /* ignore */ }
+        try { b?.clearControlStates?.(); } catch (e) { /* ignore */ }
+        // scheduler（定时脚本）有意不动——到点运行不受影响
+        try { this.uiLog?.('⏹ 已停止所有操作（定时脚本保留，到点照常运行）'); } catch (e) { /* ignore */ }
+        return { success: true };
+    }
+
     // 地点管理功能
     saveLocation(name, command, steps) {
         if (!this.bot?.entity) {
