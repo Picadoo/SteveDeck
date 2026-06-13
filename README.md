@@ -12,6 +12,11 @@
 
 Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / Android / 手机浏览器作为客户端遥控。核心差异点：**完整的实时交互系统**——3D 视角、键盘操控、背包管理、GUI 窗口点击、聊天字幕，像是在浏览器里打开了一个低配 MC 客户端。
 
+<!-- 截图：3D 实时视角（带聊天字幕最佳），桌面宽屏 -->
+<p align="center">
+  <img src="docs/screenshots/viewer.png" alt="3D 实时视角" width="800">
+</p>
+
 ---
 
 ## 👁️ 实时交互（不是只能看日志的 bot）
@@ -26,6 +31,14 @@ Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / A
 - **告示牌 / 书本** — 读取告示牌内容、翻阅成书
 
 > 你的机器人不是一个黑盒——你随时能看到它在做什么、它看到了什么，并且直接接管操作。
+
+<!-- 截图：左=背包界面（拖拽物品中），右=GUI 窗口（箱子/村民交易/服务器菜单） -->
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/inventory.png" alt="背包管理"><br><sub>背包管理 · 拖拽 / 装备 / 丢弃</sub></td>
+    <td align="center"><img src="docs/screenshots/gui.png" alt="GUI 窗口"><br><sub>GUI 窗口 · 箱子 / 交易 / 菜单点击</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -43,6 +56,11 @@ Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / A
 | **跟随** | 类 Baritone follow，按玩家名 / 关键词 / 最近 |
 | **垃圾清理** | 自动丢弃腐肉等垃圾 |
 
+<!-- 截图：托管模块面板，开 1-2 个模块、带运行统计 -->
+<p align="center">
+  <img src="docs/screenshots/modules.png" alt="模块面板" width="800">
+</p>
+
 ---
 
 ## 🧩 积木脚本
@@ -57,6 +75,11 @@ Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / A
 - 预置 8 个常用模板，选了就能用
 - 支持自定义 JS 脚本（进阶）
 
+<!-- 截图：积木脚本编辑器，配好一个触发器+动作 -->
+<p align="center">
+  <img src="docs/screenshots/scripts.png" alt="积木脚本" width="800">
+</p>
+
 ---
 
 ## 📡 多端接入
@@ -69,6 +92,11 @@ Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / A
 | **扫码** | 引擎启动打印二维码 + 连接串 `mcbot://host:port?token=xxx` |
 
 **无账号、无注册。** 引擎启动生成令牌，填地址 + 令牌（或扫码）即连。
+
+<!-- 截图：手机浏览器竖屏，连上引擎后的界面 -->
+<p align="center">
+  <img src="docs/screenshots/mobile.png" alt="手机端" width="320">
+</p>
 
 ---
 
@@ -113,6 +141,17 @@ pnpm -C apps/desktop tauri build    # 需要 Rust
 
 ---
 
+## 🙏 致谢
+
+SteveDeck 站在 [PrismarineJS](https://github.com/PrismarineJS) 生态的肩膀上，引擎核心由这些优秀的开源项目驱动：
+
+- [**mineflayer**](https://github.com/PrismarineJS/mineflayer) — 强大的 Minecraft 机器人框架，本项目的引擎基石
+- [**prismarine-viewer**](https://github.com/PrismarineJS/prismarine-viewer) — 浏览器内 3D 实时视角渲染
+- [**mineflayer-pathfinder**](https://github.com/PrismarineJS/mineflayer-pathfinder) — A* 寻路
+- [**minecraft-data**](https://github.com/PrismarineJS/minecraft-data) — 跨版本游戏数据
+
+桌面端由 [Tauri](https://tauri.app) 构建。感谢这些项目的维护者们。
+
 ## 📝 License
 
-[MIT](LICENSE)
+[MIT](LICENSE) · 依赖各项目均采用各自的开源协议（MIT 等），相关版权声明随分发包保留。

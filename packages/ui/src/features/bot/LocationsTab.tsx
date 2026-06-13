@@ -35,7 +35,7 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
   // 编辑前置指令：set-reach API 早已存在，这里补 UI 入口（多世界地点保存后也能改 /warp 指令）
   const [editCmd, setEditCmd] = useState<{ loc: SavedLocationSummary; value: string } | null>(null);
   const locs = bot.savedLocations ?? [];
-  const atCap = locs.length >= 12; // 引擎上限 12 个（BotInstance 强制）；满了禁用而不是让保存报错
+  const atCap = locs.length >= 200; // 软上限纯防滥用，正常使用无感；满了才禁用
 
   // 录制中：轮询步数；引擎侧若停了则收起横幅
   useEffect(() => {
@@ -135,7 +135,7 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
         <h3 className="mb-3 flex items-center justify-between text-sm font-semibold">
           <span>新增地点</span>
           <span className={cn("text-[11px] font-normal tabular-nums", atCap ? "text-danger" : "text-muted")}>
-            {locs.length}/12
+            {locs.length > 0 ? `${locs.length} 个` : ""}
           </span>
         </h3>
         <form onSubmit={saveHere} className="space-y-2">

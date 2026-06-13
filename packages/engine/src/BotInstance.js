@@ -87,7 +87,7 @@ class BotInstance {
         };
         this.fishingActive = false;
 
-        // 保存的地点（最多5个）
+        // 保存的地点（软上限 200，防滥用；地点数据极小，正常使用无上限感）
         this.savedLocations = config.settings?.savedLocations || [];
 
         this.reconnectTimer = null;
@@ -985,8 +985,9 @@ class BotInstance {
             return { success: false, error: '机器人未在线' };
         }
 
-        if (this.savedLocations.length >= 12) {
-            return { success: false, error: '已达到最大保存数量（12个）' };
+        // 软上限纯防滥用（地点数据极小，正常用户碰不到）：不再卡 12 个，UI 也不显示 N/12
+        if (this.savedLocations.length >= 200) {
+            return { success: false, error: '地点数量过多（上限 200）' };
         }
 
         const pos = this.bot.entity.position;
