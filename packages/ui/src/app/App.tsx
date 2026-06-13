@@ -9,6 +9,7 @@ import TopBar from "@/components/TopBar";
 import BotPanel from "@/features/bot/BotPanel";
 import TitleBar from "@/components/TitleBar";
 import Toaster from "@/components/ui/Toaster";
+import { startUpdateWatcher } from "@/lib/updater";
 
 const NAV_KEY = "mcbot.nav";
 const isDesktop = () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches;
@@ -31,6 +32,11 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
+
+  // 桌面版静默自动更新：启动后台检查/下载，就绪后只在顶栏角落亮指示器（不弹窗、不打断挂机）
+  useEffect(() => {
+    startUpdateWatcher();
+  }, []);
 
   useEffect(() => {
     // 扫码直连：URL #mcbot=<连接串>（引擎二维码即此格式）→ 浏览器打开即自动配对。

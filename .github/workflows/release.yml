@@ -47,15 +47,25 @@ jobs:
       - name: 恢复工作区依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 构建桌面安装包（NSIS + MSI）
+      - name: 构建桌面安装包（NSIS + MSI，带更新签名）
+        env:
+          # 更新包签名私钥 + 密码（GitHub Secrets 配置；私钥本地 npx tauri signer generate 生成）
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm -C apps/desktop tauri build
+
+      - name: 生成 latest.json（updater 端点清单）
+        shell: pwsh
+        run: node apps/desktop/scripts/make-latest-json.mjs
 
       - name: 上传到 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.sig
             apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            apps/desktop/latest.json
           generate_release_notes: true
 
   docker-image:

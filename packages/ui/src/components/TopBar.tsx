@@ -4,6 +4,7 @@ import { useStore } from "@/store/useStore";
 import { IconButton, Badge, StatusDot } from "@/components/ui/primitives";
 import SettingsDialog from "./SettingsDialog";
 import WindowControls from "./WindowControls";
+import UpdateBadge from "./UpdateBadge";
 
 export default function TopBar({
   navOpen,
@@ -39,6 +40,7 @@ export default function TopBar({
           )}
         </div>
         <div className="no-drag flex items-center gap-2">
+          <UpdateBadge />
           {conn.status === "connecting" ? (
             <Badge tone="warning">
               <Loader2 className="h-3 w-3 animate-spin" /> 连接中
