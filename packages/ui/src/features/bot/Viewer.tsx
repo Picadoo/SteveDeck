@@ -58,6 +58,28 @@ function saveMarks(botId: string, m: Mark[]): void {
  *  - 走动：摇杆 / 跳 / 左右转（control.set / control.turn），与看/转解耦。
  * 内嵌默认懒启动（按需开渲染服务，省资源）；弹出则自动开。
  */
+// 视角延迟释放：切 tab / 关弹窗不立即停渲染服务，KEEPALIVE 内重新打开则复用
+// （秒回，不重启 worker / 不重渲世界）；超时没回才真停。跨组件 mount 保活，故用模块级 map。
+const VIEWER_KEEPALIVE_MS = 120_000;
+const viewerStopTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function cancelPendingViewerStop(botId: string) {
+  const t = viewerStopTimers.get(botId);
+  if (t) {
+    clearTimeout(t);
+    viewerStopTimers.delete(botId);
+  }
+}
+function scheduleViewerStop(botId: string) {
+  cancelPendingViewerStop(botId);
+  viewerStopTimers.set(
+    botId,
+    setTimeout(() => {
+      viewerStopTimers.delete(botId);
+      cmd.viewer.stop(botId);
+    }, VIEWER_KEEPALIVE_MS),
+  );
+}
+
 export default function Viewer({
   bot,
   popout = false,
@@ -139,6 +161,7 @@ export default function Viewer({
   // 真正卸载时才 stop（见下方独立 effect），且服务端代际化会忽略被新 start 取代的过期 stop。
   useEffect(() => {
     if (!started) return;
+    cancelPendingViewerStop(bot.id); // 又要看了：取消上次切走时挂起的延迟停止，复用现有渲染服务
     const gen = ++startGen.current;
     let cancelled = false;
     setLoading(true);
@@ -166,13 +189,13 @@ export default function Viewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [started, firstPerson, bot.id, nonce]);
 
-  // 仅在组件真正卸载时停视角服务（切人称/重试不触发，避免误杀刚起的实例）。
-  // 服务端代际化保证：若卸载的同一瞬间另一个 Viewer（如放大窗口）已对同 bot start，
-  // 这条 stop 会被更晚的 start 取代而成为 no-op，不会拆掉新实例。
+  // 组件卸载（切 tab / 切 bot / 关弹窗）：不立即停，挂起延迟释放——2 分钟内切回则复用，
+  // 超时没回才真停。切 tab 配脚本再回来视角秒在，不必重启 worker/重渲世界。
+  // 引擎侧另有「5 分钟无客户端」兜底防页面崩溃泄漏；放大窗口接力打开会 cancelPendingViewerStop 取消挂起停止。
   useEffect(() => {
     if (!started) return;
     return () => {
-      cmd.viewer.stop(bot.id);
+      scheduleViewerStop(bot.id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [started, bot.id]);
