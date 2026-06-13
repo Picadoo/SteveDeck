@@ -1,6 +1,6 @@
 [package]
 name = "mc-bot-player"
-version = "0.1.0"
+version = "0.1.1"
 description = "mc-bot-player 桌面客户端（自带引擎，双击即用；亦可手动连远程引擎）"
 authors = ["mc-bot-player"]
 edition = "2021"
