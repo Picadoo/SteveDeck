@@ -60,6 +60,9 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
   const [cfgForm, setCfgForm] = useState({ baseUrl: "", model: "", apiKey: "" });
   const [generating, setGenerating] = useState(false);
   const [genScript, setGenScript] = useState<BotScript | null>(null);
+  // Agent 闭环模式
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentLog, setAgentLog] = useState<string[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -121,6 +124,62 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
       pushToast("生成请求失败（引擎不可达）", "error");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function runAgentLoop() {
+    if (!aiCfg?.hasKey) {
+      setCfgOpen(true);
+      pushToast("先配置 API Key", "info");
+      return;
+    }
+    setAgentRunning(true);
+    setAgentLog([]);
+    setGenScript(null);
+    try {
+      const { url, token } = useStore.getState().conn;
+      const resp = await fetch(`${url.replace(/\/+$/, "")}/api/ai/agent/${bot.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ goal, maxRounds: 3, waitSec: 15 }),
+      });
+      if (!resp.ok || !resp.body) {
+        pushToast("Agent 启动失败", "error");
+        setAgentRunning(false);
+        return;
+      }
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.type === "progress") {
+              setAgentLog((l) => [...l, `[${ev.round}/${ev.maxRounds}] ${ev.message}`]);
+              if (ev.script) setGenScript(ev.script);
+            } else if (ev.type === "result") {
+              setAgentLog((l) => [...l, `--- 完成（${ev.rounds} 轮）：${ev.evaluation}`]);
+              if (ev.script) setGenScript(ev.script);
+              if (ev.warnings?.length) ev.warnings.forEach((w: string) => pushToast(w, "info"));
+              pushToast(`Agent 完成：${ev.evaluation}`, "success");
+            } else if (ev.type === "error") {
+              setAgentLog((l) => [...l, `错误：${ev.message}`]);
+              pushToast(ev.message, "error");
+            }
+          } catch { /* malformed SSE line */ }
+        }
+      }
+    } catch (e: any) {
+      pushToast(`Agent 请求失败：${e?.message || "网络错误"}`, "error");
+    } finally {
+      setAgentRunning(false);
     }
   }
 
@@ -335,17 +394,29 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
               className="mb-3 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
             />
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="primary" disabled={!obs || generating} onClick={generate}>
-                {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-                {generating ? "生成中（约 20-60 秒）…" : "直接生成"}
+              <Button size="sm" variant="primary" disabled={!obs || generating || agentRunning} onClick={runAgentLoop}>
+                {agentRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                {agentRunning ? "Agent 运行中…" : "生成并自动调试"}
               </Button>
-              <Button size="sm" variant="secondary" disabled={!obs} onClick={() => obs && copy(buildPrompt(obs, goal), "AI 提示词")}>
+              <Button size="sm" variant="secondary" disabled={!obs || generating || agentRunning} onClick={generate}>
+                {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                {generating ? "生成中…" : "仅生成"}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={!obs} onClick={() => obs && copy(buildPrompt(obs, goal), "AI 提示词")}>
                 <Sparkles className="h-3.5 w-3.5" /> 复制提示词
               </Button>
-              <Button size="sm" variant="ghost" disabled={!obs} onClick={() => obs && copy(JSON.stringify(obs, null, 2), "状态 JSON")}>
-                <Copy className="h-3.5 w-3.5" /> 仅复制状态
-              </Button>
             </div>
+
+            {agentLog.length > 0 && (
+              <div className="mt-3 rounded-lg border border-border/60 bg-surface-2/30 p-3">
+                <div className="mb-1 text-[11px] font-medium text-muted">Agent 日志</div>
+                <div className="max-h-36 overflow-y-auto font-mono text-[11px] leading-relaxed text-fg">
+                  {agentLog.map((l, i) => (
+                    <div key={i} className={l.startsWith("错误") ? "text-danger" : l.startsWith("---") ? "text-success font-medium" : ""}>{l}</div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {genScript && (
               <div className="mt-3 rounded-lg border border-accent/40 bg-accent/5 p-3">

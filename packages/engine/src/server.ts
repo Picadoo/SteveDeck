@@ -17,7 +17,7 @@ import { buildConnectionInfo } from "./net/connectionInfo";
 import { botManager } from "./botManager";
 import { registerHandlers } from "./api/handlers";
 import { buildObservation } from "./ai/observe";
-import { loadAiConfig, saveAiConfig, generateScript } from "./ai/generate";
+import { loadAiConfig, saveAiConfig, generateScript, runAgent } from "./ai/generate";
 
 export const ENGINE_VERSION = "0.1.0";
 
@@ -377,6 +377,34 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     } catch (e: any) {
       res.status(400).json({ error: String(e?.message ?? e) });
     }
+  });
+
+  // AI Agent 闭环：生成→运行→观测→修正，SSE 实时推送进度
+  app.post("/api/ai/agent/:id", authGuard, async (req: Request, res: Response): Promise<void> => {
+    const id = String(req.params.id);
+    const goal = String(req.body?.goal ?? "");
+    const maxRounds = Number(req.body?.maxRounds) || 3;
+    const waitSec = Number(req.body?.waitSec) || 15;
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    const send = (data: any) => {
+      if (!res.destroyed) res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+    try {
+      const result = await runAgent(id, goal, {
+        maxRounds,
+        waitSec,
+        onProgress: (p) => send({ type: "progress", ...p }),
+      });
+      send({ type: "result", ...result });
+    } catch (e: any) {
+      send({ type: "error", message: String(e?.message ?? e) });
+    }
+    res.end();
   });
 
   app.post("/api/ai/script/:id", authGuard, (req: Request, res: Response): void => {

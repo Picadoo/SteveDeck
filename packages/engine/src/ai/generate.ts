@@ -206,3 +206,117 @@ export async function generateScript(botId: string, goal: string): Promise<Gener
   }
   return { script, warnings };
 }
+
+// ==================== Agent 闭环 ====================
+// 生成 → 自动运行 → 等待 → 重新观测 → 评估 → 修正，最多 maxRounds 轮。
+// 通过 onProgress 回调实时推送进度给前端（SSE / socket 均可接）。
+
+const logger = require("../utils/logger");
+
+export interface AgentProgress {
+  round: number;
+  maxRounds: number;
+  phase: "generate" | "run" | "wait" | "observe" | "evaluate" | "done" | "error";
+  message: string;
+  script?: any;
+  evaluation?: string;
+}
+
+export async function runAgent(
+  botId: string,
+  goal: string,
+  opts: { maxRounds?: number; waitSec?: number; onProgress?: (p: AgentProgress) => void },
+): Promise<{ script: any; rounds: number; evaluation: string; warnings: string[] }> {
+  const maxRounds = Math.min(opts.maxRounds ?? 3, 5);
+  const waitSec = Math.min(opts.waitSec ?? 15, 60);
+  const emit = opts.onProgress ?? (() => {});
+  const cfg = loadAiConfig();
+  if (!cfg.apiKey) throw new Error("未配置 AI API Key（AI 标签 → API 设置）");
+
+  const inst = (require("../botManager") as any).botManager.getInstance(botId);
+  if (!inst?.bot?.entity) throw new Error("机器人不在线");
+
+  const systemPrompt = [
+    "你是 Minecraft 挂机机器人的脚本助手。你有能力：生成脚本、执行后观测结果、根据结果修正。",
+    "只输出 JSON 对象，不要解释。",
+    "",
+    "# 脚本规范",
+    SCRIPT_SPEC,
+    "",
+    "# 规则",
+    "- name 用简短中文描述目标",
+    "- 坐标/物品名/实体名必须取自世界状态里真实存在的值，不要编造",
+    "- 偏保守：宁可少步骤，不要做破坏性操作",
+  ].join("\n");
+
+  const history: ChatMsg[] = [{ role: "system", content: systemPrompt }];
+  let currentScript: any = null;
+  let warnings: string[] = [];
+  let lastEval = "";
+
+  for (let round = 1; round <= maxRounds; round++) {
+    // 1. 感知当前状态
+    emit({ round, maxRounds, phase: "observe", message: `第 ${round} 轮：感知世界状态…` });
+    const obs = buildObservation(botId);
+    if (!obs) throw new Error("机器人不存在");
+    const compact = compactObservation(obs);
+
+    // 2. 生成/修正脚本
+    emit({ round, maxRounds, phase: "generate", message: round === 1 ? "生成脚本…" : "根据执行结果修正脚本…" });
+    const userMsg = round === 1
+      ? `# 当前世界状态\n${JSON.stringify(compact)}\n\n# 我的目标\n${goal}`
+      : `# 执行后的世界状态\n${JSON.stringify(compact)}\n\n请分析脚本执行效果，判断是否达成目标「${goal}」。\n如果已达成，输出 {"done": true, "evaluation": "达成理由"}。\n如果未达成或需要修正，输出修正后的完整脚本 JSON（不要 done 字段）。`;
+
+    history.push({ role: "user", content: userMsg });
+    const content = await callModel(cfg, history);
+    history.push({ role: "assistant", content });
+
+    // 检查是否 AI 认为已完成
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed.done) {
+        lastEval = String(parsed.evaluation || "AI 认为目标已达成");
+        emit({ round, maxRounds, phase: "done", message: lastEval, script: currentScript, evaluation: lastEval });
+        return { script: currentScript, rounds: round, evaluation: lastEval, warnings };
+      }
+    } catch { /* not a done response, continue */ }
+
+    // 解析为脚本
+    try {
+      currentScript = parseScript(content);
+      const unknown = collectUnknownDos(currentScript.steps);
+      if (unknown.size > 0) {
+        disableUnknownSteps(currentScript.steps);
+        warnings.push(`第 ${round} 轮：含不存在的动作（已禁用）：${[...unknown].join("、")}`);
+      }
+    } catch (e: any) {
+      emit({ round, maxRounds, phase: "error", message: `脚本解析失败：${e.message}` });
+      if (currentScript) break; // 用上一轮的
+      throw e;
+    }
+
+    emit({ round, maxRounds, phase: "run", message: `运行脚本「${currentScript.name}」…`, script: currentScript });
+
+    // 3. 保存并运行脚本
+    try {
+      if (inst.stopScript) inst.stopScript();
+      if (inst.saveScript) inst.saveScript(currentScript, true);
+      if (inst.startScript) inst.startScript(currentScript.name);
+    } catch (e: any) {
+      logger.warn(`[AI Agent] 运行脚本失败: ${e?.message}`);
+    }
+
+    // 最后一轮不等待（没有下一轮观测了）
+    if (round === maxRounds) {
+      lastEval = "已达到最大轮次，最终脚本已在运行";
+      emit({ round, maxRounds, phase: "done", message: lastEval, script: currentScript, evaluation: lastEval });
+      break;
+    }
+
+    // 4. 等待脚本执行
+    emit({ round, maxRounds, phase: "wait", message: `等待 ${waitSec} 秒观察效果…` });
+    await new Promise((r) => setTimeout(r, waitSec * 1000));
+  }
+
+  return { script: currentScript, rounds: maxRounds, evaluation: lastEval, warnings };
+}
