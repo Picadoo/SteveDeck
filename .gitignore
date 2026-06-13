@@ -45,3 +45,8 @@ coverage/
 # 部署目标（个人服务器 IP/密钥路径，不入库）
 docker/deploy-targets.local.json
 .codegraph/
+
+# 开发过程文档（设计 spec / 审查 / 交接 / 状态报告）——本地保留，不公开
+docs/2026-*.md
+docs/STATUS.md
+docs/superpowers/

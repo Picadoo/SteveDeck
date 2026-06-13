@@ -255,7 +255,7 @@ pub fn run() {
                 let menu = Menu::with_items(app, &[&show, &autostart, &quit])?;
 
                 let mut tray = TrayIconBuilder::with_id("main")
-                    .tooltip("mc-bot-player")
+                    .tooltip("SteveDeck")
                     .menu(&menu)
                     .show_menu_on_left_click(false)
                     .on_menu_event(|app, event| match event.id.as_ref() {
@@ -311,7 +311,7 @@ pub fn run() {
                             .app_handle()
                             .notification()
                             .builder()
-                            .title("mc-bot-player 仍在运行")
+                            .title("SteveDeck 仍在运行")
                             .body("已最小化到托盘，机器人继续挂机。点击托盘图标可重新打开窗口。")
                             .show();
                     }

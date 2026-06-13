@@ -1,21 +1,67 @@
-MIT License
+SteveDeck 许可协议（非商业使用）
+SteveDeck License (Non-Commercial)
 
+版权所有 © 2026 Picadoo
 Copyright (c) 2026 Picadoo
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+================================================================
+中文
+================================================================
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+本软件及其源代码（以下简称"本软件"）在以下条件下授权使用：
+
+1. 非商业使用免费
+   允许任何人出于个人、学习、研究、非营利目的，自由使用、复制、
+   修改、合并、发布、分发本软件及其修改版本，无需付费或申请授权。
+
+2. 商业使用须授权
+   任何商业用途均须事先取得著作权人的书面授权，包括但不限于：
+   - 销售本软件或其衍生作品；
+   - 将本软件或其部分作为付费产品 / 付费服务的组成部分；
+   - 在以盈利为目的的商业运营中使用本软件。
+
+3. 保留声明
+   分发本软件（含修改版本）时，必须在所有副本或重要部分中保留
+   本许可协议全文与上述版权声明。
+
+4. 免责声明
+   本软件按"原样"提供，不附带任何明示或暗示的担保，包括但不限于
+   对适销性、特定用途适用性及不侵权的担保。在任何情况下，作者或
+   著作权人均不对因使用本软件而产生的任何索赔、损害或其他责任负责。
+
+商业授权请通过项目仓库联系作者：
+https://github.com/Picadoo/SteveDeck
+
+注：本软件依赖的第三方开源组件（mineflayer、prismarine-viewer 等）
+各自采用其原有的开源协议（多为 MIT），本协议不改变这些组件的授权条款。
+
+================================================================
+English
+================================================================
+
+Permission is granted, free of charge, to use, copy, modify, merge,
+publish, and distribute this software and its source code (the "Software"),
+and modified versions thereof, for PERSONAL, EDUCATIONAL, RESEARCH, and
+NON-PROFIT purposes.
+
+COMMERCIAL USE REQUIRES PRIOR WRITTEN PERMISSION from the copyright holder,
+including but not limited to: selling the Software or derivative works;
+incorporating it into a paid product or paid service; or using it in
+for-profit commercial operations.
+
+Distributions (including modified versions) must retain this entire license
+and the copyright notice above in all copies or substantial portions.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+For commercial licensing, contact the author via the project repository:
+https://github.com/Picadoo/SteveDeck
+
+Note: Third-party dependencies (mineflayer, prismarine-viewer, etc.) remain
+under their own open-source licenses (mostly MIT); this license does not
+alter the terms of those components.

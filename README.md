@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white" alt="Node">
   <img src="https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=white" alt="Tauri">
   <img src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white" alt="Docker">
-  <img src="https://img.shields.io/github/license/Picadoo/SteveDeck" alt="License">
+  <img src="https://img.shields.io/badge/License-Non--Commercial-orange" alt="License">
 </p>
 
 # SteveDeck
@@ -12,9 +12,8 @@
 
 Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / Android / 手机浏览器作为客户端遥控。核心差异点：**完整的实时交互系统**——3D 视角、键盘操控、背包管理、GUI 窗口点击、聊天字幕，像是在浏览器里打开了一个低配 MC 客户端。
 
-<!-- 截图：3D 实时视角（带聊天字幕最佳），桌面宽屏 -->
 <p align="center">
-  <img src="docs/screenshots/viewer.png" alt="3D 实时视角" width="800">
+  <img src="docs/screenshots/实时视角截图.png" alt="3D 实时视角" width="820">
 </p>
 
 ---
@@ -32,11 +31,10 @@ Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / A
 
 > 你的机器人不是一个黑盒——你随时能看到它在做什么、它看到了什么，并且直接接管操作。
 
-<!-- 截图：左=背包界面（拖拽物品中），右=GUI 窗口（箱子/村民交易/服务器菜单） -->
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/inventory.png" alt="背包管理"><br><sub>背包管理 · 拖拽 / 装备 / 丢弃</sub></td>
-    <td align="center"><img src="docs/screenshots/gui.png" alt="GUI 窗口"><br><sub>GUI 窗口 · 箱子 / 交易 / 菜单点击</sub></td>
+    <td align="center" width="50%"><img src="docs/screenshots/背包界面截图.png" alt="背包管理"><br><sub>背包管理 · 拖拽 / 装备 / 使用 / 潜行使用</sub></td>
+    <td align="center" width="50%"><img src="docs/screenshots/概览界面截图.png" alt="概览界面"><br><sub>概览 · 状态 / 坐标 / 实时指标</sub></td>
   </tr>
 </table>
 
@@ -55,11 +53,14 @@ Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / A
 | **自动战斗** | 杀戮光环，PVP/PVE 可切 |
 | **跟随** | 类 Baritone follow，按玩家名 / 关键词 / 最近 |
 | **垃圾清理** | 自动丢弃腐肉等垃圾 |
+| **日志监听** | 自定义规则匹配聊天 / 系统消息，触发提醒或动作 |
 
-<!-- 截图：托管模块面板，开 1-2 个模块、带运行统计 -->
-<p align="center">
-  <img src="docs/screenshots/modules.png" alt="模块面板" width="800">
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="docs/screenshots/内置模块截图.png" alt="模块面板"><br><sub>托管模块 · 一键开关 + 运行统计</sub></td>
+    <td align="center" width="50%"><img src="docs/screenshots/日志监听规则截图.png" alt="日志监听规则"><br><sub>日志监听 · 自定义匹配规则</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -72,12 +73,29 @@ Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / A
 - 被攻击 → 装备武器反击
 - 定时 → 跳一下防踢 / 执行命令
 - 保命触发器（血量 / 受伤）**可以抢占**正在运行的脚本
-- 预置 8 个常用模板，选了就能用
+- 步骤可上下调序、任意位置中间插入，预置 8 个常用模板
 - 支持自定义 JS 脚本（进阶）
 
-<!-- 截图：积木脚本编辑器，配好一个触发器+动作 -->
+**🧠 AI 脚本助手** — 接入 DeepSeek / 任意 OpenAI 兼容接口（Key 存引擎端，不进浏览器）：用大白话描述目标即可生成脚本；**Agent 模式**更进一步——生成 → 自动运行 → 观测执行结果 → 修正，闭环自动调试，而非一次性盲生成。
+
 <p align="center">
-  <img src="docs/screenshots/scripts.png" alt="积木脚本" width="800">
+  <img src="docs/screenshots/脚本编辑器截图.png" alt="积木脚本" width="820">
+</p>
+
+---
+
+## 👥 批量假人（氛围组）
+
+服主撑门面用——批量创建**轻量 lite 机器人**充人数：
+
+- **轻量模式** — 只连接 + 自动注册/登录 + 防挂机踢，不挂功能模块，单只占用极低，可批量挂几十个
+- **自然起名** — 多风格混杂、无连号规律，不会一眼看出是假人
+- **登录服支持** — 首次进服自动注册、之后自动登录（AuthMe 等）
+- **先试连后批量** — 第一个假人连上了才批量创建其余，避免地址填错白创一堆
+- **按服管理** — 侧栏折叠分组，批量上线 / 下线 / 删除按服务器粒度
+
+<p align="center">
+  <img src="docs/screenshots/添加假人界面截图.png" alt="批量假人" width="640">
 </p>
 
 ---
@@ -86,17 +104,19 @@ Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / A
 
 | 方式 | 说明 |
 |---|---|
-| **Windows 桌面** | Tauri 2 原生应用，内置引擎开箱即用 |
+| **Windows 桌面** | Tauri 2 原生应用，内置引擎开箱即用，支持静默自动更新 |
 | **Android** | Tauri 2 客户端 |
 | **手机浏览器** | 引擎内置网页客户端 `http://<IP>:8723/`，支持 PWA |
 | **扫码** | 引擎启动打印二维码 + 连接串 `mcbot://host:port?token=xxx` |
 
-**无账号、无注册。** 引擎启动生成令牌，填地址 + 令牌（或扫码）即连。
+**无账号、无注册。** 引擎启动生成令牌，填地址 + 令牌（或扫码）即连；版本留空自动识别，地址支持 `host:port`。
 
-<!-- 截图：手机浏览器竖屏，连上引擎后的界面 -->
-<p align="center">
-  <img src="docs/screenshots/mobile.png" alt="手机端" width="320">
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="docs/screenshots/添加机器人界面截图.png" alt="添加机器人"><br><sub>添加机器人 · 离线 / 微软正版 / Forge</sub></td>
+    <td align="center" width="50%"><img src="docs/screenshots/总设置截图.png" alt="设置"><br><sub>设置 · 主题 / 连接 / 引擎</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -137,6 +157,7 @@ pnpm -C apps/desktop tauri build    # 需要 Rust
 
 - [使用指南](docs/USER_GUIDE.md) — 部署、连接、功能说明
 - [构建指南](docs/BUILD.md) — 引擎 / Docker / 桌面 / Android
+- [AI 集成](docs/AI_INTEGRATION.md) — 接入 DeepSeek / OpenAI 兼容接口
 - [性能说明](docs/PERFORMANCE.md) — 引擎与客户端优化
 
 ---
@@ -154,4 +175,6 @@ SteveDeck 站在 [PrismarineJS](https://github.com/PrismarineJS) 生态的肩膀
 
 ## 📝 License
 
-[MIT](LICENSE) · 依赖各项目均采用各自的开源协议（MIT 等），相关版权声明随分发包保留。
+**[非商业许可](LICENSE)** — 个人 / 学习 / 研究 / 非营利用途免费使用、修改、分发；**商业用途需事先取得作者书面授权**（销售、付费产品/服务、商业盈利运营等）。商业授权请通过本仓库联系作者。
+
+> 第三方依赖（mineflayer、prismarine-viewer 等）各自采用其原有开源协议（多为 MIT），本协议不改变这些组件的授权条款。
