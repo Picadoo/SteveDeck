@@ -190,7 +190,19 @@ module.exports = (botInstance) => {
         const inv = bot.inventory;
         if (from < 0 || to < 0 || from >= inv.slots.length + 1 || to >= inv.slots.length + 1) throw new Error('槽位超出范围');
         if (!inv.slots[from]) throw new Error('源格为空');
-        await bot.moveSlotItem(from, to);
+        try {
+            await bot.moveSlotItem(from, to);
+        } catch (e) {
+            // 服务器拒绝点击事务（1.12.2 Forge / RPG 反作弊常拒绝绑定物品/锁定槽位的移动）。
+            // 此时 mineflayer 本地槽位可能已与服务器脱同步（看着像"物品丢了"）——
+            // 延迟强制重拉，让服务器的 set_slot 纠正包落地，恢复真实显示，物品并未真丢。
+            setTimeout(() => { try { syncInventory(true); } catch (_) { /* ignore */ } }, 600);
+            const msg = String(e && e.message || e);
+            if (/rejected transaction|reject/i.test(msg)) {
+                throw new Error('服务器拒绝了该移动（多为绑定物品 / 锁定槽位 / 反作弊限制）');
+            }
+            throw e;
+        }
         syncInventory();
     };
     // —— 「使用」物品：忠实模拟一次右键 ——
