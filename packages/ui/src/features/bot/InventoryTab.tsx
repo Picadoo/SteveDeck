@@ -538,10 +538,26 @@ function OrganizeDialog({
   // 性能要点（原版「有点卡」的根因）：
   // - 提示锚定在格子上（mouseenter 一次），不再跟随鼠标——mousemove 零开销；
   // - OrgCell 是模块级 memo 组件（原来定义在本函数体内，每次渲染都是新类型 → 41 格全量卸载重建）。
-  // 物品详情不再浮在格子上方（会挡住目标格视线、难瞄准）——改为固定显示在面板底部信息条，
-  // 悬浮任意格子即填充，移动操作时也常显且永不遮挡网格。
-  const [tip, setTip] = useState<InventoryItem | null>(null);
-  const onCellEnter = useCallback((it: InventoryItem) => setTip(it), []);
+  const [tip, setTip] = useState<{ it: InventoryItem; rect: DOMRect } | null>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const [tipStyle, setTipStyle] = useState<CSSProperties>({ left: -9999, top: -9999 });
+  useLayoutEffect(() => {
+    if (!tip || !tipRef.current) return;
+    const el = tipRef.current;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const m = 10;
+    const r = tip.rect;
+    let left = r.left + r.width / 2 - w / 2;
+    left = Math.min(Math.max(m, left), window.innerWidth - w - m);
+    let top = r.top - h - 8; // 优先格子上方（不挡手）
+    if (top < m) top = Math.min(r.bottom + 8, window.innerHeight - h - m); // 放不下 → 下方
+    if (top < m) top = m;
+    setTipStyle({ left, top, maxHeight: window.innerHeight - top - m });
+  }, [tip]);
+  const onCellEnter = useCallback((it: InventoryItem, el: HTMLElement) => {
+    setTip({ it, rect: el.getBoundingClientRect() });
+  }, []);
   const onCellLeave = useCallback(() => setTip(null), []);
   const bySlot = useMemo(() => {
     const m = new Map<number, InventoryItem>();
@@ -632,39 +648,36 @@ function OrganizeDialog({
             ))}
           </div>
         </div>
-
-        {/* 物品详情条：固定在面板底部，悬浮任意格子显示详情——不浮在网格上，永不遮挡点击 */}
-        <div className="min-h-[58px] rounded-lg border border-border bg-surface-2/40 px-3 py-1.5">
-          {tip ? (
-            <>
-              <div className="text-sm font-semibold leading-snug">
-                <McText text={tip.display || tip.name || ""} />
-                {tip.count && tip.count > 1 ? (
-                  <span className="ml-1 text-[11px] font-normal text-muted">×{tip.count}</span>
-                ) : null}
-                {tip.texture && (
-                  <span className="ml-1.5 text-[10px] font-normal text-muted/60">minecraft:{tip.texture} · #{tip.slot}</span>
-                )}
-              </div>
-              {tip.enchants && tip.enchants.length > 0 && (
-                <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-accent">
-                  {tip.enchants.map((e, i) => (
-                    <span key={i}>{e}</span>
-                  ))}
-                </div>
-              )}
-              {tip.lore && (
-                <div className="mt-0.5 max-h-16 overflow-y-auto whitespace-pre-line text-[11px] leading-snug text-muted">
-                  <McText text={tip.lore} />
-                </div>
-              )}
-            </>
-          ) : (
-            <span className="text-[11px] text-muted">悬浮任意格子查看物品详情</span>
-          )}
-        </div>
       </div>
 
+      {/* ItemTip：完整物品信息（优先光标上方，超长限高滚动；测量定位见上方 useLayoutEffect） */}
+      {tip && (
+        <div
+          ref={tipRef}
+          className="pointer-events-none fixed z-[120] max-w-[20rem] overflow-y-auto rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
+          style={tipStyle}
+        >
+          <div className="text-sm font-semibold leading-snug">
+            <McText text={tip.it.display || tip.it.name || ""} onDark />
+            {tip.it.count && tip.it.count > 1 ? (
+              <span className="ml-1 text-[11px] font-normal text-white/50">×{tip.it.count}</span>
+            ) : null}
+          </div>
+          {tip.it.enchants && tip.it.enchants.length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {tip.it.enchants.map((e, i) => (
+                <div key={i} className="text-[11px] text-[#9d8bff]">{e}</div>
+              ))}
+            </div>
+          )}
+          {tip.it.lore && (
+            <div className="mt-1 whitespace-pre-line text-[11px] leading-snug text-white/75">
+              <McText text={tip.it.lore} onDark />
+            </div>
+          )}
+          {tip.it.texture && <div className="mt-1.5 text-[10px] text-white/30">minecraft:{tip.it.texture} · #{tip.it.slot}</div>}
+        </div>
+      )}
     </Modal>
   );
 }
