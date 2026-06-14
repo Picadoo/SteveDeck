@@ -593,8 +593,14 @@ function OrganizeDialog({
     [busy, sel, bySlot, botId, pushToast],
   );
 
-  const Cell = ({ slot, label }: { slot: number; label?: string }) => (
+  // 关键：用「返回元素的函数」而非「内联组件」渲染格子。
+  // 内联组件（const Cell = () => …）每次父渲染都是新函数引用 → React 视作新组件类型 →
+  // 全部 OrgCell 卸载重建；于是 hover→setTip→重渲→格子 DOM 重建→鼠标又触发 hover→…无限重建，
+  // 点击落在正在重建的 DOM 上 → 「显示 lore 后点不动格子」。改成函数返回 <OrgCell> 元素，
+  // OrgCell 是稳定的模块级 memo 组件，按 props 正常 reconcile，不再整树重建。
+  const cell = (slot: number, label?: string) => (
     <OrgCell
+      key={slot}
       slot={slot}
       label={label}
       it={bySlot.get(slot)}
@@ -624,28 +630,24 @@ function OrganizeDialog({
         <div>
           <div className="mb-1 text-[11px] font-medium text-muted">装备 / 副手</div>
           <div className="flex gap-1">
-            <Cell slot={5} label="头" />
-            <Cell slot={6} label="胸" />
-            <Cell slot={7} label="腿" />
-            <Cell slot={8} label="脚" />
+            {cell(5, "头")}
+            {cell(6, "胸")}
+            {cell(7, "腿")}
+            {cell(8, "脚")}
             <span className="mx-1 self-center text-muted/30">|</span>
-            <Cell slot={45} label="副手" />
+            {cell(45, "副手")}
           </div>
         </div>
         <div>
           <div className="mb-1 text-[11px] font-medium text-muted">背包</div>
           <div className="grid w-fit grid-cols-9 gap-1">
-            {Array.from({ length: 27 }, (_, i) => (
-              <Cell key={9 + i} slot={9 + i} />
-            ))}
+            {Array.from({ length: 27 }, (_, i) => cell(9 + i))}
           </div>
         </div>
         <div>
           <div className="mb-1 text-[11px] font-medium text-muted">快捷栏（高亮圈=当前手持）</div>
           <div className="grid w-fit grid-cols-9 gap-1">
-            {Array.from({ length: 9 }, (_, i) => (
-              <Cell key={36 + i} slot={36 + i} />
-            ))}
+            {Array.from({ length: 9 }, (_, i) => cell(36 + i))}
           </div>
         </div>
       </div>
