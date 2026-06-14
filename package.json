@@ -3,6 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "description": "面向玩家的 Minecraft 挂机机器人：Docker 引擎 + Tauri 桌面/安卓客户端",
+  "author": "Picadoo",
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://github.com/Picadoo/SteveDeck#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Picadoo/SteveDeck.git"
+  },
   "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=20"
