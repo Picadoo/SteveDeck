@@ -174,6 +174,8 @@ SteveDeck 站在 [PrismarineJS](https://github.com/PrismarineJS) 生态的肩膀
 
 桌面端由 [Tauri](https://tauri.app) 构建。感谢这些项目的维护者们。
 
+本项目的大量架构设计、编码与文档,由 Anthropic 的 [Claude Code](https://claude.com/claude-code) 协作完成 —— 感谢 **Claude Opus 4.8** 与 **Fable 5**。
+
 ## 📝 License
 
 **[非商业许可](LICENSE)** — 个人 / 学习 / 研究 / 非营利用途免费使用、修改、分发；**商业用途需事先取得作者书面授权**（销售、付费产品/服务、商业盈利运营等）。商业授权请通过本仓库联系作者。
