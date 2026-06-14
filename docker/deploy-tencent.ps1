@@ -1,4 +1,4 @@
-﻿# 部署 mc-bot-player 引擎(含网页客户端)到自己的服务器 — 在仓库根目录运行
+﻿# 部署 SteveDeck 引擎(含网页客户端)到自己的服务器 — 在仓库根目录运行
 # 用法: .\docker\deploy-tencent.ps1             # 默认第一台服务器，服务器上构建（增量最快）
 #       .\docker\deploy-tencent.ps1 -LocalBuild # 本地构建镜像传上去（小核云机太慢/大改动时用，需先启动 Docker Desktop）
 #       .\docker\deploy-tencent.ps1 -Server <名字>
@@ -31,7 +31,7 @@ $sshOpts = @("-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8")
 
 if ($LocalBuild) {
   Write-Host "== 本地构建镜像 (linux/amd64) =="
-  docker build --platform linux/amd64 -f docker/Dockerfile -t mc-bot-player-engine:latest .
+  docker build --platform linux/amd64 -f docker/Dockerfile -t stevedeck-engine:latest .
   if ($LASTEXITCODE -ne 0) { throw "本地 docker build 失败" }
 }
 
@@ -45,7 +45,7 @@ try {
   if ($LocalBuild) {
     Write-Host "== 传输镜像（gzip 流式，约 100-200MB，取决于上行带宽） =="
     # cmd /c 走二进制管道：PowerShell 自身的管道会把字节流当文本糟蹋掉
-    cmd /c "docker save mc-bot-player-engine:latest | gzip | ssh -i `"$key`" -o ServerAliveInterval=15 -o ServerAliveCountMax=8 $ssh `"gunzip | docker load`""
+    cmd /c "docker save stevedeck-engine:latest | gzip | ssh -i `"$key`" -o ServerAliveInterval=15 -o ServerAliveCountMax=8 $ssh `"gunzip | docker load`""
     if ($LASTEXITCODE -ne 0) { throw "镜像传输失败" }
   }
 
@@ -75,7 +75,7 @@ $composeUp
   Write-Host "== 等待健康检查 =="
   Start-Sleep -Seconds 12
   ssh -i $key @sshOpts $ssh "curl -sf http://127.0.0.1:8723/health && echo '' && curl -sf -o /dev/null -w 'web client: HTTP %{http_code}\n' -H 'Accept: text/html' http://127.0.0.1:8723/"
-  if ($LASTEXITCODE -ne 0) { throw "健康检查失败：容器没起来或引擎没监听 8723，上服务器 docker logs mcbot-engine 看日志" }
+  if ($LASTEXITCODE -ne 0) { throw "健康检查失败：容器没起来或引擎没监听 8723，上服务器 docker logs stevedeck-engine 看日志" }
 
   Write-Host ""
   Write-Host "完成。下一步："

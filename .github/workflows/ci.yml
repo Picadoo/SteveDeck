@@ -34,7 +34,7 @@ jobs:
           context: .
           file: docker/Dockerfile
           push: false
-          tags: mc-bot-player-engine:ci
+          tags: stevedeck-engine:ci
 
   desktop-windows:
     runs-on: windows-latest

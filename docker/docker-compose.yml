@@ -3,13 +3,14 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: mc-bot-player-engine:latest
-    container_name: mcbot-engine
+    image: stevedeck-engine:latest
+    container_name: stevedeck-engine
     restart: unless-stopped
     ports:
       - "8723:8723"
-      # 实时视角端口池（bot_viewer 每个机器人占一个，按需启动）
-      - "8800-8853:8800-8853"
+      # 实时视角端口池（bot_viewer 每个机器人占一个，按需启动；默认 4 个 = 8800-8803）。
+      # 若把 ENGINE_VIEWER_PORTS 调大，这里的映射区间要同步放宽到 8800~(8800+N-1)。
+      - "8800-8803:8800-8803"
     volumes:
       - mcbot-data:/data
     environment:

@@ -9,7 +9,7 @@
 docker compose -f docker/docker-compose.yml up -d --build
 
 # 查看连接信息（地址 + 访问令牌 + 连接串 + 二维码提示）
-docker logs mcbot-engine
+docker logs stevedeck-engine
 ```
 
 首次启动会自动生成访问令牌并持久化到数据卷 `mcbot-data:/data/token`。

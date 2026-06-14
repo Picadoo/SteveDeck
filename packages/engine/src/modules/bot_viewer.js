@@ -5,10 +5,13 @@
 // 关键：重启时**换一个新端口**，旧端口延迟回收——否则旧 http server 还没释放就在同端口重绑，
 // 会抛 EADDRINUSE（异步），让画面坏掉。这就是之前「切人称把视角弄坏」的根因。
 
-// 端口段选在 8800-8853：跟引擎主端口(8723)同处常见安全组放行段(8000-9000)，
-// 远程/Docker 部署只需放行一个连续区间，手机就能直接看实时视角（3007 段在公网基本必被防火墙拦）。
+// 端口段从 8800 起：跟引擎主端口(8723)同处常见安全组放行段(8000-9000)，远程/Docker/内网穿透只需放行
+// 一个很短的连续区间，手机就能直接看实时视角（3007 段在公网基本必被防火墙拦）。
+// 池大小默认 4（够同时看 4 个 bot），ENGINE_VIEWER_PORTS 可调（2~54）——内网穿透/防火墙放行的口越少越省心。
+// 为什么不止 1 个口：切人称/切 bot 会重启视角服务，旧端口延迟 2s 回收，必须留有余口才能立刻换端口而不撞 EADDRINUSE。
 const BASE_PORT = 8800;
-const MAX_PORT = 8853;
+const VIEWER_PORTS = Math.max(2, Math.min(54, Number(process.env.ENGINE_VIEWER_PORTS) || 4));
+const MAX_PORT = BASE_PORT + VIEWER_PORTS - 1;
 const usedPorts = new Set();
 const portOwners = new Map(); // port -> 持有它的 botInstance；池满时据此识别并回收陈旧端口(MODB-6)
 

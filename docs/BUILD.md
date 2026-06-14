@@ -31,10 +31,9 @@ pnpm start:engine       # 或 pnpm dev:engine（tsx 热重载）
 
 ```bash
 pnpm -C apps/desktop tauri build
-# 产物：
-#   apps/desktop/src-tauri/target/release/mc-bot-player.exe
-#   .../bundle/msi/mc-bot-player_<ver>_x64_en-US.msi
-#   .../bundle/nsis/mc-bot-player_<ver>_x64-setup.exe
+# 产物（安装包按 productName=SteveDeck 命名）：
+#   .../bundle/nsis/SteveDeck_<ver>_x64-setup.exe   # 安装包（updater 用 NSIS）
+#   .../bundle/msi/SteveDeck_<ver>_x64_en-US.msi
 ```
 
 开发模式（热重载，自动起 UI dev server）：

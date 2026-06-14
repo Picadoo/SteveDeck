@@ -156,6 +156,7 @@ pnpm -C apps/desktop tauri build    # 需要 Rust
 ## 📖 文档
 
 - [使用指南](docs/USER_GUIDE.md) — 部署、连接、功能说明
+- [远程访问 / 内网穿透](docs/REMOTE_ACCESS.md) — 家里主机跑引擎，手机在外网遥控
 - [构建指南](docs/BUILD.md) — 引擎 / Docker / 桌面 / Android
 - [AI 集成](docs/AI_INTEGRATION.md) — 接入 DeepSeek / OpenAI 兼容接口
 - [性能说明](docs/PERFORMANCE.md) — 引擎与客户端优化

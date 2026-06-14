@@ -7,19 +7,21 @@
 在一台 7×24 常开的主机（VPS 或家用小主机）上：
 
 ```bash
-git clone <repo> && cd mc-bot-player
+git clone <repo> && cd SteveDeck
 docker compose -f docker/docker-compose.yml up -d --build
-docker logs mcbot-engine     # 记下「访问令牌」和「连接串」
+docker logs stevedeck-engine     # 记下「访问令牌」和「连接串」
 ```
 
 启动日志示例：
 ```
-================ mc-bot-player 引擎已启动 ================
+================ SteveDeck 引擎已启动 ================
 访问令牌: db5282b4fe2f4bb6...
 连接串: mcbot://1.2.3.4:8723?token=db5282b4fe2f4bb6...
 ```
 
 > 安全：公网部署务必走反向代理加 TLS（见 `docker/README.md`），并使用自动生成的强令牌。
+>
+> 家里主机跑引擎、在 NAT 后面想用手机在外网遥控？见 [远程访问 / 内网穿透](REMOTE_ACCESS.md)。
 
 ## 二、连接客户端
 

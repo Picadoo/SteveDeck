@@ -21,7 +21,7 @@
 ### 度量方法
 ```bash
 curl -s http://<engine>/health    # uptime / version
-# 容器内存：docker stats mcbot-engine
+# 容器内存：docker stats stevedeck-engine
 ```
 
 ## 客户端（Tauri + React）
