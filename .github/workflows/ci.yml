@@ -36,28 +36,6 @@ jobs:
           push: false
           tags: stevedeck-engine:ci
 
-  desktop-windows:
-    runs-on: windows-latest
-    needs: build-test
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      # tauri.conf 的 resources 引用 engine-bundle，必须先生成（完整版含 3D 视角资源）
-      - run: node apps/desktop/scripts/make-engine-bundle.mjs full
-      # engine-bundle 内部的 pnpm deploy --config.node-linker=hoisted 会重写工作区安装状态
-      # （连 @tauri-apps/cli 都被卸掉 → 'tauri' is not recognized），重装一次恢复
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm -C apps/desktop tauri build
-      - uses: actions/upload-artifact@v5
-        with:
-          name: windows-installers
-          path: |
-            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
-            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+  # 桌面安装包不在 CI 构建：带「更新签名」的 Windows 包由 release.yml 在打 tag 时产出（需签名密钥）。
+  # 放进 CI 会（1）每次 push 重复约 15min 构建（2）让 fork PR 因取不到签名密钥而必红、外部贡献者无法修。
+  # 桌面若编译损坏会在发版（打 tag）时被 release 工作流拦住，不会漏发坏包。
