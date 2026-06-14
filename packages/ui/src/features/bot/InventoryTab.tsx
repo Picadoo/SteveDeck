@@ -548,12 +548,13 @@ function OrganizeDialog({
     const h = el.offsetHeight;
     const m = 10;
     const r = tip.rect;
-    let left = r.left + r.width / 2 - w / 2;
+    // 放格子「侧边」而非上下方——浮在上方/下方会盖住正在查看或想点的相邻格子行。
+    // 优先右侧；右侧放不下 → 左侧；垂直与格子顶部对齐并夹在视口内，不覆盖格子网格。
+    let left = r.right + 8;
+    if (left + w > window.innerWidth - m) left = r.left - w - 8;
     left = Math.min(Math.max(m, left), window.innerWidth - w - m);
-    let top = r.top - h - 8; // 优先格子上方（不挡手）
-    if (top < m) top = Math.min(r.bottom + 8, window.innerHeight - h - m); // 放不下 → 下方
-    if (top < m) top = m;
-    setTipStyle({ left, top, maxHeight: window.innerHeight - top - m });
+    let top = Math.min(Math.max(m, r.top), window.innerHeight - h - m);
+    setTipStyle({ left, top, maxHeight: window.innerHeight - 2 * m });
   }, [tip]);
   const onCellEnter = useCallback((it: InventoryItem, el: HTMLElement) => {
     setTip({ it, rect: el.getBoundingClientRect() });
