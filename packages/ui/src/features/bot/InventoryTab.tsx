@@ -650,8 +650,9 @@ function OrganizeDialog({
         </div>
       </div>
 
-      {/* ItemTip：完整物品信息（优先光标上方，超长限高滚动；测量定位见上方 useLayoutEffect） */}
-      {tip && (
+      {/* ItemTip：完整物品信息（优先光标上方，超长限高滚动；测量定位见上方 useLayoutEffect）。
+          选中源格、正在等点目标格时不显示 lore——否则浮框挡住格子视线，难以瞄准点击。 */}
+      {tip && sel === null && (
         <div
           ref={tipRef}
           className="pointer-events-none fixed z-[120] max-w-[20rem] overflow-y-auto rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
