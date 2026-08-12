@@ -22,10 +22,10 @@ function extractText(reason) {
         }
         let out = reason.text || '';
         if (Array.isArray(reason.extra)) {
-            out += reason.extra.map(e => (typeof e === 'string' ? e : (e && e.text) || '')).join('');
+            out += reason.extra.map(e => (typeof e === 'string' ? e : (e?.text) || '')).join('');
         }
         return out || JSON.stringify(reason);
-    } catch (e) { return ''; }
+    } catch (_e) { return ''; }
 }
 
 function isFatalKick(reason) {

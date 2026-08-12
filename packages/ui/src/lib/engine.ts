@@ -64,8 +64,8 @@ export async function fetchConnectionInfo(): Promise<{
   const { url, token } = useStore.getState().conn;
   if (!url || !token) return null;
   try {
-    const r = await fetch(url + "/api/connection-info", {
-      headers: { Authorization: "Bearer " + token },
+    const r = await fetch(`${url}/api/connection-info`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
     if (!r.ok) return null;
     return await r.json();
@@ -89,7 +89,7 @@ async function engineApi<T>(path: string, init?: RequestInit): Promise<T | null>
   try {
     const r = await fetch(url + path, {
       ...init,
-      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(init?.headers ?? {}) },
     });
     if (!r.ok) return null;
     return (await r.json()) as T;
@@ -110,9 +110,9 @@ export async function testNotify(): Promise<{ ok: boolean; error?: string }> {
   const { url, token } = useStore.getState().conn;
   if (!url || !token) return { ok: false, error: "未连接到引擎" };
   try {
-    const r = await fetch(url + "/api/notify/test", {
+    const r = await fetch(`${url}/api/notify/test`, {
       method: "POST",
-      headers: { Authorization: "Bearer " + token },
+      headers: { Authorization: `Bearer ${token}` },
     });
     const body = await r.json().catch(() => ({}));
     if (r.ok && body?.ok) return { ok: true };
@@ -136,7 +136,7 @@ export function parseConnectionString(input: string): { url: string; token: stri
 
 export function normalizeUrl(addr: string): string {
   let a = addr.trim();
-  if (!/^https?:\/\//i.test(a)) a = "http://" + a;
+  if (!/^https?:\/\//i.test(a)) a = `http://${a}`;
   return a.replace(/\/+$/, "");
 }
 
@@ -167,7 +167,7 @@ export async function tryTauriAutoConnect(): Promise<boolean> {
   for (let i = 0; i < 40; i++) {
     if (connectEpoch !== myEpoch) return false; // 期间用户手动断开/切走 → 不再连
     try {
-      const r = await fetch(info.url + "/health", { cache: "no-store" });
+      const r = await fetch(`${info.url}/health`, { cache: "no-store" });
       if (r.ok) {
         ready = true;
         break;
@@ -405,7 +405,7 @@ export function disconnect(): void {
 
 function emitAck<T = unknown>(event: string, payload: unknown, timeoutMs = 8000): Promise<CommandAck<T>> {
   return new Promise((resolve) => {
-    if (!socket || !socket.connected) {
+    if (!socket?.connected) {
       resolve({ ok: false, error: "未连接到引擎" });
       return;
     }

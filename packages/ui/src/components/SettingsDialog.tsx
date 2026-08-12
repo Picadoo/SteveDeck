@@ -51,7 +51,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
     });
     if (isTauri()) {
       getEngineConfig().then((c) => {
-        if (alive) setBuiltinEngine(!c || c.mode !== "remote");
+        if (alive) setBuiltinEngine(c?.mode !== "remote");
       });
     }
     return () => {
@@ -71,7 +71,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
       <div className="space-y-5">
         <Section title="当前引擎">
           <Row k="地址" v={conn.url.replace(/^https?:\/\//, "") || "—"} />
-          <Row k="版本" v={conn.engine?.version ? "v" + conn.engine.version : "—"} />
+          <Row k="版本" v={conn.engine?.version ? `v${conn.engine.version}` : "—"} />
           <Row
             k="状态"
             v={
@@ -140,7 +140,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
             </div>
             <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-xs">
               {(["lite", "full"] as const).map((m) => (
-                <button
+                <button type="button"
                   key={m}
                   onClick={() => setInvMode(m)}
                   className={cn(
@@ -233,7 +233,7 @@ function EngineSourceSection() {
         </div>
         <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-xs">
           {(["builtin", "remote"] as const).map((m) => (
-            <button
+            <button type="button"
               key={m}
               onClick={() => {
                 setMode(m);

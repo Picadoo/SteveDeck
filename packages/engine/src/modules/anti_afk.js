@@ -8,15 +8,15 @@ module.exports = (botInstance) => {
 
     const act = () => {
         try {
-            if (!bot || !bot.entity) return;
+            if (!bot?.entity) return;
             if (Math.random() < 0.5) {
                 bot.setControlState('jump', true);
-                setTimeout(() => { try { bot.setControlState('jump', false); } catch (e) { /* ignore */ } }, 300);
+                setTimeout(() => { try { bot.setControlState('jump', false); } catch (_e) { /* ignore */ } }, 300);
             } else {
                 const yaw = (bot.entity.yaw || 0) + (Math.random() - 0.5) * 1.2;
                 bot.look(yaw, bot.entity.pitch || 0, false).catch(() => {});
             }
-        } catch (e) { /* 动作失败无所谓，下轮再试 */ }
+        } catch (_e) { /* 动作失败无所谓，下轮再试 */ }
     };
 
     const schedule = () => {

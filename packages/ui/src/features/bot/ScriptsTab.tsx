@@ -58,7 +58,7 @@ function ScriptsTab({ bot }: { bot: BotSummary }) {
     const steps = (Array.isArray(r.data?.steps) ? r.data!.steps : []) as BotScript["steps"];
     if (!steps.length) { pushToast("没录到任何操作", "info"); return; }
     const draft = {
-      name: "录制 " + new Date().toLocaleTimeString().slice(0, 5),
+      name: `录制 ${new Date().toLocaleTimeString().slice(0, 5)}`,
       steps,
       trigger: { type: "manual" },
       server: bot.host,
@@ -124,7 +124,7 @@ function ScriptsTab({ bot }: { bot: BotSummary }) {
     () => [...new Set(list.map((s) => s.category).filter((c): c is string => !!c && !!c.trim()))],
     [list],
   );
-  const grouped = shown.some((s) => s.category && s.category.trim());
+  const grouped = shown.some((s) => s.category?.trim());
   const groups = useMemo(() => {
     const m = new Map<string, ScriptSummary[]>();
     for (const sc of shown) {
@@ -258,7 +258,7 @@ function ScriptsTab({ bot }: { bot: BotSummary }) {
       )}
 
       <div className="flex gap-1 rounded-lg bg-surface-2 p-1 text-sm">
-        <button
+        <button type="button"
           onClick={() => setMode("visual")}
           className={cn(
             "flex-1 rounded-md px-3 py-1.5 transition-colors",
@@ -267,7 +267,7 @@ function ScriptsTab({ bot }: { bot: BotSummary }) {
         >
           积木脚本
         </button>
-        <button
+        <button type="button"
           onClick={() => setMode("js")}
           className={cn(
             "flex-1 rounded-md px-3 py-1.5 transition-colors",
@@ -285,7 +285,7 @@ function ScriptsTab({ bot }: { bot: BotSummary }) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-[11px]">
               {([["本服", false], ["全部", true]] as const).map(([lbl, v]) => (
-                <button
+                <button type="button"
                   key={lbl}
                   onClick={() => setShowAll(v)}
                   className={cn(
@@ -317,7 +317,7 @@ function ScriptsTab({ bot }: { bot: BotSummary }) {
           <ScrollText className="mb-2 h-8 w-8 opacity-40" />
           <p className="text-sm">{list.length > 0 ? "本服务器没有脚本" : "还没有脚本，点击「新建脚本」"}</p>
           {!showAll && list.length > shown.length && (
-            <button onClick={() => setShowAll(true)} className="mt-1 text-xs text-accent">
+            <button type="button" onClick={() => setShowAll(true)} className="mt-1 text-xs text-accent">
               查看全部 {list.length} 个 →
             </button>
           )}
@@ -328,7 +328,7 @@ function ScriptsTab({ bot }: { bot: BotSummary }) {
             const isCol = collapsed.has(cat);
             return (
               <div key={cat}>
-                <button
+                <button type="button"
                   onClick={() => toggleCat(cat)}
                   className="flex w-full items-center gap-1.5 px-1 py-1 text-xs font-semibold text-muted hover:text-fg"
                 >
@@ -360,7 +360,7 @@ function ScriptsTab({ bot }: { bot: BotSummary }) {
             <div className="space-y-2">
               <p className="text-xs text-muted">选一个常见场景，进编辑器把关键词/地点名改成你服务器的，保存即可用。</p>
               {SCRIPT_TEMPLATES.map((t) => (
-                <button
+                <button type="button"
                   key={t.key}
                   onClick={() => {
                     setTplOpen(false);

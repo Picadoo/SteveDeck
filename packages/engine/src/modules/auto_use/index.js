@@ -21,8 +21,8 @@ module.exports = (botInstance) => {
 
   // 背包快照：附 isFood 注解，供纯逻辑按「类别=食物」匹配。
   const snapshotItems = () => {
-    const mc = botInstance.getMcData && botInstance.getMcData();
-    const foods = (mc && mc.foodsByName) || {};
+    const mc = botInstance.getMcData?.();
+    const foods = (mc?.foodsByName) || {};
     return bot.inventory.items().map((it) => ({
       name: it.name,
       displayName: it.displayName,
@@ -37,15 +37,15 @@ module.exports = (botInstance) => {
   // effect_missing 永远查不到 → 误判「缺」→ 冷却一到就狂用 buff 物品。
   const effectsByName = () => {
     const out = {};
-    const raw = (bot.entity && bot.entity.effects) || {};
-    const mc = botInstance.getMcData && botInstance.getMcData();
-    const meta = (mc && mc.effects) || {};
+    const raw = (bot.entity?.effects) || {};
+    const mc = botInstance.getMcData?.();
+    const meta = (mc?.effects) || {};
     for (const key of Object.keys(raw)) {
       const e = raw[key];
       if (!e) continue;
       const id = e.id != null ? e.id : Number(key);
       const m = meta[id];
-      const name = m && m.name ? String(m.name).toLowerCase() : String(id);
+      const name = m?.name ? String(m.name).toLowerCase() : String(id);
       out[name] = { duration: e.duration, amplifier: e.amplifier };
     }
     return out;
@@ -67,22 +67,22 @@ module.exports = (botInstance) => {
       if (!slotItem) return;
       await bot.equip(slotItem, 'hand');
       if (sneak) bot.setControlState('sneak', true);
-      try { bot.activateItem(); } catch (e) { /* ignore */ }
+      try { bot.activateItem(); } catch (_e) { /* ignore */ }
       await sleep(Math.max(0, USE_BUSY_MS - 200));
-      try { bot.deactivateItem(); } catch (e) { /* ignore */ }
+      try { bot.deactivateItem(); } catch (_e) { /* ignore */ }
       if (sneak) bot.setControlState('sneak', false);
-      try { if (typeof prevQuickBar === 'number') bot.setQuickBarSlot(prevQuickBar); } catch (e) { /* ignore */ }
+      try { if (typeof prevQuickBar === 'number') bot.setQuickBarSlot(prevQuickBar); } catch (_e) { /* ignore */ }
     } finally {
-      if (sneak) { try { bot.setControlState('sneak', false); } catch (e) { /* ignore */ } }
+      if (sneak) { try { bot.setControlState('sneak', false); } catch (_e) { /* ignore */ } }
       if (botInstance.syncInventory) botInstance.syncInventory();
     }
   };
 
   let running = false; // performUse 是 async，防评估重入
   const evalTick = async () => {
-    if (!task.active || !bot || !bot.entity) return;
+    if (!task.active || !bot?.entity) return;
     if (running) return;
-    if (botInstance.isBodyBusy && botInstance.isBodyBusy()) return; // 身体被占用（含自己上一轮）
+    if (botInstance.isBodyBusy?.()) return; // 身体被占用（含自己上一轮）
     running = true;
     try {
       const items = snapshotItems();
@@ -101,7 +101,7 @@ module.exports = (botInstance) => {
       emitLog(`自动使用「${rule.id}」：${item.displayName || item.name}`);
       await performUse(rule, item);
     } catch (e) {
-      emitLog(`自动使用异常: ${e && e.message ? e.message : e}`);
+      emitLog(`自动使用异常: ${e?.message ? e.message : e}`);
     } finally {
       running = false;
     }

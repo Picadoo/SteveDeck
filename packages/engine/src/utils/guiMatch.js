@@ -7,20 +7,20 @@ function slotText(item, matchLore) {
     let name = item.displayName || item.name || '';
     let lore = [];
     try {
-        const disp = item.nbt && item.nbt.value && item.nbt.value.display && item.nbt.value.display.value;
+        const disp = item.nbt?.value?.display?.value;
         if (disp) {
-            if (disp.Name && disp.Name.value) name = disp.Name.value;
-            if (matchLore && disp.Lore && disp.Lore.value && disp.Lore.value.value) {
+            if (disp.Name?.value) name = disp.Name.value;
+            if (matchLore && disp.Lore?.value?.value) {
                 lore = disp.Lore.value.value.map(line => {
                     // 1.12.2 部分 lore 是 JSON 字符串 {"text":"..."}
                     if (typeof line === 'string' && line.startsWith('{"text":')) {
-                        try { return JSON.parse(line).text || ''; } catch (e) { return line; }
+                        try { return JSON.parse(line).text || ''; } catch (_e) { return line; }
                     }
                     return String(line);
                 });
             }
         }
-    } catch (e) { /* 解析失败用基础 name */ }
+    } catch (_e) { /* 解析失败用基础 name */ }
     const all = matchLore ? [name, ...lore].join(' ') : name;
     return String(all).replace(/§./gi, '').toLowerCase();
 }
@@ -36,7 +36,7 @@ function findMatchingSlot(slots, keyword, opts) {
     const to = Number.isFinite(opts.slotTo) ? Math.min(slots.length - 1, opts.slotTo) : slots.length - 1;
     for (let i = from; i <= to; i++) {
         const t = slotText(slots[i], opts.matchLore);
-        if (t && t.includes(kw)) return i;
+        if (t?.includes(kw)) return i;
     }
     return -1;
 }

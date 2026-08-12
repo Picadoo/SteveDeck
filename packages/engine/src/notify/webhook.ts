@@ -114,7 +114,7 @@ export function buildRequest(
   url: string,
   evt: BotEvent,
 ): { url: string; init: { method: string; headers: Record<string, string>; body: string } } {
-  const who = evt.username ? `${evt.username}${evt.host ? "@" + evt.host : ""}` : "机器人";
+  const who = evt.username ? `${evt.username}${evt.host ? `@${evt.host}` : ""}` : "机器人";
   const title = `SteveDeck · ${who} ${EVENT_LABEL[evt.kind]}`;
   const text = `${evt.message}\n时间：${new Date().toLocaleString()}`;
   const json = { "Content-Type": "application/json" };

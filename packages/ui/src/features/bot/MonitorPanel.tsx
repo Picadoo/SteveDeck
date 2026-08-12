@@ -123,7 +123,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
     <div className="mb-2 shrink-0 rounded-lg border border-border bg-surface-2/30">
       {/* 折叠头：紧凑统计条 + 配置入口 */}
       <div className="flex items-center gap-2 px-2.5 py-1.5">
-        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
+        <button type="button" onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
           <Radio className="h-3.5 w-3.5 shrink-0 text-accent" />
           <span className="shrink-0 font-medium">监听统计</span>
           {!open && (
@@ -142,7 +142,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
           <ChevronDown className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-180")} />
         </button>
         {enabled.length > 0 && (
-          <button
+          <button type="button"
             onClick={resetHeader.onClick}
             className={cn(
               "shrink-0 rounded p-1 transition-colors",
@@ -153,7 +153,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
             {resetHeader.arming ? <span className="px-0.5 text-[10px] font-medium">确认?</span> : <RotateCcw className="h-3.5 w-3.5" />}
           </button>
         )}
-        <button
+        <button type="button"
           onClick={() => setManage(true)}
           className="shrink-0 rounded p-1 text-muted hover:bg-surface hover:text-fg"
           title="配置监听规则"
@@ -166,7 +166,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
       {open && (
         <div className="space-y-1.5 border-t border-border px-2.5 py-2">
           {rules.length === 0 ? (
-            <button onClick={() => setManage(true)} className="w-full py-3 text-center text-xs text-muted hover:text-fg">
+            <button type="button" onClick={() => setManage(true)} className="w-full py-3 text-center text-xs text-muted hover:text-fg">
               还没有监听规则，点此配置 →
             </button>
           ) : (
@@ -233,7 +233,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
           <div className="space-y-1.5">
             {rules.map((rule) => (
               <div key={rule.id} className={cn("flex items-center gap-2 rounded-lg bg-surface-2/50 px-2.5 py-2", !rule.enabled && "opacity-50")}>
-                <button onClick={() => toggle(rule.id)} className={cn("shrink-0", rule.enabled ? "text-success" : "text-muted")} title={rule.enabled ? "停用" : "启用"}>
+                <button type="button" onClick={() => toggle(rule.id)} className={cn("shrink-0", rule.enabled ? "text-success" : "text-muted")} title={rule.enabled ? "停用" : "启用"}>
                   <Power className="h-4 w-4" />
                 </button>
                 <div className="min-w-0 flex-1">
@@ -244,10 +244,10 @@ export default function MonitorPanel({ botId }: { botId: string }) {
                   </div>
                   <div className="truncate font-mono text-[10px] text-muted/70">/{rule.pattern}/</div>
                 </div>
-                <button onClick={() => setEditing(rule)} className="shrink-0 rounded p-1 text-muted hover:text-fg" title="编辑">
+                <button type="button" onClick={() => setEditing(rule)} className="shrink-0 rounded p-1 text-muted hover:text-fg" title="编辑">
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
-                <button onClick={() => del(rule.id)} className="shrink-0 rounded p-1 text-muted hover:text-danger" title="删除">
+                <button type="button" onClick={() => del(rule.id)} className="shrink-0 rounded p-1 text-muted hover:text-danger" title="删除">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -261,7 +261,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
       <Modal open={showPresets} onClose={() => setShowPresets(false)} title="选择预设">
         <div className="space-y-2">
           {MONITOR_PRESETS.map((p) => (
-            <button
+            <button type="button"
               key={p.name}
               onClick={() => applyPreset(p)}
               className="w-full rounded-lg border border-border bg-surface-2/50 p-3 text-left transition-colors hover:border-accent hover:bg-accent/10"
@@ -359,10 +359,11 @@ function RuleFromMessage({
           <div className="mt-1.5 flex flex-wrap items-center gap-x-0.5 gap-y-1 rounded bg-surface-2/50 p-1.5 text-xs">
             {toks.map((t, i) =>
               t.type === "sep" ? (
+                // biome-ignore lint/suspicious/noArrayIndexKey: token 身份就是下标（选中态 keyIdx/valueIdx 也按下标存）
                 <span key={i} className="whitespace-pre text-muted">{t.text}</span>
               ) : (
-                <button
-                  key={i}
+                // biome-ignore lint/suspicious/noArrayIndexKey: token 身份就是下标（选中态 keyIdx/valueIdx 也按下标存）
+                <button key={i}
                   type="button"
                   onClick={() =>
                     t.type === "num" ? setValueIdx((v) => (v === i ? -1 : i)) : setKeyIdx((k) => (k === i ? -1 : i))
@@ -474,7 +475,7 @@ function RuleEditor({
         <Field label="聚合方式">
           <div className="flex flex-wrap gap-1">
             {AGG.map((a) => (
-              <button
+              <button type="button"
                 key={a.key}
                 onClick={() => set({ agg: a.key })}
                 title={a.hint}
@@ -518,9 +519,10 @@ function NumIn({ value, min, onChange }: { value: number; min: number; onChange:
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <label className="mb-1 block text-xs font-medium text-muted">{label}</label>
+    // biome-ignore lint/a11y/noLabelWithoutControl: children 即控件，包裹式关联在运行时成立（点标题可聚焦控件）
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }

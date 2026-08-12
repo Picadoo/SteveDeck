@@ -8,7 +8,7 @@ const { findMatchingSlot } = require("../utils/guiMatch");
 
 function mkVec(x, y, z) {
   try {
-    if (vec3 && vec3.Vec3) return new vec3.Vec3(x, y, z);
+    if (vec3?.Vec3) return new vec3.Vec3(x, y, z);
   } catch {
     /* ignore */
   }
@@ -43,10 +43,10 @@ function serItem(it, i) {
   // 深度解析 NBT：RPG 服菜单物品名/Lore 常带 §颜色码，保留原文供前端彩色渲染（McText）。
   let rawName = it.displayName;
   let loreLines = [];
-  if (it.nbt && it.nbt.value && it.nbt.value.display) {
+  if (it.nbt?.value?.display) {
     const d = it.nbt.value.display.value;
     if (d.Name) rawName = d.Name.value;
-    if (d.Lore && d.Lore.value && d.Lore.value.value) loreLines = d.Lore.value.value;
+    if (d.Lore?.value?.value) loreLines = d.Lore.value.value;
   }
   rawName = String(parseChat(rawName));
   return {
@@ -192,7 +192,7 @@ module.exports = (botInstance) => {
       "gray_shulker_box", "light_gray_shulker_box", "cyan_shulker_box", "purple_shulker_box",
       "blue_shulker_box", "brown_shulker_box", "green_shulker_box", "red_shulker_box", "black_shulker_box",
     ];
-    const ids = names.map((n) => mcData.blocksByName[n] && mcData.blocksByName[n].id).filter((x) => x != null);
+    const ids = names.map((n) => mcData.blocksByName[n]?.id).filter((x) => x != null);
     let positions = [];
     try {
       positions = bot.findBlocks({ matching: ids, maxDistance: 32, count: 40 });
@@ -204,7 +204,7 @@ module.exports = (botInstance) => {
         const block = bot.blockAt(p);
         return {
           x: p.x, y: p.y, z: p.z,
-          name: (block && block.name) || "container",
+          name: (block?.name) || "container",
           distance: Math.round(bot.entity.position.distanceTo(p) * 10) / 10,
         };
       })

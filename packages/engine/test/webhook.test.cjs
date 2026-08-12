@@ -2,7 +2,7 @@
    纯逻辑测试（fetch 打桩），不发真实网络请求。需先 pnpm build（测编译产物 dist/）。 */
 const path = require("path");
 const os = require("os");
-process.env.MCBOT_DATA_DIR = path.join(os.tmpdir(), "mcbot-notify-test-" + Date.now());
+process.env.MCBOT_DATA_DIR = path.join(os.tmpdir(), `mcbot-notify-test-${Date.now()}`);
 
 const test = require("node:test");
 const assert = require("node:assert");

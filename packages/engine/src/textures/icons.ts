@@ -177,8 +177,8 @@ function transformOnce(name: string): string[] {
   if (name.endsWith("_block")) push(name.slice(0, -6));
   if (name.startsWith("infested_")) push(name.slice(9));
   if (name.startsWith("waxed_")) push(name.slice(6)); // 蜡封铜与本体贴图一致
-  if (name.endsWith("_wood")) push(name.slice(0, -5) + "_log");
-  if (name.endsWith("_hyphae")) push(name.slice(0, -7) + "_stem");
+  if (name.endsWith("_wood")) push(`${name.slice(0, -5)}_log`);
+  if (name.endsWith("_hyphae")) push(`${name.slice(0, -7)}_stem`);
   if (name.endsWith("_skull") || name.endsWith("_head")) push("skull");
 
   const colored = name.match(COLOR_PREFIX);
@@ -187,16 +187,16 @@ function transformOnce(name: string): string[] {
     if (rest === "carpet" || rest === "bed" || rest === "banner") push(`${color}_wool`);
     if (rest === "shulker_box") push(`shulker_top_${color}`);
   }
-  if (name.endsWith("_carpet")) push(name.slice(0, -7) + "_block"); // moss_carpet→moss_block
+  if (name.endsWith("_carpet")) push(`${name.slice(0, -7)}_block`); // moss_carpet→moss_block
   if (name.endsWith("_spawn_egg")) push("spawn_egg");
 
   const st = name.match(STRUCTURAL_SUFFIX);
   if (st) {
     const base = name.slice(0, -(st[1].length + 1));
     push(base);
-    push(base + "s"); // brick→bricks、stone_brick→stone_bricks
-    push(base + "_planks"); // oak_slab→oak_planks（1.13+）
-    push("planks_" + base.replace(/^dark_oak$/, "big_oak")); // 1.12：planks_oak / planks_big_oak
+    push(`${base}s`); // brick→bricks、stone_brick→stone_bricks
+    push(`${base}_planks`); // oak_slab→oak_planks（1.13+）
+    push(`planks_${base.replace(/^dark_oak$/, "big_oak")}`); // 1.12：planks_oak / planks_big_oak
   }
 
   const gt = name.match(/^(.+)_glazed_terracotta$/);

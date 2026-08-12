@@ -5,7 +5,7 @@
 //   2) 位置一次性跳变超过 jumpDist 格（Bukkit 多世界在客户端常仍显示 overworld，只能靠这个）
 // 超时返回 false（可能本来就在目的地附近、或指令无效），调用方自行决定是否继续寻路。
 module.exports = async function waitForTeleport(bot, { timeoutMs = 8000, jumpDist = 24 } = {}) {
-    if (!bot || !bot.entity) return false;
+    if (!bot?.entity) return false;
     const from = bot.entity.position.clone();
     const fromDim = bot.game ? bot.game.dimension : null;
     const start = Date.now();
@@ -16,7 +16,7 @@ module.exports = async function waitForTeleport(bot, { timeoutMs = 8000, jumpDis
         try {
             if (bot.game && fromDim && bot.game.dimension !== fromDim) return true;
             if (bot.entity.position.distanceTo(from) > jumpDist) return true;
-        } catch (e) { /* entity 半初始化期间属性可能缺失，下一轮再看 */ }
+        } catch (_e) { /* entity 半初始化期间属性可能缺失，下一轮再看 */ }
     }
     return false;
 };

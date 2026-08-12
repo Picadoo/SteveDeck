@@ -35,7 +35,7 @@ module.exports = (botInstance) => {
                 }
             }
             botInstance._itemTotals = totals;
-        } catch (e) {
+        } catch (_e) {
             /* ignore */
         }
     };
@@ -47,7 +47,7 @@ module.exports = (botInstance) => {
     //    现在快照通道显式存在（force=true 是它的唯一来源），去重可以放心做。两者必须同生共死。
     let lastSentSig = ''; // 上次广播的内容签名
     const syncInventory = (force = false) => {
-        if (!bot || !bot.inventory) return;
+        if (!bot?.inventory) return;
 
         // 主手 = 当前选中的快捷栏槽位（窗口槽位 36 + quickBarSlot）。供前端在快捷栏前单独显示「手持」。
         const heldSlot = 36 + (typeof bot.quickBarSlot === 'number' ? bot.quickBarSlot : 0);
@@ -58,7 +58,7 @@ module.exports = (botInstance) => {
             // 深度解析 NBT 获取 Lore 和名字（RPG 服常带 §颜色码，保留供前端彩色渲染）
             let rawName = item.displayName;
             let loreLines = [];
-            if (item.nbt && item.nbt.value && item.nbt.value.display) {
+            if (item.nbt?.value?.display) {
                 const display = item.nbt.value.display.value;
                 if (display.Name) rawName = display.Name.value;
                 if (display.Lore) loreLines = display.Lore.value.value;
@@ -152,13 +152,13 @@ module.exports = (botInstance) => {
         const name = String(it.name || '');
         if (!/^(written_book|writable_book)$/.test(name)) throw new Error('该物品不是书');
         const writable = name === 'writable_book';
-        const root = (it.nbt && it.nbt.value) || {};
+        const root = (it.nbt?.value) || {};
         let raw = nbtVal(root.pages);
         raw = (raw && Array.isArray(raw.value)) ? raw.value : (Array.isArray(raw) ? raw : []);
         const pages = raw.map((p) => {
             const s = String(nbtVal(p) ?? p ?? '');
             if (!writable && (s.startsWith('{') || s.startsWith('"') || s.startsWith('['))) {
-                try { return flattenJson(JSON.parse(s)); } catch (e) { /* 按原文 */ }
+                try { return flattenJson(JSON.parse(s)); } catch (_e) { /* 按原文 */ }
             }
             return s;
         });
@@ -197,7 +197,7 @@ module.exports = (botInstance) => {
             // 此时 mineflayer 本地槽位可能已与服务器脱同步（看着像"物品丢了"）——
             // 延迟强制重拉，让服务器的 set_slot 纠正包落地，恢复真实显示，物品并未真丢。
             setTimeout(() => { try { syncInventory(true); } catch (_) { /* ignore */ } }, 600);
-            const msg = String(e && e.message || e);
+            const msg = String(e?.message || e);
             if (/rejected transaction|reject/i.test(msg)) {
                 throw new Error('服务器拒绝了该移动（多为绑定物品 / 锁定槽位 / 反作弊限制）');
             }
@@ -260,11 +260,11 @@ module.exports = (botInstance) => {
         const wantSneak = !!opts.sneak;
         const prevSneak = wantSneak ? !!bot.getControlState?.('sneak') : false;
         if (wantSneak) {
-            try { bot.setControlState('sneak', true); } catch (e) { /* ignore */ }
+            try { bot.setControlState('sneak', true); } catch (_e) { /* ignore */ }
         }
         const releaseSneak = () => {
             if (wantSneak && !prevSneak) {
-                try { bot.setControlState('sneak', false); } catch (e) { /* ignore */ }
+                try { bot.setControlState('sneak', false); } catch (_e) { /* ignore */ }
             }
         };
 
@@ -289,7 +289,7 @@ module.exports = (botInstance) => {
                     const leftover = bot.inventory.slots[heldWindowSlot];
                     if (leftover && !bot.inventory.slots[slot]) await bot.moveSlotItem(heldWindowSlot, slot);
                 }
-            } catch (e) { /* 恢复失败不影响使用本身 */ }
+            } catch (_e) { /* 恢复失败不影响使用本身 */ }
             finally {
                 releaseSneak(); // finally 保证松开潜行（含「用的就是手上这格」的 early return 路径）
                 syncInventory();
@@ -299,7 +299,7 @@ module.exports = (botInstance) => {
         await bot.equip(it, 'hand');
         await sleep(120); // 等服务器确认手持
         const held = bot.heldItem;
-        const name = (held && held.name) || it.name || '';
+        const name = (held?.name) || it.name || '';
         const label = (it.name && customName(it)) || it.displayName || it.name || name;
 
         // A) 对生物使用：染料给羊 / 名牌 / 鞍 / 剪刀 / 拴绳 / 桶。正前方≤4格有生物就右键它
@@ -308,10 +308,10 @@ module.exports = (botInstance) => {
             const ent = pickEntityInFront(4);
             if (ent) {
                 const at = ent.position.offset(0, (ent.height || 1) / 2, 0);
-                try { await bot.lookAt(at, true); } catch (e) { /* ignore */ }
-                try { bot.swingArm('right'); } catch (e) { /* ignore */ }
-                try { await bot.activateEntityAt(ent, at); } catch (e) { /* ignore */ }
-                try { await bot.activateEntity(ent); } catch (e) { /* ignore */ }
+                try { await bot.lookAt(at, true); } catch (_e) { /* ignore */ }
+                try { bot.swingArm('right'); } catch (_e) { /* ignore */ }
+                try { await bot.activateEntityAt(ent, at); } catch (_e) { /* ignore */ }
+                try { await bot.activateEntity(ent); } catch (_e) { /* ignore */ }
                 const who = (ent.displayName || ent.name || ent.username || ent.type || '生物');
                 emitItem(`对 ${who} 使用 ${label}`);
                 setTimeout(restoreHand, 400);
@@ -325,7 +325,7 @@ module.exports = (botInstance) => {
             const ref = pickGroundRef();
             if (ref) {
                 const before = totalOf(name);
-                try { await bot.lookAt(ref.position.offset(0.5, 1, 0.5), true); } catch (e) { /* ignore */ }
+                try { await bot.lookAt(ref.position.offset(0.5, 1, 0.5), true); } catch (_e) { /* ignore */ }
                 // 放置：placeBlock 发出「手持物品右键方块面」包（这才是放置，旧版用 activateBlock 不会放下手中物）。
                 // 放实体(盔甲架/刷怪蛋)无 blockUpdate 会 reject，但放置包已发出 → 用 race 限时 + 数量减少判断成功。
                 const placed = await Promise.race([
@@ -343,9 +343,9 @@ module.exports = (botInstance) => {
         }
 
         // C) 右键空气：消耗品(食物/药水/弓) + 监听「右键空气」的自定义 RPG 物品；以及上面没找到目标的兜底。
-        try { bot.activateItem(); } catch (e) { /* ignore */ }
+        try { bot.activateItem(); } catch (_e) { /* ignore */ }
         setTimeout(() => {
-            try { bot.deactivateItem(); } catch (e) { /* ignore */ }
+            try { bot.deactivateItem(); } catch (_e) { /* ignore */ }
             setTimeout(restoreHand, 200); // 等右键收尾再复原主手
         }, 400);
     };

@@ -47,7 +47,7 @@ module.exports = (botInstance) => {
   // 立即关闭当前视角服务（内部用）；端口延迟回收，避免紧接着的重启在同端口 rebind 触发 EADDRINUSE
   function closeViewerNow() {
     try {
-      if (bot.viewer && bot.viewer.close) bot.viewer.close();
+      if (bot.viewer?.close) bot.viewer.close();
     } catch {
       /* ignore */
     }
@@ -126,7 +126,7 @@ module.exports = (botInstance) => {
         setTimeout(() => usedPorts.delete(port), 2000);
       }
     }
-    throw new Error('视角启动失败：' + (lastErr && lastErr.message ? lastErr.message : lastErr));
+    throw new Error(`视角启动失败：${lastErr?.message ? lastErr.message : lastErr}`);
   };
 
   // 空闲自停：前端异常退出（崩溃/强杀/断网）不会发 viewer:stop，渲染服务会常驻到引擎重启，

@@ -38,12 +38,12 @@ function readJson<T>(file: string, fallback: T): T {
  * 否则会用损坏内容把上一份好备份覆盖掉。这样即便主文件被写空/写坏，.bak 仍保留上一份好数据。
  */
 function writeJsonAtomic(file: string, data: unknown): void {
-  const tmp = file + ".tmp";
+  const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   try {
     if (fs.existsSync(file)) {
       JSON.parse(fs.readFileSync(file, "utf8")); // 解析通过才认为是好数据，值得备份
-      fs.copyFileSync(file, file + ".bak");
+      fs.copyFileSync(file, `${file}.bak`);
     }
   } catch {
     /* 现有文件损坏/不可读 → 跳过备份，保留既有好 .bak */

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(__dirname, "..");
-const root = path.resolve(desktopDir, "../..");
+const _root = path.resolve(desktopDir, "../..");
 
 // 版本号取自 tauri.conf.json（单一事实源）
 const conf = JSON.parse(fs.readFileSync(path.join(desktopDir, "src-tauri/tauri.conf.json"), "utf8"));

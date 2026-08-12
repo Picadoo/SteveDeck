@@ -18,13 +18,13 @@ module.exports = (botInstance) => {
     const motd = (v) => {
         if (v == null) return '';
         if (typeof v === 'object') {
-            try { if (typeof v.toMotd === 'function') return v.toMotd(); } catch (e) { /* ignore */ }
+            try { if (typeof v.toMotd === 'function') return v.toMotd(); } catch (_e) { /* ignore */ }
             try {
                 if (typeof v.toString === 'function') {
                     const s = v.toString();
                     if (s && s !== '[object Object]') return s;
                 }
-            } catch (e) { /* ignore */ }
+            } catch (_e) { /* ignore */ }
             if (v.text !== undefined) return String(v.text);
             if (Array.isArray(v.extra)) return v.extra.map((e) => e.text || '').join('');
             return '';
@@ -69,7 +69,7 @@ module.exports = (botInstance) => {
                     };
                 })
                 .filter((r) => r.name || r.raw);
-        } catch (e) {
+        } catch (_e) {
             // 计分板解析失败不影响其他功能
         }
     };
@@ -82,7 +82,7 @@ module.exports = (botInstance) => {
                 health: bossBar.health,
                 color: bossBar.color
             };
-        } catch (e) {}
+        } catch (_e) {}
     };
 
     const onBossBarUpdated = (bossBar) => {
@@ -92,7 +92,7 @@ module.exports = (botInstance) => {
     const onBossBarDeleted = (bossBar) => {
         try {
             delete botInstance._scoreboard.bossBar[bossBar.entityUUID || bossBar.id];
-        } catch (e) {}
+        } catch (_e) {}
     };
 
     // 不注册 sidebar 事件监听：所有消费方（observe/moduleHandlers/script_engine）都经
@@ -104,7 +104,7 @@ module.exports = (botInstance) => {
             bot.on('bossBarCreated', onBossBarCreated);
             bot.on('bossBarUpdated', onBossBarUpdated);
             bot.on('bossBarDeleted', onBossBarDeleted);
-        } catch (e) {
+        } catch (_e) {
             // 低版本可能没有 bossBar 事件
         }
     }
@@ -139,6 +139,6 @@ module.exports = (botInstance) => {
             bot.removeListener('bossBarCreated', onBossBarCreated);
             bot.removeListener('bossBarUpdated', onBossBarUpdated);
             bot.removeListener('bossBarDeleted', onBossBarDeleted);
-        } catch (e) {}
+        } catch (_e) {}
     });
 };

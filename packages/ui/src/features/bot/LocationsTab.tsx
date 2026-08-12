@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { MapPin, Plus, Navigation, Trash2, Footprints, Terminal, ListChecks, Circle, Square, Globe, Pencil } from "lucide-react";
 import { Card, Button, Input } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";

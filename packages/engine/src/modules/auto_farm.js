@@ -2,7 +2,7 @@ const Vec3 = require('vec3');
 
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
-    const { goals, Movements } = require('mineflayer-pathfinder');
+    const { goals } = require('mineflayer-pathfinder');
 
     const CROP_DATABASE = {
         wheat: { name: '小麦', matureAge: 7, seedName: 'wheat_seeds', dropName: 'wheat', canUseBoneMeal: true },
@@ -33,7 +33,7 @@ module.exports = (botInstance) => {
         try {
             const props = block.getProperties ? block.getProperties() : null;
             age = props && props.age !== undefined ? props.age : block.metadata;
-        } catch (err) {
+        } catch (_err) {
             age = block.metadata;
         }
         return Number(age); // 字符串 "7" → 7；缺失 → NaN
@@ -90,7 +90,7 @@ module.exports = (botInstance) => {
                 bot.pathfinder.goto(goal).catch(() => {}),
                 new Promise((r) => setTimeout(r, 10000)),
             ]);
-            try { bot.pathfinder.setGoal(null); } catch (e) { /* 停下，别再推进 */ }
+            try { bot.pathfinder.setGoal(null); } catch (_e) { /* 停下，别再推进 */ }
             // 中途停了/断线 → 安全退出
             if (!botInstance.farmTask.active || !bot.entity) return false;
 
@@ -109,7 +109,7 @@ module.exports = (botInstance) => {
             const total = Object.values(botInstance.farmTask.stats.harvested).reduce((a, b) => a + b, 0);
             emitLog(`收割 ${CROP_DATABASE[cropType].name} (${position.x}, ${position.y}, ${position.z}) [总计: ${total}]`);
             return true;
-        } catch (err) {
+        } catch (_err) {
             // 寻路失败或挖掘失败，跳过这个作物
             return false;
         }
@@ -134,7 +134,7 @@ module.exports = (botInstance) => {
             await new Promise(resolve => setTimeout(resolve, 150));
 
             const farmlandBlock = bot.blockAt(position.offset(0, -1, 0));
-            if (!farmlandBlock || !farmlandBlock.name.includes('farmland')) return false;
+            if (!farmlandBlock?.name.includes('farmland')) return false;
 
             await bot.placeBlock(farmlandBlock, new Vec3(0, 1, 0));
 
@@ -143,7 +143,7 @@ module.exports = (botInstance) => {
             }
             botInstance.farmTask.stats.planted[cropType]++;
             return true;
-        } catch (err) {
+        } catch (_err) {
             return false;
         }
     };
@@ -151,7 +151,7 @@ module.exports = (botInstance) => {
     const useBoneMeal = async (position, cropType) => {
         if (!botInstance.farmTask.useBoneMeal) return false;
         const cropInfo = CROP_DATABASE[cropType];
-        if (!cropInfo || !cropInfo.canUseBoneMeal) return false;
+        if (!cropInfo?.canUseBoneMeal) return false;
         try {
             const boneMeal = bot.inventory.items().find(item =>
                 item.name === 'bone_meal' || item.name === 'dye' && item.metadata === 15 // 1.12.2 兼容
@@ -163,7 +163,7 @@ module.exports = (botInstance) => {
             await bot.activateBlock(block);
             botInstance.farmTask.stats.boneMealUsed++;
             return true;
-        } catch (err) {
+        } catch (_err) {
             return false;
         }
     };
@@ -171,7 +171,7 @@ module.exports = (botInstance) => {
     const boneMealImmatureCrops = async (cropType) => {
         if (!botInstance.farmTask.useBoneMeal) return;
         const cropInfo = CROP_DATABASE[cropType];
-        if (!cropInfo || !cropInfo.canUseBoneMeal) return;
+        if (!cropInfo?.canUseBoneMeal) return;
 
         const immatureCrops = bot.findBlocks({
             matching: (block) => {
@@ -192,7 +192,7 @@ module.exports = (botInstance) => {
 
     const farmCycle = async () => {
         if (!botInstance.farmTask.active || !bot.entity) return;
-        if (botInstance.isBodyBusy && botInstance.isBodyBusy()) return; // 用东西时让位一拍(auto_use)
+        if (botInstance.isBodyBusy?.()) return; // 用东西时让位一拍(auto_use)
         if (botInstance.farmTask._isRunning) return; // 防止重入
         botInstance.farmTask._isRunning = true;
 
@@ -335,6 +335,6 @@ module.exports = (botInstance) => {
             clearInterval(botInstance.farmTask.timer);
             botInstance.farmTask.timer = null;
         }
-        try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (e) {}
+        try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (_e) {}
     });
 };

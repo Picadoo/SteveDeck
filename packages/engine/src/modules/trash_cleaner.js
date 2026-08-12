@@ -59,7 +59,7 @@ module.exports = (botInstance) => {
                         }
                     }
                 }
-            } catch (e) { /* 校验失败不挡功能 */ }
+            } catch (_e) { /* 校验失败不挡功能 */ }
             emitLog("自动清理开启：将定期清理指定垃圾");
             // 每 10 秒扫描一次背包
             if (botInstance.trashCleanerTask.timer) {

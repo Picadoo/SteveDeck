@@ -17,10 +17,10 @@ module.exports = (botInstance) => {
   function disposeRun(st) {
     if (!st) return;
     for (const t of st._timers || []) {
-      try { clearInterval(t); clearTimeout(t); } catch (e) { /* ignore */ }
+      try { clearInterval(t); clearTimeout(t); } catch (_e) { /* ignore */ }
     }
     for (const pair of st._listeners || []) {
-      try { bot.removeListener(pair[0], pair[1]); } catch (e) { /* ignore */ }
+      try { bot.removeListener(pair[0], pair[1]); } catch (_e) { /* ignore */ }
     }
     st._timers = [];
     st._listeners = [];
@@ -64,11 +64,11 @@ module.exports = (botInstance) => {
             bot.once("goal_reached", onReached);
             st._listeners.push(["goal_reached", onReached]); // 登记：脚本停止时 disposeRun 能解绑
             timer = setTimeout(() => {
-              try { bot.pathfinder.setGoal(null); } catch (e) { /* ignore */ }
+              try { bot.pathfinder.setGoal(null); } catch (_e) { /* ignore */ }
               done(false); // 超时视为走不到：停掉寻路目标，别让 bot 无限撞墙
             }, Math.max(1000, Math.min(Number(timeoutMs) || 60000, 600000)));
             st._timers.push(timer);
-          } catch (e) {
+          } catch (_e) {
             resolve(false);
           }
         }),
@@ -140,7 +140,7 @@ module.exports = (botInstance) => {
       .then(() => {
         if (!st.cancelled) emitLog(`「${st.name}」结束`);
       })
-      .catch((e) => emitLog(`错误: ${e && e.message ? e.message : e}`))
+      .catch((e) => emitLog(`错误: ${e?.message ? e.message : e}`))
       .finally(() => {
         if (state === st) {
           state = null;

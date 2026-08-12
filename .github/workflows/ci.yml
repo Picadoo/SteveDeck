@@ -21,7 +21,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Lint：Biome（error 才阻断；存量风格告警不挡 CI）。放在 build 前，快速失败。
+      # Lint：Biome（warning 也阻断——存量告警已于 2026-08 清零，从零开始保持零）。放在 build 前，快速失败。
       - run: pnpm lint
       # 版本位点一致性（pnpm 包 / tauri.conf / Cargo）：漂移过一次（desktop 停 0.1.0/0.1.2），这里堵死
       - run: node scripts/bump-version.mjs --check

@@ -16,13 +16,13 @@ const DEFAULT_RULES = [
 // 注意：state.effects 必须按「效果名」键（如 { speed: { duration } }）——mineflayer 原生 entity.effects
 // 是按数字 id 键的，调用方（index.js 适配层）负责转成按名字键，否则 effect_missing 永远判「缺」。
 function triggerCondition(trigger, state) {
-  switch (trigger && trigger.type) {
+  switch (trigger?.type) {
     case 'food_below':
       return typeof state.food === 'number' && state.food < trigger.value;
     case 'health_below':
       return typeof state.health === 'number' && state.health < trigger.value;
     case 'effect_missing': {
-      const eff = state.effects && state.effects[trigger.effect];
+      const eff = state.effects?.[trigger.effect];
       if (!eff) return true; // 完全没有该 buff
       if (trigger.minRemainSec != null) {
         const remainSec = (eff.duration || 0) / 20; // mineflayer effect.duration 单位 tick
@@ -65,7 +65,7 @@ function evaluateRules(rules, state, cooldowns, hasItem) {
   for (const rule of rules) {
     if (!rule || rule.enabled === false) continue;
     if (!has(rule)) continue; // 没物品就跳过，给下一条机会
-    const last = (cooldowns && cooldowns[rule.id]) || 0;
+    const last = (cooldowns?.[rule.id]) || 0;
     const t = rule.trigger || {};
     if (t.type === 'interval') {
       const everyMs = (t.everySec || 0) * 1000;

@@ -129,7 +129,6 @@ interface EmitChain {
 
 class BotManager {
   private io!: IOServer;
-  private broadcaster!: EmitChain;
   private bots = new Map<string, BotInstance>(); // id -> BotInstance
   private configs: BotConfig[] = [];
   private recentChat = new Map<string, string[]>(); // id -> 服务器聊天
@@ -158,7 +157,6 @@ class BotManager {
 
   init(io: IOServer): void {
     this.io = io;
-    this.broadcaster = this.makeBroadcaster();
     this.configs = loadBots();
     logger.info(`[BotManager] 已加载 ${this.configs.length} 个机器人配置`);
   }
@@ -252,7 +250,9 @@ class BotManager {
   buildSummary(cfg: BotConfig): BotSummary {
     const inst = this.bots.get(cfg.id);
     const bot = inst?.bot;
-    const online = !!(bot && bot.entity);
+    // 显式带上 inst：TS 靠这个别名条件把后文的 inst 收窄为非空（bot 存在必然 inst 存在）
+    // biome-ignore lint/complexity/useOptionalChain: 换成 bot?.entity 会断掉 TS 的别名收窄链（inst 变 possibly undefined）
+    const online = !!(inst && bot && bot.entity);
     return {
       id: cfg.id,
       username: cfg.username,
@@ -276,15 +276,15 @@ class BotManager {
         : null,
       modules: inst
         ? {
-            combat: !!(inst.combatConfig && inst.combatConfig.enabled),
+            combat: !!(inst.combatConfig?.enabled),
             fishing: !!inst.fishingActive,
-            automine: !!(inst.autoMineTask && inst.autoMineTask.active),
-            autofarm: !!(inst.farmTask && inst.farmTask.active),
-            mobhunter: !!(inst.mobHunterTask && inst.mobHunterTask.active),
-            follow: !!(inst.followTask && inst.followTask.active),
-            trashcleaner: !!(inst.trashCleanerTask && inst.trashCleanerTask.active),
+            automine: !!(inst.autoMineTask?.active),
+            autofarm: !!(inst.farmTask?.active),
+            mobhunter: !!(inst.mobHunterTask?.active),
+            follow: !!(inst.followTask?.active),
+            trashcleaner: !!(inst.trashCleanerTask?.active),
             script:
-              (inst._runningScript && inst._runningScript.name) ||
+              (inst._runningScript?.name) ||
               (inst._customJs && `JS:${inst._customJs.name}`) ||
               null,
           }
@@ -295,10 +295,10 @@ class BotManager {
         ? inst.reconnectAttempts > 0 && !online && !inst.isExplicitlyQuitting && !inst._fatalReason
         : false,
       lite: !!cfg.settings?.lite,
-      fatalReason: (inst && inst._fatalReason) || null,
+      fatalReason: (inst?._fatalReason) || null,
       // 瘦身：summary 只带地点元信息（列表展示用），完整 steps 在编辑/录制时经 ack 单独获取——
       // 移动中每 2s 一次的 BOT_STATUS 若携带录制好的到达脚本（可达数 KB/地点）纯属重复广播。
-      savedLocations: (((inst && inst.savedLocations) || cfg.settings?.savedLocations || []) as any[]).map(
+      savedLocations: (((inst?.savedLocations) || cfg.settings?.savedLocations || []) as any[]).map(
         (l: any) => ({
           id: l.id,
           name: l.name,
@@ -363,7 +363,7 @@ class BotManager {
           logger.warn(`[BotManager] 导入已达单次上限 ${MAX_IMPORT_BOTS} 只，其余忽略`);
           break;
         }
-        if (!b || !b.username || !b.host) continue;
+        if (!b?.username || !b.host) continue;
         if (this.configs.some((c) => c.username === b.username && c.host === b.host)) continue; // 已存在则跳过
         if (validateBotInput(b)) continue; // 非法配置(端口/长度)跳过
         const cfg: BotConfig = { ...b, id: randomUUID() }; // 新 id，避免与现有冲突
@@ -383,7 +383,7 @@ class BotManager {
         }
       }
       this.saveScripts(lib);
-      this.eachInstance((inst) => inst.preloadScripts && inst.preloadScripts(lib));
+      this.eachInstance((inst) => inst.preloadScripts?.(lib));
     }
     let customScripts = 0;
     if (bundle.customScripts && typeof bundle.customScripts === "object") {

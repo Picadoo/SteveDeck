@@ -109,7 +109,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               return (
                 <div key={g.host}>
                   {/* 服务器分组头 */}
-                  <button
+                  <button type="button"
                     onClick={() => setCollapsed((c) => ({ ...c, [g.host]: !c[g.host] }))}
                     className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-[11px] font-medium text-muted hover:text-fg"
                   >
@@ -136,7 +136,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                         const open = fakeOpen[g.host] || g.fake.some((b) => b.id === selectedId);
                         return (
                           <li>
-                            <button
+                            <button type="button"
                               onClick={() => setFakeOpen((o) => ({ ...o, [g.host]: !open }))}
                               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[11px] text-muted transition-colors hover:bg-surface-2/60 hover:text-fg"
                               title="批量假人（氛围组），点击展开/收起"
@@ -207,7 +207,7 @@ const BotRow = memo(function BotRow({
 }) {
   const pct = healthPct(bot);
   return (
-    <button
+    <button type="button"
       onClick={() => onSelect(bot.id)}
       className={cn(
         "group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",

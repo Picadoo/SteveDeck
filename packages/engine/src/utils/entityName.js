@@ -33,7 +33,7 @@ function flattenChatComponent(node) {
 function entityDisplayName(entity, fallback = '') {
   if (!entity) return fallback;
   try {
-    const cn = entity.metadata && entity.metadata[2];
+    const cn = entity.metadata?.[2];
     if (typeof cn === 'string' && cn.length > 0) {
       // 老服务器可能把 JSON 字符串原样塞进名牌：顺手洗掉 {}" 残渣
       const cleaned = stripMcCodes(cn).replace(/[{}"]/g, '').trim();
@@ -43,7 +43,7 @@ function entityDisplayName(entity, fallback = '') {
       const cleaned = stripMcCodes(flattenChatComponent(cn)).trim();
       if (cleaned) return cleaned;
     }
-  } catch (e) { /* ignore */ }
+  } catch (_e) { /* ignore */ }
   return stripMcCodes(entity.customName || entity.displayName || entity.name || '').trim() || fallback;
 }
 

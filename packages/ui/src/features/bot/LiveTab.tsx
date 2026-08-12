@@ -199,8 +199,8 @@ function LiveTab({ bot }: { bot: BotSummary }) {
             {containers.length === 0 ? (
               <p className="text-xs text-muted">附近 32 格没有箱子（菜单类用聊天命令打开）</p>
             ) : (
-              containers.slice(0, 12).map((c, i) => (
-                <div key={i} className="flex items-center justify-between rounded-lg bg-surface-2/50 px-2.5 py-1.5 text-sm">
+              containers.slice(0, 12).map((c) => (
+                <div key={`${c.x},${c.y},${c.z}`} className="flex items-center justify-between rounded-lg bg-surface-2/50 px-2.5 py-1.5 text-sm">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <Boxes className="h-3.5 w-3.5 shrink-0 text-muted" />
                     <span className="truncate">{c.name}</span>

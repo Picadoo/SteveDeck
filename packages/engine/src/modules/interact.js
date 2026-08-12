@@ -1,4 +1,4 @@
-const Vec3 = require('vec3');
+const _Vec3 = require('vec3');
 
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
@@ -8,12 +8,12 @@ module.exports = (botInstance) => {
     const nameMotd = (v) => {
         if (v == null) return '';
         if (typeof v === 'object') {
-            try { if (typeof v.toMotd === 'function') return v.toMotd(); } catch (e) { /* ignore */ }
-            try { const s = v.toString(); if (s && s !== '[object Object]') return s; } catch (e) { /* ignore */ }
+            try { if (typeof v.toMotd === 'function') return v.toMotd(); } catch (_e) { /* ignore */ }
+            try { const s = v.toString(); if (s && s !== '[object Object]') return s; } catch (_e) { /* ignore */ }
             // JSON 聊天组件 {text, extra}
             if (typeof v.text === 'string' || Array.isArray(v.extra)) {
                 const flat = (v.text || '') +
-                    (Array.isArray(v.extra) ? v.extra.map(e => (typeof e === 'string' ? e : (e && e.text) || '')).join('') : '');
+                    (Array.isArray(v.extra) ? v.extra.map(e => (typeof e === 'string' ? e : (e?.text) || '')).join('') : '');
                 if (flat) return flat;
             }
             return '';
@@ -23,7 +23,7 @@ module.exports = (botInstance) => {
 
     // 返回附近实体数组（供交互页内联显示，不再刷日志）
     botInstance.scanNearbyNPCs = () => {
-        if (!bot || !bot.entities || !bot.entity) return [];
+        if (!bot?.entities || !bot.entity) return [];
         if (!mcData) mcData = botInstance.getMcData();
 
         // 全息文字判定（通用：按结构特征，不按名字）。服务器用「隐身/marker 盔甲架 + 自定义名」做悬浮全息字。
@@ -46,7 +46,7 @@ module.exports = (botInstance) => {
             if (dist >= 32) continue;
 
             let typeName = entity.name || entity.type;
-            if (!isNaN(typeName)) typeName = mcData.entities[typeName]?.name || `id_${typeName}`;
+            if (!Number.isNaN(Number(typeName))) typeName = mcData.entities[typeName]?.name || `id_${typeName}`;
             const holo = isHologram(entity, typeName);
             // 自定义名牌：1.12.2 名牌在 metadata[2]（mineflayer 不一定填 customName），其次 customName，最后玩家名。
             // 保留颜色码（nameRaw）供前端彩色渲染，name 为去色纯文本。
@@ -61,7 +61,7 @@ module.exports = (botInstance) => {
             // 真玩家的账号名必为合法 MC 用户名 [A-Za-z0-9_]{1,16}；NPC 名常含中文/星号/空格 → 判为 NPC 不判真人。
             // （等级前缀/称号是显示名，不影响 entity.username，故有称号的真玩家仍判真人。）
             const VALID_MC_NAME = /^[A-Za-z0-9_]{1,16}$/;
-            const realPlayer = entity.type === 'player' && !!(bot.players && bot.players[entity.username]) && VALID_MC_NAME.test(entity.username || '');
+            const realPlayer = entity.type === 'player' && !!(bot.players?.[entity.username]) && VALID_MC_NAME.test(entity.username || '');
 
             out.push({
                 id: entity.id,
@@ -107,14 +107,14 @@ module.exports = (botInstance) => {
                 bot.pathfinder.goto(new goals.GoalNear(target.position.x, target.position.y, target.position.z, 2.5)).catch(() => {}),
                 new Promise((r) => setTimeout(r, 15000)),
             ]);
-            try { bot.pathfinder.setGoal(null); } catch (e) { /* 停下，别再推进 */ }
+            try { bot.pathfinder.setGoal(null); } catch (_e) { /* 停下，别再推进 */ }
 
             // 命中点取实体中心；模拟真实客户端右键：先 interact_at(mouse:2) 再 interact(mouse:0)
             const at = target.position.offset(0, (target.height || 1.8) / 2, 0);
             await bot.lookAt(at, true);
             bot.swingArm('right');
-            try { await bot.activateEntityAt(target, at); } catch (e) { /* 部分服不支持 at，忽略 */ }
-            try { await bot.activateEntity(target); } catch (e) { /* 忽略 */ }
+            try { await bot.activateEntityAt(target, at); } catch (_e) { /* 部分服不支持 at，忽略 */ }
+            try { await bot.activateEntity(target); } catch (_e) { /* 忽略 */ }
 
             botInstance.io.to(botInstance._room).to('admin').emit('log', {
                 user: bot.username,

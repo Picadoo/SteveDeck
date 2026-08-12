@@ -63,7 +63,7 @@ function Console({ botId }: { botId: string }) {
       <div className="mb-2 flex shrink-0 items-center gap-2">
         <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-[11px]">
           {(["all", "chat", "op"] as const).map((v) => (
-            <button
+            <button type="button"
               key={v}
               onClick={() => setLevel(v)}
               className={cn(
@@ -88,7 +88,7 @@ function Console({ botId }: { botId: string }) {
                 <span className="font-mono text-[10px] text-muted">
                   {shown.length}/{byLevel.length}
                 </span>
-                <button
+                <button type="button"
                   onClick={() => setFilter("")}
                   className="rounded p-0.5 text-muted transition-colors hover:bg-surface-2 hover:text-fg"
                   title="清除过滤"
@@ -221,8 +221,8 @@ function SegmentLine({ segments, botId }: { segments: ChatSegment[]; botId: stri
         const body = <McText text={s.text} />;
         if (s.click) {
           return (
-            <button
-              key={i}
+            // biome-ignore lint/suspicious/noArrayIndexKey: 聊天分段无状态且随消息行整体重建，下标即身份
+            <button key={i}
               type="button"
               onClick={() => fire(s)}
               title={s.hover || `点击：${s.click.value}`}
@@ -237,8 +237,8 @@ function SegmentLine({ segments, botId }: { segments: ChatSegment[]; botId: stri
           );
         }
         return (
-          <span
-            key={i}
+          // biome-ignore lint/suspicious/noArrayIndexKey: 聊天分段无状态且随消息行整体重建，下标即身份
+          <span key={i}
             title={s.hover || undefined}
             className={s.hover ? "cursor-help underline decoration-dotted decoration-muted underline-offset-2" : undefined}
             style={baseStyle}
@@ -266,7 +266,7 @@ function ToolBtn({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       title={title}
       className={cn(

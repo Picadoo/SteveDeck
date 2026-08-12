@@ -13,8 +13,8 @@ module.exports = (botInstance) => {
     };
 
     const attackInterval = setInterval(() => {
-        if (!bot || !bot.entity || !botInstance.combatConfig.enabled) return;
-        if (botInstance.isBodyBusy && botInstance.isBodyBusy()) return; // 用东西时让位一拍(auto_use)
+        if (!bot?.entity || !botInstance.combatConfig.enabled) return;
+        if (botInstance.isBodyBusy?.()) return; // 用东西时让位一拍(auto_use)
 
         const cfg = botInstance.combatConfig;
         const p = bot.entity.position;
@@ -25,7 +25,7 @@ module.exports = (botInstance) => {
         const candidates = [];
         for (const id in entities) {
             const e = entities[id];
-            if (!e || !e.position || e === bot.entity) continue;
+            if (!e?.position || e === bot.entity) continue;
 
             const isPlayer = e.type === 'player';
             // 兼容不同版本的实体类型标识
@@ -51,7 +51,7 @@ module.exports = (botInstance) => {
                     bot.lookAt(t.position.offset(0, (t.height || 1.8) / 2, 0), true);
                     bot.attack(t);
                 }
-            } catch (err) {
+            } catch (_err) {
                 // 实体在攻击瞬间消失，忽略
             }
         }
@@ -70,7 +70,7 @@ module.exports = (botInstance) => {
             if (packet.entityId !== bot.entity.id) return;
             bot.entity.velocity.x = 0;
             bot.entity.velocity.z = 0;
-        } catch (err) {
+        } catch (_err) {
             // 忽略
         }
     };

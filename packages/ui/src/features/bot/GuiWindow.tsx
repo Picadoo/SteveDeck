@@ -185,7 +185,7 @@ function SlotGrid({
         const filler = !!it && /glass_pane|stained_glass/i.test(it.id || "");
         const active = !!it && !filler;
         return (
-          <button
+          <button type="button"
             key={slotIdx}
             onClick={(e) => onClick(slotIdx, 0, e.shiftKey ? 1 : 0)}
             onContextMenu={(e) => {
@@ -245,6 +245,7 @@ function ItemTip({ hover, onEnter, onLeave }: { hover: Hover; onEnter: () => voi
   }, [hover.x, hover.y, it]);
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: 悬浮提示的悬停保持（防止移入提示时消失），无点击语义
     <div
       ref={ref}
       onMouseEnter={onEnter}

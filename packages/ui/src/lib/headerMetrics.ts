@@ -52,7 +52,7 @@ export function extractNumber(clean: string): { value: number; start: number; en
   const m = NUM_RE.exec(clean);
   if (!m) return null;
   const v0 = parseFloat(m[1].replace(/[,，]/g, ""));
-  if (!isFinite(v0)) return null;
+  if (!Number.isFinite(v0)) return null;
   const value = m[2] ? v0 * (UNIT[m[2]] ?? 1) : v0;
   return { value, start: m.index, end: m.index + m[0].length };
 }

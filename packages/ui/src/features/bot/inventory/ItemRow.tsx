@@ -132,6 +132,7 @@ const ItemRow = memo(function ItemRow({
         item.held ? "bg-accent/10 ring-1 ring-accent/40" : "bg-surface-2/50",
       )}
     >
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: 悬停展示物品提示的热区，无点击语义 */}
       <div
         className="flex min-w-0 flex-1 items-start gap-2.5"
         onMouseMove={hasTip ? onMove : undefined}
@@ -150,8 +151,8 @@ const ItemRow = memo(function ItemRow({
           </div>
           {item.enchants && item.enchants.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
-              {item.enchants.map((e, i) => (
-                <span key={i} className="rounded bg-accent/12 px-1.5 py-px text-[10px] text-accent">
+              {item.enchants.map((e) => (
+                <span key={e} className="rounded bg-accent/12 px-1.5 py-px text-[10px] text-accent">
                   {e}
                 </span>
               ))}
@@ -161,6 +162,7 @@ const ItemRow = memo(function ItemRow({
       </div>
 
       {tipOpen && (
+        // biome-ignore lint/a11y/noStaticElementInteractions: 悬浮提示的悬停保持（防止移入提示时消失），无点击语义
         <div
           ref={tipRef}
           onMouseEnter={cancelClose}
@@ -209,7 +211,7 @@ const ItemRow = memo(function ItemRow({
 
 function SlotBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
   return (
-    <button
+    <button type="button"
       title={title}
       aria-label={title}
       onClick={onClick}

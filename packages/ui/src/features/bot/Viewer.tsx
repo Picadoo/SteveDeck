@@ -277,7 +277,7 @@ export default function Viewer({
     if (!started) return;
     const onMsg = (e: MessageEvent) => {
       const d = e.data;
-      if (!d || d.type !== "mcbot:camYaw" || typeof d.yaw !== "number") return;
+      if (d?.type !== "mcbot:camYaw" || typeof d.yaw !== "number") return;
       if (walkRef.current) cmd.control.face(bot.id, d.yaw);
     };
     window.addEventListener("message", onMsg);
@@ -470,7 +470,7 @@ export default function Viewer({
           </select>
           {/* 驾驶(操控)时人称被绑定为第一人称，隐藏独立切换避免破坏绑定；观察时才可自由切看法 */}
           {!walk && (
-            <button
+            <button type="button"
               onClick={() => setFirstPerson((v) => !v)}
               title={firstPerson ? "切第三人称（自由转镜头）" : "切第一人称（机器人视线）"}
               className="flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-[11px] text-white transition-colors hover:bg-black/75"
@@ -487,7 +487,7 @@ export default function Viewer({
             </button>
           )}
           {!popout && onPopout && (
-            <button
+            <button type="button"
               onClick={onPopout}
               title="放大"
               className="rounded-md bg-black/55 px-2 py-1 text-white transition-colors hover:bg-black/75"
@@ -622,7 +622,7 @@ export default function Viewer({
               <div key={m.at} className="flex items-center justify-between gap-2 rounded bg-surface px-2 py-1 text-xs">
                 <span className="font-mono tabular-nums text-muted">#{i + 1}</span>
                 <span className="min-w-0 flex-1 truncate font-mono">{m.x}, {m.y}, {m.z}</span>
-                <button
+                <button type="button"
                   title="前往此点"
                   disabled={!bot.online}
                   onClick={async () => {
@@ -633,7 +633,7 @@ export default function Viewer({
                 >
                   <Navigation className="h-3.5 w-3.5" />
                 </button>
-                <button
+                <button type="button"
                   title="删除"
                   onClick={() => removeMark(m.at)}
                   className="rounded p-1 text-muted transition hover:bg-surface-2 hover:text-danger active:scale-90"
@@ -675,7 +675,7 @@ export default function Viewer({
             <span className="px-1 text-[11px] text-muted">本服还没有脚本（「脚本」标签可新建/录制）</span>
           ) : (
             scriptList.slice(0, 12).map((s) => (
-              <button
+              <button type="button"
                 key={s.name}
                 disabled={!bot.online}
                 onClick={async () => {

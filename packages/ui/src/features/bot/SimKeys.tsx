@@ -129,8 +129,8 @@ export default function SimKeys({ bot }: { bot: BotSummary }) {
         <div className="mb-1 text-[10px] font-medium text-muted">选快捷栏</div>
         <div className="grid grid-cols-9 gap-1">
           {Array.from({ length: 9 }, (_, i) => (
-            <Key
-              key={i}
+            // biome-ignore lint/suspicious/noArrayIndexKey: 固定 9 格快捷栏，下标即槽位号
+            <Key key={i}
               label={i + 1}
               active={slot === i}
               disabled={disabled}

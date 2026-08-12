@@ -6,7 +6,7 @@ module.exports = (botInstance) => {
     const checkInterval = setInterval(() => {
         const bot = botInstance.bot;
         // 只有机器人在线且已进入世界才执行
-        if (!bot || !bot.entity) return;
+        if (!bot?.entity) return;
 
         const now = new Date();
         const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -18,7 +18,7 @@ module.exports = (botInstance) => {
         lastMinute = currentTime;
 
         // 获取当前账号的定时配置
-        const schedules = (botInstance.config.settings && botInstance.config.settings.schedules) || [];
+        const schedules = (botInstance.config.settings?.schedules) || [];
 
         schedules.forEach(s => {
             if (s.time === currentTime) {

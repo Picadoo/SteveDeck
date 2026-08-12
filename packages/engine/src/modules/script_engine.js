@@ -108,7 +108,7 @@ module.exports = (botInstance) => {
         return new Promise((resolve) => {
             let regex = null;
             if (isRegex) {
-                try { regex = new RegExp(pattern); } catch (e) { /* fallback to plain */ }
+                try { regex = new RegExp(pattern); } catch (_e) { /* fallback to plain */ }
             }
             const timer = setTimeout(() => {
                 bot.removeListener('message', onMsg);
@@ -143,12 +143,12 @@ module.exports = (botInstance) => {
     // ==================== 条件解析（支持 && || ! 括号） ====================
     function evalCondition(cond) {
         if (!cond || cond === 'always') return true;
-        if (!bot || !bot.entity) return false;
+        if (!bot?.entity) return false;
         try {
             const resolved = resolveVars(String(cond)).trim();
             if (!resolved) return true;
             return evalExpr(resolved);
-        } catch (e) {
+        } catch (_e) {
             emitLog(`条件解析失败: ${cond}`);
             return false;
         }
@@ -195,7 +195,7 @@ module.exports = (botInstance) => {
         m = c.match(/^holding\s+(.+)$/);
         if (m) {
             const held = bot.heldItem;
-            return held && held.name.toLowerCase().includes(m[1].trim().toLowerCase());
+            return held?.name.toLowerCase().includes(m[1].trim().toLowerCase());
         }
 
         if (c === 'gui_open') return !!bot.currentWindow;
@@ -222,13 +222,13 @@ module.exports = (botInstance) => {
         if (m) {
             const varVal = botInstance._scriptVars[m[1]];
             const rawCmp = m[3].trim();
-            const cmpVal = isNaN(rawCmp) ? rawCmp : parseFloat(rawCmp);
+            const cmpVal = Number.isNaN(Number(rawCmp)) ? rawCmp : parseFloat(rawCmp);
             // 相等/不等按「字符串形态」宽松比较：脚本变量常是字符串 "5" 与字面量 5 混比，
             // 转字符串再 === 既保留原来的宽松意图，又避免 == 的隐式转换陷阱（NaN/null/布尔等）。
             if (m[2] === '==' || m[2] === '=') return String(varVal) === String(cmpVal);
             if (m[2] === '!=') return String(varVal) !== String(cmpVal);
             const aNum = Number(varVal), bNum = Number(cmpVal);
-            if (!isNaN(aNum) && !isNaN(bNum)) return compare(aNum, m[2], bNum);
+            if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) return compare(aNum, m[2], bNum);
             return false;
         }
 
@@ -299,7 +299,7 @@ module.exports = (botInstance) => {
                     break;
                 }
                 const x = Number(step.x), y = Number(step.y), z = Number(step.z);
-                if (isNaN(x) || isNaN(y) || isNaN(z)) throw new Error('goto 坐标无效');
+                if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z)) throw new Error('goto 坐标无效');
                 emitLog(`走到 (${x}, ${y}, ${z})`);
                 const goal = new goals.GoalBlock(Math.floor(x), Math.floor(y), Math.floor(z));
                 await gotoWithTimeout(goal, Number(step.timeout) * 1000);
@@ -361,7 +361,7 @@ module.exports = (botInstance) => {
             case 'cmd': {
                 const text = step.text || step.cmd || '';
                 if (!text) break;
-                const final = text.startsWith('/') ? text : '/' + text;
+                const final = text.startsWith('/') ? text : `/${text}`;
                 if (isChatBlocked(final)) { emitLog(`命令被安全策略拦截: ${final}`); break; }
                 emitLog(`命令: ${final}`);
                 bot.chat(final);
@@ -480,8 +480,8 @@ module.exports = (botInstance) => {
                         const bDmg = mc.items[b.type]?.attackDamage || (b.name.includes('sword') ? 5 : 3);
                         return bDmg - aDmg;
                     });
-                } catch (e) {
-                    items.sort((a, b) => (a.name.includes('sword') ? -1 : 1));
+                } catch (_e) {
+                    items.sort((a, _b) => (a.name.includes('sword') ? -1 : 1));
                 }
                 emitLog(`装备最佳武器: ${items[0].name}`);
                 await bot.equip(items[0], 'hand');
@@ -504,12 +504,12 @@ module.exports = (botInstance) => {
                             const pos = bot.findBlock ? bot.findBlock({ matching: ids, maxDistance: 32 }) : null;
                             if (pos) block = pos;
                         }
-                    } catch (e) { /* 忽略，落到准星方块 */ }
+                    } catch (_e) { /* 忽略，落到准星方块 */ }
                 }
                 if (!block && bot.blockAtCursor) block = bot.blockAtCursor(5);
                 if (!block) { emitLog('没有可参照的方块（填方块名或先看向方块）'); break; }
                 let tool = null;
-                try { tool = bot.pathfinder.bestHarvestTool(block); } catch (e) { /* 无可用工具 */ }
+                try { tool = bot.pathfinder.bestHarvestTool(block); } catch (_e) { /* 无可用工具 */ }
                 if (tool) {
                     emitLog(`为 ${block.name} 装备工具: ${tool.name}`);
                     await bot.equip(tool, 'hand');
@@ -562,7 +562,7 @@ module.exports = (botInstance) => {
                     } catch (e) { emitLog(`存入失败 ${item.name}: ${e.message}`); }
                 }
                 emitLog(`已存入 ${n} 种物品`);
-                try { if (bot.currentWindow) await bot.closeWindow(bot.currentWindow); } catch (e) { /* ignore */ }
+                try { if (bot.currentWindow) await bot.closeWindow(bot.currentWindow); } catch (_e) { /* ignore */ }
                 break;
             }
 
@@ -597,7 +597,7 @@ module.exports = (botInstance) => {
                     const entity = findTarget();
                     if (!entity) { emitLog('没有可攻击目标'); break; }
                     emitLog(`攻击 ${entity.name || entity.username || entity.id} (${i + 1}/${count})`);
-                    try { bot.attack(entity); } catch (e) {}
+                    try { bot.attack(entity); } catch (_e) {}
                     if (i < count - 1) await sleep(interval);
                 }
                 break;
@@ -623,7 +623,7 @@ module.exports = (botInstance) => {
                 for (const item of items) {
                     if (ctx.aborted || !bot.entity) break;
                     try { await bot.toss(item.type, item.metadata, item.count); n++; }
-                    catch (e) { /* 个别失败不阻塞 */ }
+                    catch (_e) { /* 个别失败不阻塞 */ }
                 }
                 emitLog(`已丢弃 ${n} 种物品${keepKws.length ? `（保留: ${keepKws.join('/')}）` : ''}`);
                 break;
@@ -689,7 +689,7 @@ module.exports = (botInstance) => {
                         await sleep(Math.min(200, end - Date.now()));
                     }
                 } finally {
-                    try { bot.setControlState(key, false); } catch (e) { /* bot 可能已销毁 */ }
+                    try { bot.setControlState(key, false); } catch (_e) { /* bot 可能已销毁 */ }
                 }
                 break;
             }
@@ -787,7 +787,7 @@ module.exports = (botInstance) => {
                         val = evalMath(val.slice(1));
                     } else {
                         const numVal = Number(val);
-                        if (val.trim() !== '' && !isNaN(numVal) && val.trim() === String(numVal)) val = numVal;
+                        if (val.trim() !== '' && !Number.isNaN(numVal) && val.trim() === String(numVal)) val = numVal;
                     }
                 }
                 botInstance._scriptVars[varName] = val;
@@ -882,9 +882,9 @@ module.exports = (botInstance) => {
                     ids = Object.values(mc.blocksByName || {})
                         .filter(b => b.name.toLowerCase().includes(kw))
                         .map(b => b.id);
-                } catch (e) { /* mcData 不可用走名字匹配 */ }
+                } catch (_e) { /* mcData 不可用走名字匹配 */ }
                 const found = bot.findBlock({
-                    matching: ids.length ? ids : (b => b && b.name && b.name.toLowerCase().includes(kw)),
+                    matching: ids.length ? ids : (b => b?.name?.toLowerCase().includes(kw)),
                     maxDistance: maxDist,
                 });
                 if (!found) { emitLog(`${maxDist}格内没有 ${step.block}`); break; }
@@ -895,7 +895,7 @@ module.exports = (botInstance) => {
                 const block = bot.blockAt(pos);
                 if (!block || block.name !== found.name) { emitLog('目标方块已消失/变化'); break; }
                 let tool = null;
-                try { tool = bot.pathfinder.bestHarvestTool(block); if (tool) await bot.equip(tool, 'hand'); } catch (e) { /* 无合适工具 */ }
+                try { tool = bot.pathfinder.bestHarvestTool(block); if (tool) await bot.equip(tool, 'hand'); } catch (_e) { /* 无合适工具 */ }
                 if (ctx.aborted || !bot.entity) return;
                 const canDig = typeof bot.canDigBlock === 'function' ? bot.canDigBlock(block) : true;
                 if (!canDig) { emitLog(`当前无法挖掘 ${block.name}（工具/距离不满足）`); break; }
@@ -911,7 +911,7 @@ module.exports = (botInstance) => {
                 const kw = String(step.item || step.block || '').toLowerCase().trim();
                 if (!kw) { emitLog('place 缺少物品名'); break; }
                 const px = Math.floor(Number(step.x)), py = Math.floor(Number(step.y)), pz = Math.floor(Number(step.z));
-                if (isNaN(px) || isNaN(py) || isNaN(pz)) { emitLog('place 需要 x/y/z 坐标'); break; }
+                if (Number.isNaN(px) || Number.isNaN(py) || Number.isNaN(pz)) { emitLog('place 需要 x/y/z 坐标'); break; }
                 const item = bot.inventory.items().find(
                     i => i.name.toLowerCase().includes(kw) || customName(i).toLowerCase().includes(kw),
                 );
@@ -921,7 +921,7 @@ module.exports = (botInstance) => {
                 const { Vec3 } = require('vec3');
                 const targetPos = new Vec3(px, py, pz);
                 const targetBlock = bot.blockAt(targetPos);
-                if (!targetBlock || targetBlock.boundingBox !== 'empty') {
+                if (targetBlock?.boundingBox !== 'empty') {
                     emitLog(`(${px}, ${py}, ${pz}) 不是空位，无法放置`); break;
                 }
                 // 六个面找实体邻块当参照；face = 参照块指向目标格的方向
@@ -953,7 +953,7 @@ module.exports = (botInstance) => {
                     itemDef = mc.itemsByName[kw]
                         || Object.values(mc.itemsByName).find(i => i.name.includes(kw))
                         || Object.values(mc.itemsByName).find(i => (i.displayName || '').toLowerCase().includes(kw));
-                } catch (e) { /* fallthrough */ }
+                } catch (_e) { /* fallthrough */ }
                 if (!itemDef) { emitLog(`未知物品: ${step.item}`); break; }
                 let table = null;
                 let recipes = bot.recipesFor(itemDef.id, null, 1, null) || [];
@@ -963,7 +963,7 @@ module.exports = (botInstance) => {
                         const mc = botInstance.getMcData();
                         const tableId = mc.blocksByName.crafting_table?.id;
                         if (tableId != null) table = bot.findBlock({ matching: tableId, maxDistance: 16 });
-                    } catch (e) { /* ignore */ }
+                    } catch (_e) { /* ignore */ }
                     if (table) {
                         const tp = table.position;
                         emitLog(`前往工作台 (${tp.x}, ${tp.y}, ${tp.z})`);
@@ -995,7 +995,7 @@ module.exports = (botInstance) => {
         for (let i = 0; i < steps.length; i++) {
             if (ctx.aborted || !bot.entity) return;
             // auto_use 让位：自动使用正在用东西(吃/喝 ~1.6s)时，脚本在步与步之间等它落下，避免互相打断
-            while (botInstance.isBodyBusy && botInstance.isBodyBusy() && !ctx.aborted && bot.entity) {
+            while (botInstance.isBodyBusy?.() && !ctx.aborted && bot.entity) {
                 await sleep(50);
             }
             if (ctx.aborted || !bot.entity) return;
@@ -1007,7 +1007,7 @@ module.exports = (botInstance) => {
             }
 
             const step = steps[i];
-            if (!step || !step.do) continue;
+            if (!step?.do) continue;
             if (step.disabled) continue;        // 编辑器禁用的步骤跳过
             if (step.do === 'note') continue;   // 注释块不执行
             const stepPath = [...basePath, i];
@@ -1194,7 +1194,7 @@ module.exports = (botInstance) => {
     }
 
     function checkTriggers() {
-        if (!bot || !bot.entity) return;
+        if (!bot?.entity) return;
         const running = botInstance._runningScript;
         if (running) {
             // 槽位被占：只评估保命触发器。保命脚本自身运行中不再被抢占（防互相抢占死循环）。
@@ -1209,7 +1209,7 @@ module.exports = (botInstance) => {
                         preemptThenRun(name);
                         return;
                     }
-                } catch (e) {}
+                } catch (_e) {}
             }
             return;
         }
@@ -1222,7 +1222,7 @@ module.exports = (botInstance) => {
                     runScript(name, { urgent: URGENT_TRIGGERS.has(script.trigger.type) });
                     return;
                 }
-            } catch (e) {}
+            } catch (_e) {}
         }
     }
 
@@ -1295,7 +1295,7 @@ module.exports = (botInstance) => {
     const onChatForTrigger = (jsonMsg) => {
         try {
             const raw = jsonMsg.toString().replace(/§./gi, '');
-            for (const [name, script] of Object.entries(botInstance._scripts)) {
+            for (const [_name, script] of Object.entries(botInstance._scripts)) {
                 const pat = script.trigger?.pattern || script.trigger?.value; // 编辑器存 value
                 if (script.trigger?.type === 'chat_match' && pat) {
                     if (raw.includes(pat)) {
@@ -1303,7 +1303,7 @@ module.exports = (botInstance) => {
                     }
                 }
             }
-        } catch (e) {}
+        } catch (_e) {}
     };
 
     const onRespawnForTrigger = () => { botInstance._justRespawned = true; };
@@ -1321,7 +1321,7 @@ module.exports = (botInstance) => {
 
     // ==================== 公开 API ====================
     botInstance.saveScript = (script, silent) => {
-        if (!script || !script.name) return { success: false, error: '脚本缺少名称' };
+        if (!script?.name) return { success: false, error: '脚本缺少名称' };
         if (!script.steps || !Array.isArray(script.steps)) return { success: false, error: '脚本缺少 steps' };
         botInstance._scripts[script.name] = script;
         if (!silent) emitLog(`脚本已保存: ${script.name}`);
@@ -1342,7 +1342,7 @@ module.exports = (botInstance) => {
     botInstance.startScript = (name) => {
         // 手动启动的“循环脚本”持久化标记：bot 断线重连后自动续跑（无人值守关键）
         const script = botInstance._scripts[name];
-        if (script && script.loop && !botInstance._runningScript) {
+        if (script?.loop && !botInstance._runningScript) {
             botInstance.config.settings = botInstance.config.settings || {};
             botInstance.config.settings.activeScript = name;
             if (typeof botInstance.saveConfig === 'function') botInstance.saveConfig();
@@ -1354,12 +1354,12 @@ module.exports = (botInstance) => {
         if (botInstance._runningScript) {
             const name = botInstance._runningScript.name;
             botInstance._runningScript.aborted = true;
-            try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (e) {}
-            try { bot.clearControlStates(); } catch (e) {}
+            try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (_e) {}
+            try { bot.clearControlStates(); } catch (_e) {}
             emitLog(`手动停止脚本: ${name}`);
         }
         // 清除断线自动恢复标记，避免下次重连又把它拉起来
-        if (botInstance.config.settings && botInstance.config.settings.activeScript) {
+        if (botInstance.config.settings?.activeScript) {
             botInstance.config.settings.activeScript = null;
             if (typeof botInstance.saveConfig === 'function') botInstance.saveConfig();
         }

@@ -35,7 +35,7 @@ function newId(): string {
   } catch {
     /* ignore */
   }
-  return "r" + Math.random().toString(36).slice(2, 10);
+  return `r${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function blankRule(): AutoUseRule {
@@ -175,7 +175,7 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
                   !rule.enabled && "opacity-50",
                 )}
               >
-                <button
+                <button type="button"
                   onClick={() => toggleRule(rule.id)}
                   className={cn("shrink-0", rule.enabled ? "text-success" : "text-muted")}
                   title={rule.enabled ? "停用" : "启用"}
@@ -188,14 +188,14 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
                     {rule.cooldownSec ? <Badge tone="neutral">CD {rule.cooldownSec}s</Badge> : null}
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setEditing(rule)}
                   className="shrink-0 rounded p-1 text-muted hover:text-fg"
                   title="编辑"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
-                <button
+                <button type="button"
                   onClick={() => del(rule.id)}
                   className="shrink-0 rounded p-1 text-muted hover:text-danger"
                   title="删除"
@@ -252,7 +252,7 @@ function RuleEditor({
   const t = draft.trigger;
   const m = draft.match;
   const valid =
-    (t.type === "effect_missing" ? !!(t.effect && t.effect.trim()) : true) &&
+    (t.type === "effect_missing" ? !!(t.effect?.trim()) : true) &&
     (m.by === "category" || String(m.value).toString().length > 0 || m.by === "slot");
 
   return (
@@ -404,9 +404,10 @@ function NumIn({
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <label className="mb-1 block text-xs font-medium text-muted">{label}</label>
+    // biome-ignore lint/a11y/noLabelWithoutControl: children 即控件，包裹式关联在运行时成立（点标题可聚焦控件）
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }

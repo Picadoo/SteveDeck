@@ -52,7 +52,7 @@ function parse(input: string): Seg[] {
     // &#RRGGBB / §#RRGGBB
     if (isFmt(ch) && input[i + 1] === "#" && /^[0-9a-fA-F]{6}$/.test(input.slice(i + 2, i + 8))) {
       flush();
-      cur = { ...cur, color: "#" + input.slice(i + 2, i + 8) };
+      cur = { ...cur, color: `#${input.slice(i + 2, i + 8)}` };
       i += 7;
       continue;
     }
@@ -68,7 +68,7 @@ function parse(input: string): Seg[] {
       }
       if (hex.length === 6) {
         flush();
-        cur = { ...cur, color: "#" + hex };
+        cur = { ...cur, color: `#${hex}` };
         i = j - 1;
         continue;
       }
@@ -106,8 +106,8 @@ function McTextInner({ text, onDark }: { text: string; onDark?: boolean }) {
   return (
     <>
       {segs.map((s, i) => (
-        <span
-          key={i}
+        // biome-ignore lint/suspicious/noArrayIndexKey: 色码片段无状态且随文本整体重建，下标即身份
+        <span key={i}
           style={{
             color: adjustColor(s.color, darkBg),
             fontWeight: s.bold ? 700 : undefined,

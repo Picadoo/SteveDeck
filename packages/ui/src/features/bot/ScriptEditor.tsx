@@ -196,7 +196,7 @@ export default function ScriptEditor({
       try {
         parsed = JSON.parse(json);
       } catch (e: any) {
-        return setErr("JSON 解析失败：" + e.message); // 语法错误：停在 JSON 模式，不丢内容
+        return setErr(`JSON 解析失败：${e.message}`); // 语法错误：停在 JSON 模式，不丢内容
       }
       // UIFEAT-8：合法 JSON 但不是合规脚本 → 明确报错并停留，绝不静默回退默认 steps:[]。
       if (!isValidScriptShape(parsed)) {
@@ -212,7 +212,7 @@ export default function ScriptEditor({
       try {
         parsed = JSON.parse(json);
       } catch (e: any) {
-        return setErr("JSON 解析失败：" + e.message);
+        return setErr(`JSON 解析失败：${e.message}`);
       }
       // UIFEAT-8：保存前做同一套形状校验，不把畸形脚本下发给引擎。
       if (!isValidScriptShape(parsed)) {
@@ -236,13 +236,13 @@ export default function ScriptEditor({
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
           <h2 className="text-sm font-semibold">脚本编辑器</h2>
           <div className="flex items-center gap-1">
-            <button onClick={() => switchMode("visual")} className={cn("rounded-md px-2.5 py-1 text-xs", mode === "visual" ? "bg-surface-2 text-fg" : "text-muted")}>
+            <button type="button" onClick={() => switchMode("visual")} className={cn("rounded-md px-2.5 py-1 text-xs", mode === "visual" ? "bg-surface-2 text-fg" : "text-muted")}>
               <Blocks className="mr-1 inline h-3.5 w-3.5" />积木
             </button>
-            <button onClick={() => switchMode("json")} className={cn("rounded-md px-2.5 py-1 text-xs", mode === "json" ? "bg-surface-2 text-fg" : "text-muted")}>
+            <button type="button" onClick={() => switchMode("json")} className={cn("rounded-md px-2.5 py-1 text-xs", mode === "json" ? "bg-surface-2 text-fg" : "text-muted")}>
               <Code2 className="mr-1 inline h-3.5 w-3.5" />JSON
             </button>
-            <button onClick={requestClose} aria-label="关闭" className="ml-1 text-muted hover:text-fg"><X className="h-4 w-4" /></button>
+            <button type="button" onClick={requestClose} aria-label="关闭" className="ml-1 text-muted hover:text-fg"><X className="h-4 w-4" /></button>
           </div>
         </div>
 
@@ -445,6 +445,7 @@ function StepCard({
           {def.fields.length > 0 && (
             <div className="grid grid-cols-2 gap-2">
               {def.fields.map((f: StepFieldDef) => (
+                // biome-ignore lint/a11y/noLabelWithoutControl: 控件在三元分支里（Switch/Input），运行时包裹关联成立
                 <label key={f.k} className="block">
                   <span className="mb-1 block text-[10px] text-muted">{f.label}</span>
                   {f.type === "bool" ? (
@@ -504,7 +505,7 @@ function StepCard({
 
 function IconBtn({ onClick, disabled, title, children }: { onClick: () => void; disabled?: boolean; title?: string; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} disabled={disabled} title={title} className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-30">
+    <button type="button" onClick={onClick} disabled={disabled} title={title} className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-30">
       {children}
     </button>
   );

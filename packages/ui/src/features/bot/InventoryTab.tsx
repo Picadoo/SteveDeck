@@ -147,7 +147,7 @@ function InventoryTab({ bot }: { bot: BotSummary }) {
           {groups.equip.length > 0 && <span className="ml-1.5">· 装备 {groups.equip.length}</span>}
         </span>
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={toggleSneak}
             title="开启后「使用」物品时潜行右键（适配只在潜行触发的自定义物品，避免误触脚下/面前方块）"
             className={cn(
@@ -164,7 +164,7 @@ function InventoryTab({ bot }: { bot: BotSummary }) {
           </Button>
           <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-[11px]">
             {(["lite", "full"] as const).map((m) => (
-              <button
+              <button type="button"
                 key={m}
                 onClick={() => setInvMode(m)}
                 className={cn(
@@ -237,8 +237,8 @@ function InventoryTab({ bot }: { bot: BotSummary }) {
                       </div>
                       {held.enchants && held.enchants.length > 0 && (
                         <div className="mt-1 flex flex-wrap gap-1">
-                          {held.enchants.map((e, i) => (
-                            <span key={i} className="rounded bg-accent/12 px-1.5 py-px text-[10px] text-accent">
+                          {held.enchants.map((e) => (
+                            <span key={e} className="rounded bg-accent/12 px-1.5 py-px text-[10px] text-accent">
                               {e}
                             </span>
                           ))}
@@ -339,12 +339,12 @@ function FreqRow({
           <McText text={entry.display} />
         </div>
         <div className="text-[10px] text-muted">
-          用过 {entry.count} 次{live && live.count && live.count > 1 ? ` · 背包 ×${live.count}` : ""}
+          用过 {entry.count} 次{live?.count && live.count > 1 ? ` · 背包 ×${live.count}` : ""}
           {gone && <span className="text-warning"> · 缺货</span>}
         </div>
       </div>
       {online && !gone && (
-        <button
+        <button type="button"
           title={`${ACTION_LABEL[entry.lastAction]}（重复上次动作）`}
           onClick={onUse}
           className="flex shrink-0 items-center gap-1 rounded-md bg-accent/15 px-2 py-1 text-xs font-medium text-accent hover:bg-accent/25"
@@ -352,7 +352,7 @@ function FreqRow({
           <ActIcon className="h-3.5 w-3.5" /> {ACTION_LABEL[entry.lastAction]}
         </button>
       )}
-      <button
+      <button type="button"
         title="从常用移除"
         aria-label="从常用移除"
         onClick={onForget}

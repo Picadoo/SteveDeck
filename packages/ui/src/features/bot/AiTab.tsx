@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sparkles, RefreshCw, Copy, Loader2, ChevronDown, Settings2, Wand2, Play, Save } from "lucide-react";
+import { Sparkles, RefreshCw, Loader2, ChevronDown, Settings2, Wand2, Play, Save } from "lucide-react";
 import { Card, Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { copyText } from "@/lib/clipboard";
@@ -221,7 +221,7 @@ function AiTab({ bot }: { bot: BotSummary }) {
   }, [bot.id]);
 
   async function copy(text: string, label: string) {
-    if (await copyText(text)) pushToast(label + "已复制", "success");
+    if (await copyText(text)) pushToast(`${label}已复制`, "success");
     else pushToast("复制失败", "error");
   }
 
@@ -293,9 +293,9 @@ function AiTab({ bot }: { bot: BotSummary }) {
                   )}
                   {obs.self.effects && obs.self.effects.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
-                      {obs.self.effects.map((e, i) => (
+                      {obs.self.effects.map((e) => (
                         <span
-                          key={i}
+                          key={e.name}
                           className={cn(
                             "rounded px-1.5 py-0.5 text-[10px]",
                             e.bad ? "bg-danger/15 text-danger" : "bg-success/15 text-success",
@@ -352,7 +352,7 @@ function AiTab({ bot }: { bot: BotSummary }) {
           <Card className="p-4">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold">AI 脚本生成</h3>
-              <button
+              <button type="button"
                 onClick={() => setCfgOpen((v) => !v)}
                 className={cn(
                   "flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors",
@@ -360,7 +360,7 @@ function AiTab({ bot }: { bot: BotSummary }) {
                 )}
                 title="配置 AI 接口（DeepSeek / 任意 OpenAI 兼容）"
               >
-                <Settings2 className="h-3.5 w-3.5" /> {aiCfg?.hasKey ? "已连接 " + (aiCfg?.model || "") : "API 设置"}
+                <Settings2 className="h-3.5 w-3.5" /> {aiCfg?.hasKey ? `已连接 ${aiCfg?.model || ""}` : "API 设置"}
               </button>
             </div>
 
@@ -413,6 +413,7 @@ function AiTab({ bot }: { bot: BotSummary }) {
                 <div className="mb-1 text-[11px] font-medium text-muted">Agent 日志</div>
                 <div className="max-h-36 overflow-y-auto font-mono text-[11px] leading-relaxed text-fg">
                   {agentLog.map((l, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: 追加式日志纯展示，行文本可重复无自然 key
                     <div key={i} className={l.startsWith("错误") ? "text-danger" : l.startsWith("---") ? "text-success font-medium" : ""}>{l}</div>
                   ))}
                 </div>
@@ -423,7 +424,7 @@ function AiTab({ bot }: { bot: BotSummary }) {
               <div className="mt-3 rounded-lg border border-accent/40 bg-accent/5 p-3">
                 <div className="mb-1.5 flex items-center justify-between">
                   <span className="text-sm font-medium">「{genScript.name}」 · {genScript.steps.length} 步 · 触发 {genScript.trigger?.type ?? "manual"}</span>
-                  <button onClick={() => setGenScript(null)} className="text-[11px] text-muted hover:text-fg">丢弃</button>
+                  <button type="button" onClick={() => setGenScript(null)} className="text-[11px] text-muted hover:text-fg">丢弃</button>
                 </div>
                 <pre className="mb-2 max-h-44 overflow-auto rounded bg-surface-2/50 p-2 font-mono text-[11px] leading-relaxed">
                   {JSON.stringify(genScript, null, 2)}
@@ -447,7 +448,7 @@ function AiTab({ bot }: { bot: BotSummary }) {
 
           {/* 可折叠的完整 JSON */}
           <Card className="p-3">
-            <button
+            <button type="button"
               onClick={() => setJsonExpanded(!jsonExpanded)}
               className="flex w-full items-center justify-between text-sm font-semibold transition-colors hover:text-accent"
             >

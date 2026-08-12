@@ -36,7 +36,7 @@ function sanitizeCombatConfig(prev: any, config: any): any {
 }
 
 /** 注册全部功能模块的命令（开关 / 配置 / 动作）。 */
-export function registerModuleHandlers(io: IOServer, socket: Socket): void {
+export function registerModuleHandlers(_io: IOServer, socket: Socket): void {
   socket.on(
     ClientCommands.MODULE_TOGGLE,
     (
@@ -76,7 +76,7 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
             persistSettings(id, (s) => ((s as any).follow = { active, config: config || {} }));
             break;
           case "trash_cleaner": {
-            const items = (config && config.items) || config || [];
+            const items = (config?.items) || config || [];
             inst.toggleTrashCleaner?.(active, items);
             // 存 {active, items}：之前只存了布尔值，重连后丢失黑名单
             persistSettings(id, (s) => ((s as any).trash_cleaner = { active, items }));
@@ -86,7 +86,7 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
             inst.toggleAutoUse?.(active, config || {});
             persistSettings(
               id,
-              (s) => ((s as any).autoUse = { active, rules: inst.autoUseTask?.rules || (config && config.rules) || [] }),
+              (s) => ((s as any).autoUse = { active, rules: inst.autoUseTask?.rules || (config?.rules) || [] }),
             );
             break;
           default:
@@ -139,7 +139,7 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
       const inst = botManager.getInstance(id);
       if (!inst) return ack?.(fail("机器人不存在"));
       try {
-        ack?.(await dispatchAction(io, inst, id, module, action, args));
+        ack?.(await dispatchAction(inst, id, module, action, args));
       } catch (e: any) {
         ack?.(fail(String(e?.message ?? e)));
       }
@@ -148,7 +148,6 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
 }
 
 function dispatchAction(
-  io: IOServer,
   inst: BotInstance,
   id: string,
   module: string,

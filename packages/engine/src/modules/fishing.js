@@ -44,7 +44,7 @@ module.exports = (botInstance) => {
                     }
                 }
             }
-        } catch (e) {
+        } catch (_e) {
             // 耐久检测失败不影响钓鱼
         }
 
@@ -80,7 +80,7 @@ module.exports = (botInstance) => {
         if (state && !prevState) {
             fishingLoop();
         } else if (!state && prevState) {
-            try { bot.activateItem(); } catch (e) {}
+            try { bot.activateItem(); } catch (_e) {}
             if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
         }
     };

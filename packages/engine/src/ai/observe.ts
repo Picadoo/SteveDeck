@@ -55,7 +55,7 @@ function txt(v: any): string | null {
       const flat =
         (v.text || "") +
         (Array.isArray(v.extra)
-          ? v.extra.map((e: any) => (typeof e === "string" ? e : (e && e.text) || "")).join("")
+          ? v.extra.map((e: any) => (typeof e === "string" ? e : (e?.text) || "")).join("")
           : "");
       const cleaned = flat.replace(/§./gi, "").trim();
       if (cleaned) return cleaned;
@@ -222,7 +222,9 @@ export function buildObservation(id: string): any {
   if (!cfg) return null;
 
   const bot = inst?.bot;
-  const online = !!(bot && bot.entity);
+  // 显式带上 inst：TS 靠这个别名条件把后文的 inst 收窄为非空（bot 存在必然 inst 存在）
+  // biome-ignore lint/complexity/useOptionalChain: 换成 bot?.entity 会断掉 TS 的别名收窄链（inst 变 possibly undefined）
+  const online = !!(inst && bot && bot.entity);
 
   const obs: any = {
     bot: { id: cfg.id, username: cfg.username, host: cfg.host, online },
@@ -325,7 +327,7 @@ export function buildObservation(id: string): any {
     const others: any[] = [];
     const holograms: any[] = [];
     for (const e of ents as any[]) {
-      if (!e || !e.position || e === bot.entity) continue;
+      if (!e?.position || e === bot.entity) continue;
       const d = e.position.distanceTo(pos);
       if (d > 48) continue;
       const custom = entityCustomName(e);
@@ -349,7 +351,7 @@ export function buildObservation(id: string): any {
         pos: floorPos(e.position),
       };
       if (e.type === "player" && e.username && e.username !== bot.username) {
-        const realPlayer = !!(bot.players && bot.players[e.username]);
+        const realPlayer = !!(bot.players?.[e.username]);
         const cleanU = String(e.username).replace(/§./gi, "");
         const pd = txt(e.displayName);
         const npcCustom = entityCustomName(e);
@@ -472,7 +474,7 @@ export function buildObservation(id: string): any {
     const bl = s.blocks;
     const clip = (v: any, n: number) => {
       const str = String(v ?? "").replace(/\s+/g, " ").trim();
-      return str.length > n ? str.slice(0, n) + "…" : str;
+      return str.length > n ? `${str.slice(0, n)}…` : str;
     };
     // 手持：优先自定义名；确为改名物品时括注原版 id 便于对照（Stick→stick 这类大小写差异不算改名）
     const mh = s.equipment?.mainHand;

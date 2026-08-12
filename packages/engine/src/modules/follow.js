@@ -32,7 +32,7 @@ module.exports = (botInstance) => {
         if (mode === 'nearest_player' || mode === 'player') {
             let best = null, bestD = Infinity;
             for (const e of Object.values(bot.entities)) {
-                if (!e || !e.position || e.type !== 'player') continue;
+                if (!e?.position || e.type !== 'player') continue;
                 if (e.username === bot.username) continue;
                 if (mode === 'player') {
                     const uname = stripCodes(e.username || '').toLowerCase();
@@ -49,13 +49,13 @@ module.exports = (botInstance) => {
             // 先收集全息名牌
             const stands = [];
             for (const e of Object.values(bot.entities)) {
-                if (!e || !e.position || !isArmorStand(e)) continue;
+                if (!e?.position || !isArmorStand(e)) continue;
                 const nm = displayNameOf(e);
                 if (nm && !/armor.?stand/i.test(nm)) stands.push({ pos: e.position, name: nm });
             }
             let best = null, bestD = Infinity;
             for (const e of Object.values(bot.entities)) {
-                if (!e || !e.position || e === bot.entity) continue;
+                if (!e?.position || e === bot.entity) continue;
                 if (isArmorStand(e)) continue;
                 if (['object', 'orb', 'other'].includes(e.type)) continue;
                 const own = displayNameOf(e).toLowerCase();
@@ -79,8 +79,8 @@ module.exports = (botInstance) => {
         if (!task.active || !bot.entity) return;
         try {
             const ent = task.targetId != null ? bot.entities[task.targetId] : null;
-            const fresh = (ent && ent.position) ? (task.config.mode === 'nearest_player' ? findTarget() : ent) : findTarget();
-            if (fresh && fresh.position) {
+            const fresh = (ent?.position) ? (task.config.mode === 'nearest_player' ? findTarget() : ent) : findTarget();
+            if (fresh?.position) {
                 lostSince = 0;
                 if (fresh.id !== task.targetId) {
                     task.targetId = fresh.id;
@@ -92,16 +92,16 @@ module.exports = (botInstance) => {
             } else {
                 if (task.targetId != null) {
                     task.targetId = null;
-                    try { bot.pathfinder.setGoal(null); } catch (e) { /* ignore */ }
+                    try { bot.pathfinder.setGoal(null); } catch (_e) { /* ignore */ }
                 }
                 if (!lostSince) lostSince = Date.now();
                 // 丢失提示限流：每 15s 一条，避免刷日志
                 if (Date.now() - lastLostLogAt > 15000) {
                     lastLostLogAt = Date.now();
-                    emitLog(`跟随：未找到目标（${task.config.mode === 'player' ? '玩家 ' + task.config.target : task.config.mode === 'keyword' ? '关键词 ' + task.config.target : '附近无玩家'}），待命中…`);
+                    emitLog(`跟随：未找到目标（${task.config.mode === 'player' ? `玩家 ${task.config.target}` : task.config.mode === 'keyword' ? `关键词 ${task.config.target}` : '附近无玩家'}），待命中…`);
                 }
             }
-        } catch (e) { /* 单拍异常不终止跟随 */ }
+        } catch (_e) { /* 单拍异常不终止跟随 */ }
     };
 
     botInstance.toggleFollow = (active, config) => {
@@ -120,14 +120,14 @@ module.exports = (botInstance) => {
             if (task.timer) clearInterval(task.timer);
             task.timer = setInterval(tick, 800);
             botInstance.timers.push(task.timer);
-            emitLog(`跟随已开启（${task.config.mode === 'player' ? '玩家: ' + task.config.target : task.config.mode === 'keyword' ? '关键词: ' + task.config.target : '最近的玩家'}，距离 ${task.config.distance}）`);
+            emitLog(`跟随已开启（${task.config.mode === 'player' ? `玩家: ${task.config.target}` : task.config.mode === 'keyword' ? `关键词: ${task.config.target}` : '最近的玩家'}，距离 ${task.config.distance}）`);
             tick();
         } else {
             task.active = false;
             task.targetId = null;
             task.targetName = null;
             if (task.timer) { clearInterval(task.timer); task.timer = null; }
-            try { bot.pathfinder.setGoal(null); } catch (e) { /* ignore */ }
+            try { bot.pathfinder.setGoal(null); } catch (_e) { /* ignore */ }
             emitLog('跟随已停止');
         }
     };

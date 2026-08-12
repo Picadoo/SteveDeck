@@ -29,8 +29,8 @@ export function McItemTipBody({ name, count, enchants, lore, texture, slot }: Mc
       </div>
       {enchants && enchants.length > 0 && (
         <div className="mt-1 space-y-0.5">
-          {enchants.map((e, i) => (
-            <div key={i} className="text-[11px] text-[#9d8bff]">
+          {enchants.map((e) => (
+            <div key={e} className="text-[11px] text-[#9d8bff]">
               {e}
             </div>
           ))}

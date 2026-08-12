@@ -197,7 +197,7 @@ export default function BotPanel() {
                 />
               );
             })}
-            <button
+            <button type="button"
               onClick={() => setMetricsCfgOpen(true)}
               title="配置顶栏指标（从计分板提取金币/点卷等）"
               className="rounded-lg p-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-fg"
@@ -344,7 +344,7 @@ function Metric({ icon, label, value }: { icon: ReactNode; label: string; value:
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       className={cn(
         "relative shrink-0 px-3 py-2.5 text-sm font-medium transition-colors",

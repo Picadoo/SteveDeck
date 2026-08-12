@@ -37,7 +37,7 @@ const OrgCell = memo(function OrgCell({
   onLeave: () => void;
 }) {
   return (
-    <button
+    <button type="button"
       disabled={busy}
       onClick={() => onClick(slot)}
       onMouseEnter={it ? (e) => onEnter(it, e.currentTarget) : undefined}

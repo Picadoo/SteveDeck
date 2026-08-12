@@ -41,7 +41,7 @@ export function registerScriptHandlers(socket: Socket): void {
     const lib = botManager.loadScripts();
     lib[script.name] = script;
     botManager.saveScripts(lib);
-    botManager.eachInstance((inst) => inst.preloadScripts && inst.preloadScripts(lib));
+    botManager.eachInstance((inst) => inst.preloadScripts?.(lib));
     ack?.(ok());
   });
 
@@ -58,7 +58,7 @@ export function registerScriptHandlers(socket: Socket): void {
 
   socket.on(ClientCommands.SCRIPT_START, ({ id, name }: { id: string; name: string }, ack?: Ack) => {
     const inst = botManager.getInstance(id);
-    if (!inst || !inst.startScript) return ack?.(fail("机器人需在线才能运行脚本"));
+    if (!inst?.startScript) return ack?.(fail("机器人需在线才能运行脚本"));
     const lib = botManager.loadScripts();
     if (!lib[name]) return ack?.(fail(`脚本不存在: ${name}`));
     try {

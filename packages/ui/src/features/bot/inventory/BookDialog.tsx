@@ -97,7 +97,7 @@ export default function BookDialog({ botId, slot, onClose }: { botId: string; sl
             </div>
           )}
           <div className="flex items-center justify-between">
-            <button
+            <button type="button"
               disabled={idx <= 0}
               onClick={() => setIdx((i) => Math.max(0, i - 1))}
               className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted enabled:hover:bg-surface-2 enabled:hover:text-fg disabled:opacity-30"
@@ -105,7 +105,7 @@ export default function BookDialog({ botId, slot, onClose }: { botId: string; sl
               <ChevronLeft className="h-3.5 w-3.5" /> 上一页
             </button>
             <span className="text-xs tabular-nums text-muted">第 {idx + 1} / {total} 页</span>
-            <button
+            <button type="button"
               disabled={idx >= total - 1}
               onClick={() => setIdx((i) => Math.min(total - 1, i + 1))}
               className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted enabled:hover:bg-surface-2 enabled:hover:text-fg disabled:opacity-30"

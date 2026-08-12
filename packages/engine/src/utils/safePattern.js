@@ -54,7 +54,7 @@ function validatePattern(pattern) {
   try {
     new RegExp(pattern);
   } catch (e) {
-    return { ok: false, error: "正则无效: " + e.message };
+    return { ok: false, error: `正则无效: ${e.message}` };
   }
   return { ok: true };
 }

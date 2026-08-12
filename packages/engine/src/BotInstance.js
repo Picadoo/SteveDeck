@@ -1,4 +1,4 @@
-const fs = require('fs');
+const _fs = require('fs');
 const path = require('path');
 const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
@@ -16,7 +16,7 @@ function getMcp() {
     try {
         const mfDir = path.dirname(require.resolve('mineflayer'));
         _mcp = require(require.resolve('minecraft-protocol', { paths: [mfDir] }));
-    } catch (e) { _mcp = false; }
+    } catch (_e) { _mcp = false; }
     return _mcp || null;
 }
 
@@ -43,7 +43,7 @@ function extractHoverText(h) {
         if (val == null) return undefined;
         const flat = (typeof val === 'string' ? val : flattenChatText(val)).replace(/§./gi, '').trim();
         return flat || undefined;
-    } catch (e) { return undefined; }
+    } catch (_e) { return undefined; }
 }
 function extractChatSegments(node, inherited, out) {
     if (node == null || out.length > 150) return;
@@ -157,19 +157,19 @@ class BotInstance {
             // 1) 已连接客户端总数（真实 IOServer 才有；广播壳没有 → 落到 fail-open）
             let clients = null;
             if (io.engine && typeof io.engine.clientsCount === 'number') clients = io.engine.clientsCount;
-            else if (io.sockets && io.sockets.sockets && typeof io.sockets.sockets.size === 'number') clients = io.sockets.sockets.size;
+            else if (io.sockets?.sockets && typeof io.sockets.sockets.size === 'number') clients = io.sockets.sockets.size;
             else if (typeof io.of === 'function') {
                 const ns = io.of('/');
-                if (ns && ns.sockets && typeof ns.sockets.size === 'number') clients = ns.sockets.size;
+                if (ns?.sockets && typeof ns.sockets.size === 'number') clients = ns.sockets.size;
             }
             // 2) room 命中（仅作「确有人看」的加分；空 room 不当「无人」）
-            const rooms = io.sockets && io.sockets.adapter && io.sockets.adapter.rooms;
+            const rooms = io.sockets?.adapter?.rooms;
             if (rooms && typeof rooms.get === 'function') {
                 if ((rooms.get(this._room)?.size || 0) > 0) return true;
                 if ((rooms.get('admin')?.size || 0) > 0) return true;
             }
             if (clients != null) return clients > 0; // 能确知连接数：0 才跳过
-        } catch (e) { /* 探测失败 → fail-open */ }
+        } catch (_e) { /* 探测失败 → fail-open */ }
         return true; // 拿不到任何可靠信号：保守继续下发
     }
 
@@ -181,7 +181,7 @@ class BotInstance {
                 user: this.config.username, ownerId: this.config.ownerId,
                 msg, time: new Date().toLocaleTimeString()
             });
-        } catch (e) { /* ignore */ }
+        } catch (_e) { /* ignore */ }
     }
 
     // 结构化关键事件（death/kick/offline/online）：推 Webhook 挂机通知。
@@ -195,7 +195,7 @@ class BotInstance {
                 host: this.config.host,
                 message,
             });
-        } catch (e) { /* 通知不可用不影响主流程 */ }
+        } catch (_e) { /* 通知不可用不影响主流程 */ }
     }
 
     // ===== 直接坐标包移动（模组服）=====
@@ -224,8 +224,8 @@ class BotInstance {
             const m = `[诊断] 脚下=${below ? below.name : '未加载/空'} 前方=${fwd ? fwd.name : '未加载/空'} onGround=${bot.entity.onGround} physics=${bot.physicsEnabled}`;
             logger.info(`[${this.config.username}] ${m}`);
             this.uiLog(m);
-        } catch (e) { /* ignore */ }
-        try { bot.physicsEnabled = false; } catch (e) { /* ignore */ }
+        } catch (_e) { /* ignore */ }
+        try { bot.physicsEnabled = false; } catch (_e) { /* ignore */ }
         this._rawTimer = setInterval(() => this._rawTick(), 100);
         this.timers.push(this._rawTimer);
         this.uiLog('已切换为直接移动（模组服）');
@@ -242,12 +242,12 @@ class BotInstance {
             this._rawTimer = null;
         }
         this._raw = null;
-        try { if (this.bot) this.bot.physicsEnabled = true; } catch (e) { /* ignore */ }
+        try { if (this.bot) this.bot.physicsEnabled = true; } catch (_e) { /* ignore */ }
     }
 
     _rawTick() {
         const bot = this.bot;
-        if (!bot || !bot.entity) { return; }
+        if (!bot?.entity) { return; }
         const c = this._raw || {};
         const yaw = bot.entity.yaw;
         const sinY = Math.sin(yaw), cosY = Math.cos(yaw);
@@ -266,7 +266,7 @@ class BotInstance {
         }
         try {
             bot._client.write('position', { x: p.x, y: p.y, z: p.z, onGround: true });
-        } catch (e) { /* ignore */ }
+        } catch (_e) { /* ignore */ }
     }
 
     // Forge 模组服：ping 一下服务器，从状态响应里拿到它的模组表（含正确 modid+version），
@@ -288,10 +288,10 @@ class BotInstance {
                         // 1.13+ Forge：forgeData.mods = [{modId, modmarker}]
                         list = res.forgeData.mods.map((m) => ({ modid: m.modId || m.modid, version: m.modmarker || m.version || '' }));
                     }
-                    finish(list && list.length ? list : null);
+                    finish(list?.length ? list : null);
                 });
                 setTimeout(() => finish(null), 8000); // 超时兜底
-            } catch (e) { finish(null); }
+            } catch (_e) { finish(null); }
         });
     }
 
@@ -308,7 +308,7 @@ class BotInstance {
             this.uiLog('Forge：正在探测服务器模组…');
             const detected = await this.pingForgeMods();
             if (this._epoch !== epoch || this.destroyed) return; // ping 期间被停止/重连 → 放弃本次
-            this._forgeMods = (detected && detected.length) ? detected : (Array.isArray(this.config.settings?.forgeMods) ? this.config.settings.forgeMods : []);
+            this._forgeMods = (detected?.length) ? detected : (Array.isArray(this.config.settings?.forgeMods) ? this.config.settings.forgeMods : []);
             this.uiLog(`Forge：模组 ${this._forgeMods.length} 个（${detected ? '自动探测 ✓' : '配置/空'}）`);
         }
 
@@ -354,7 +354,7 @@ class BotInstance {
                 // FML1 握手状态机（1.7–1.12）。判别符为有符号字节：
                 //   ServerHello=0 / ClientHello=1 / ModList=2 / RegistryData=3 / HandshakeAck=-1 / HandshakeReset=-2
                 // Ack 的 phase：WAITINGSERVERDATA=2 / WAITINGSERVERCOMPLETE=3 / PENDINGCOMPLETE=4 / COMPLETE=5 / START=1
-                const writeFML = (buf) => { try { client.write('custom_payload', { channel: 'FML|HS', data: buf }); } catch (e) { /* ignore */ } };
+                const writeFML = (buf) => { try { client.write('custom_payload', { channel: 'FML|HS', data: buf }); } catch (_e) { /* ignore */ } };
                 const ack = (phase) => writeFML(Buffer.from([0xFF, phase]));
                 // ModList：声明我们「拥有」服务器要求的模组（modid+version），骗过 Forge 的模组校验。
                 const vInt = (n) => { const o = []; do { let b = n & 0x7f; n = n >>> 7; if (n) b |= 0x80; o.push(b); } while (n); return Buffer.from(o); };
@@ -363,11 +363,11 @@ class BotInstance {
                 const forgeMods = Array.isArray(this._forgeMods) ? this._forgeMods : (Array.isArray(this.config.settings?.forgeMods) ? this.config.settings.forgeMods : []);
                 let regTimer = null;
                 client.on('custom_payload', (p) => {
-                    if (!p || p.channel !== 'FML|HS' || !p.data || !p.data.length) return;
+                    if (p?.channel !== 'FML|HS' || !p.data || !p.data.length) return;
                     const disc = p.data.readInt8(0);
                     if (disc === 0) { // ServerHello → REGISTER + ClientHello + ModList(空) + Ack(2)
                         const fmlProto = p.data.length > 1 ? p.data[1] : 2;
-                        try { client.write('custom_payload', { channel: 'REGISTER', data: Buffer.from(['FML|HS', 'FML', 'FML|MP', 'FORGE'].join('\0'), 'utf8') }); } catch (e) { /* ignore */ }
+                        try { client.write('custom_payload', { channel: 'REGISTER', data: Buffer.from(['FML|HS', 'FML', 'FML|MP', 'FORGE'].join('\0'), 'utf8') }); } catch (_e) { /* ignore */ }
                         writeFML(Buffer.from([0x01, fmlProto])); // ClientHello
                         writeFML(buildModList(forgeMods));       // ModList：声明拥有配置里的模组（空数组=不声明）
                         ack(2);
@@ -380,7 +380,7 @@ class BotInstance {
                             for (let i = 0; i < cnt; i++) { const nl = rdV(); const nm = p.data.toString('utf8', off, off + nl); off += nl; const vl = rdV(); const ver = p.data.toString('utf8', off, off + vl); off += vl; names.push(`${nm}@${ver}`); }
                             logger.info(`[${this.config.username}] [FML] 服务器模组(${cnt}): ${names.join(', ')}`);
                             this.uiLog(`[FML] 服务器模组(${cnt}个)，详见引擎日志`);
-                        } catch (e) { this.uiLog('[FML] 收到服务器 ModList（解析失败）'); }
+                        } catch (_e) { this.uiLog('[FML] 收到服务器 ModList（解析失败）'); }
                     } else if (disc === 3) { // RegistryData：可能多条，防抖后 Ack(3)
                         if (regTimer) clearTimeout(regTimer);
                         regTimer = setTimeout(() => { ack(3); this.uiLog('[FML] RegistryData 结束 → Ack(3)'); }, 700);
@@ -508,7 +508,7 @@ class BotInstance {
             if (settings.combatConfig) this.combatConfig = { ...this.combatConfig, ...settings.combatConfig };
             // 脚本库：冷启动优先从全局 scripts.json 预载；settings.scripts 仅作回退。
             let scriptsToLoad = {};
-            try { if (this.loadGlobalScripts) scriptsToLoad = this.loadGlobalScripts() || {}; } catch (e) { /* 回退 */ }
+            try { if (this.loadGlobalScripts) scriptsToLoad = this.loadGlobalScripts() || {}; } catch (_e) { /* 回退 */ }
             if (!scriptsToLoad || Object.keys(scriptsToLoad).length === 0) {
                 scriptsToLoad = settings.scripts || {};
             }
@@ -534,10 +534,10 @@ class BotInstance {
                     const cfg = settings.mobHunter.config || settings.mobHunter;
                     if (active) this.toggleMobHunter(true, cfg);
                 }
-                if (settings.follow && settings.follow.active && this.toggleFollow) {
+                if (settings.follow?.active && this.toggleFollow) {
                     this.toggleFollow(true, settings.follow.config || {});
                 }
-                if (settings.autoMine && settings.autoMine.active && this.toggleAutoMine) {
+                if (settings.autoMine?.active && this.toggleAutoMine) {
                     this.toggleAutoMine(true, settings.autoMine.config || {});
                 }
                 if (settings.trash_cleaner && this.toggleTrashCleaner) {
@@ -553,7 +553,7 @@ class BotInstance {
                     if (active) this.toggleAutoUse(true, cfg);
                 }
                 const activeScript = settings.activeScript;
-                if (activeScript && this._scripts && this._scripts[activeScript] && this._runningScript == null) {
+                if (activeScript && this._scripts?.[activeScript] && this._runningScript == null) {
                     logger.info(`[${this.config.username}] 断线恢复脚本: ${activeScript}`);
                     this.startScript(activeScript);
                 }
@@ -648,7 +648,7 @@ class BotInstance {
             // lite 假人不走直发（RPG 服通知几乎都带 click/hover，会绕过合并窗）——一律进缓冲批量发。
             const segments = [];
             if (!this.config.settings?.lite) {
-                try { extractChatSegments(jsonMsg.json || jsonMsg, {}, segments); } catch (e) { /* ignore */ }
+                try { extractChatSegments(jsonMsg.json || jsonMsg, {}, segments); } catch (_e) { /* ignore */ }
             }
             if (segments.some((s) => s.click || s.hover)) {
                 this.io.to(this._room).to('admin').emit('log', {
@@ -658,7 +658,7 @@ class BotInstance {
                 return;
             }
 
-            this.msgBuffer += raw + "\n";
+            this.msgBuffer += `${raw}\n`;
             // 固定窗口批量（首条开窗、到点必发，不随新消息重置——重置式防抖在刷屏服会饿死永不冲刷）：
             // 普通 bot 100ms 近实时；lite 假人 3s——同服几十只假人每只都转发同一条聊天，
             // 是「批量撑在线」场景的广播量大头，拉长合并窗把忙服聊天广播降一个数量级（控制台仍可读）
@@ -700,7 +700,7 @@ class BotInstance {
         let benignSuppressed = 0;
         const BENIGN_PARSE_ERR = /varint is too big|PartialReadError|Chunk size is|Read error for|unexpected buffer end/i;
         this.bot.on('error', (err) => {
-            const msg = err && err.message ? err.message : String(err);
+            const msg = err?.message ? err.message : String(err);
             if (BENIGN_PARSE_ERR.test(msg)) {
                 const now = Date.now();
                 if (now - benignLogWindowStart >= 60000) {
@@ -934,7 +934,7 @@ class BotInstance {
                 try {
                     clearTimeout(timer);
                     clearInterval(timer);
-                } catch (err) {
+                } catch (_err) {
                     // 忽略清理失败的定时器
                 }
             });
@@ -969,7 +969,7 @@ class BotInstance {
             this.bot.removeAllListeners();
             try {
                 this.bot.quit();
-            } catch (e) {
+            } catch (_e) {
                 // 忽略quit失败
             }
             this.bot = null;
@@ -1007,22 +1007,22 @@ class BotInstance {
     stopAllActions() {
         const b = this.bot;
         // 1. 运行中的脚本（手动启动的循环/临时脚本 + 自定义 JS）
-        try { this.stopScript?.(); } catch (e) { /* ignore */ }
-        try { this.stopCustomJs?.(); } catch (e) { /* ignore */ }
+        try { this.stopScript?.(); } catch (_e) { /* ignore */ }
+        try { this.stopCustomJs?.(); } catch (_e) { /* ignore */ }
         // 2. 正在执行的功能模块（逐个关，单个失败不连累其余）
-        try { if (this.combatConfig) this.combatConfig.enabled = false; } catch (e) { /* ignore */ }
-        try { this.setFishing ? this.setFishing(false) : (this.fishingActive = false); } catch (e) { /* ignore */ }
-        try { this.stopAutoMine?.(); } catch (e) { /* ignore */ }
-        try { this.toggleAutoFarm?.(false, {}); } catch (e) { /* ignore */ }
-        try { this.toggleMobHunter?.(false, {}); } catch (e) { /* ignore */ }
-        try { this.toggleFollow?.(false, {}); } catch (e) { /* ignore */ }
-        try { this.toggleTrashCleaner?.(false, []); } catch (e) { /* ignore */ }
-        try { this.toggleAutoUse?.(false, {}); } catch (e) { /* ignore */ }
+        try { if (this.combatConfig) this.combatConfig.enabled = false; } catch (_e) { /* ignore */ }
+        try { this.setFishing ? this.setFishing(false) : (this.fishingActive = false); } catch (_e) { /* ignore */ }
+        try { this.stopAutoMine?.(); } catch (_e) { /* ignore */ }
+        try { this.toggleAutoFarm?.(false, {}); } catch (_e) { /* ignore */ }
+        try { this.toggleMobHunter?.(false, {}); } catch (_e) { /* ignore */ }
+        try { this.toggleFollow?.(false, {}); } catch (_e) { /* ignore */ }
+        try { this.toggleTrashCleaner?.(false, []); } catch (_e) { /* ignore */ }
+        try { this.toggleAutoUse?.(false, {}); } catch (_e) { /* ignore */ }
         // 3. 移动 / 操控：立刻停下，不再寻路/按键
-        try { if (b?.pathfinder) b.pathfinder.setGoal(null); } catch (e) { /* ignore */ }
-        try { b?.clearControlStates?.(); } catch (e) { /* ignore */ }
+        try { if (b?.pathfinder) b.pathfinder.setGoal(null); } catch (_e) { /* ignore */ }
+        try { b?.clearControlStates?.(); } catch (_e) { /* ignore */ }
         // scheduler（定时脚本）有意不动——到点运行不受影响
-        try { this.uiLog?.('⏹ 已停止所有操作（定时脚本保留，到点照常运行）'); } catch (e) { /* ignore */ }
+        try { this.uiLog?.('⏹ 已停止所有操作（定时脚本保留，到点照常运行）'); } catch (_e) { /* ignore */ }
         return { success: true };
     }
 

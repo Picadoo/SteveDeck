@@ -38,7 +38,10 @@
         "useExhaustiveDependencies": "off"
       },
       "a11y": {
-        "noLabelWithoutControl": "warn",
+        "noLabelWithoutControl": {
+          "level": "warn",
+          "options": { "inputComponents": ["Input", "Switch"] }
+        },
         "noStaticElementInteractions": "warn",
         "useKeyWithClickEvents": "warn",
         "useButtonType": "warn",

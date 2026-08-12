@@ -105,7 +105,7 @@ export default function Modal({
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
           <h2 className="text-sm font-semibold">{title}</h2>
-          <button onClick={onClose} aria-label="关闭" className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg">
+          <button type="button" onClick={onClose} aria-label="关闭" className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg">
             <X className="h-4 w-4" />
           </button>
         </div>

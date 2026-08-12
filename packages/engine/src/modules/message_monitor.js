@@ -17,7 +17,7 @@ module.exports = (botInstance) => {
   botInstance._monitorStats = botInstance._monitorStats || {};
 
   const loadRules = () => {
-    const r = botInstance.config.settings && botInstance.config.settings.monitorRules;
+    const r = botInstance.config.settings?.monitorRules;
     return Array.isArray(r) ? r : [];
   };
   botInstance._monitorRules = loadRules();
@@ -30,7 +30,7 @@ module.exports = (botInstance) => {
       if (validatePattern(rule.pattern).ok) {
         try {
           re = new RegExp(rule.pattern, "g"); // 全局：一条消息里多个匹配(爆多种材料)都能逐个抓
-        } catch (e) {
+        } catch (_e) {
           re = null;
         }
       }
@@ -65,7 +65,7 @@ module.exports = (botInstance) => {
     let text;
     try {
       text = stripColor(jsonMsg.toString());
-    } catch (e) {
+    } catch (_e) {
       return;
     }
     if (!text) return;
@@ -107,7 +107,7 @@ module.exports = (botInstance) => {
           if (m.index === re.lastIndex) re.lastIndex++; // 防零宽匹配死循环
           if (++guard > 500) break; // 安全上限
         }
-      } catch (e) {
+      } catch (_e) {
         continue;
       }
       if (hit) dirty = true;
@@ -197,14 +197,14 @@ module.exports = (botInstance) => {
     try {
       re = new RegExp(pattern);
     } catch (e) {
-      return { ok: false, error: "正则无效: " + e.message };
+      return { ok: false, error: `正则无效: ${e.message}` };
     }
     const text = stripColor(sample || "");
     let m;
     try {
       m = re.exec(text);
     } catch (e) {
-      return { ok: false, error: "匹配出错: " + e.message };
+      return { ok: false, error: `匹配出错: ${e.message}` };
     }
     if (!m) return { ok: true, matched: false };
     const rawVal = m[valueGroup || 1];

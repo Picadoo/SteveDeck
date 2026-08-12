@@ -269,14 +269,14 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
     const id = String(req.params.id);
     const body = req.body || {};
     const script = body.script ?? body;
-    if (!script || !script.name || !Array.isArray(script.steps)) {
+    if (!script?.name || !Array.isArray(script.steps)) {
       res.status(400).json({ error: "invalid script: need { name, steps[] }" });
       return;
     }
     const lib = botManager.loadScripts();
     lib[script.name] = script;
     botManager.saveScripts(lib);
-    botManager.eachInstance((inst) => inst.preloadScripts && inst.preloadScripts(lib));
+    botManager.eachInstance((inst) => inst.preloadScripts?.(lib));
     let started = false;
     if (body.run !== false) {
       const inst = botManager.getInstance(id);

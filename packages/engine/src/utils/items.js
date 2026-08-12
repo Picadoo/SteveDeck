@@ -70,11 +70,11 @@ function parseChat(s) {
 /** 把 mineflayer item.enchants 转成 ["锋利 V", ...] */
 function enchantNames(item) {
   try {
-    const e = item && item.enchants;
+    const e = item?.enchants;
     if (Array.isArray(e) && e.length) {
       return e
         .map((x) => {
-          const id = String((x && x.name) || "").replace(/^minecraft:/, "");
+          const id = String((x?.name) || "").replace(/^minecraft:/, "");
           if (!id) return null;
           const cn = ENCH_CN[id] || id;
           const lvl = (x && (x.lvl || x.level)) || 1;
@@ -93,8 +93,8 @@ function customName(item) {
   let name = (item && (item.displayName || item.name)) || "";
   try {
     const d =
-      item && item.nbt && item.nbt.value && item.nbt.value.display && item.nbt.value.display.value;
-    if (d && d.Name && d.Name.value) name = parseChat(d.Name.value);
+      item?.nbt?.value?.display?.value;
+    if (d?.Name?.value) name = parseChat(d.Name.value);
   } catch {
     /* ignore */
   }
@@ -105,8 +105,8 @@ function customName(item) {
 function lore(item) {
   try {
     const d =
-      item && item.nbt && item.nbt.value && item.nbt.value.display && item.nbt.value.display.value;
-    if (d && d.Lore && d.Lore.value && d.Lore.value.value) {
+      item?.nbt?.value?.display?.value;
+    if (d?.Lore?.value?.value) {
       return d.Lore.value.value.map((l) => cleanName(parseChat(l))).join("\n");
     }
   } catch {

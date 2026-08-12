@@ -42,13 +42,13 @@ export default class ErrorBoundary extends Component<Props, State> {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={this.reset}
             className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 active:scale-95"
           >
             <RotateCw className="h-3.5 w-3.5" /> 重试
           </button>
-          <button
+          <button type="button"
             onClick={() => window.location.reload()}
             className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted transition hover:text-fg active:scale-95"
           >

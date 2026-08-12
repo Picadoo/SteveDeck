@@ -336,6 +336,7 @@ export default function AddBotDialog({
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: children 即控件，包裹式关联在运行时成立（点标题可聚焦控件）
     <label className="block">
       <span className="mb-1.5 block text-xs font-medium text-muted">{label}</span>
       {children}

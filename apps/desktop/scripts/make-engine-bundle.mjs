@@ -47,7 +47,7 @@ const pkgDir = (name) => {
   if (fs.existsSync(path.join(flat, "package.json"))) return flat;
   const pnpmDir = path.join(out, "node_modules", ".pnpm");
   if (fs.existsSync(pnpmDir)) {
-    const hit = fs.readdirSync(pnpmDir).find((n) => n.startsWith(name + "@"));
+    const hit = fs.readdirSync(pnpmDir).find((n) => n.startsWith(`${name}@`));
     if (hit) {
       const p = path.join(pnpmDir, hit, "node_modules", name);
       if (fs.existsSync(p)) return p;
@@ -65,7 +65,7 @@ const countTopLinks = () => {
 
 // 1. deploy（hoisted：扁平、无符号链接的生产依赖）
 //    先 deploy 到临时目录、全部成功后再替换正式目录：deploy 失败时旧好包不会被毁（既无新包也无旧包的窘境）。
-const tmpOut = out + ".tmp";
+const tmpOut = `${out}.tmp`;
 log("清理临时目录");
 fs.rmSync(tmpOut, { recursive: true, force: true });
 const deployCmd = `pnpm -C "${root}" --filter=@mcbot/engine deploy --prod --legacy --config.node-linker=hoisted "${tmpOut}"`;
@@ -118,7 +118,7 @@ if (variant === "slim") {
     // pnpm 布局下的 .pnpm 实体（若存在）
     if (fs.existsSync(pnpmDir)) {
       for (const name of fs.readdirSync(pnpmDir)) {
-        if (heavy.some((x) => name.startsWith(x + "@"))) {
+        if (heavy.some((x) => name.startsWith(`${x}@`))) {
           fs.rmSync(path.join(pnpmDir, name), { recursive: true, force: true });
         }
       }

@@ -32,9 +32,9 @@ class Logger {
         const formatted = `[${timestamp}] [${level}] ${message}`;
 
         if (args.length > 0) {
-            return formatted + ' ' + args.map(arg =>
+            return `${formatted} ${args.map(arg =>
                 typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-            ).join(' ');
+            ).join(' ')}`;
         }
 
         return formatted;
@@ -44,14 +44,14 @@ class Logger {
         const date = new Date().toISOString().split('T')[0];
         const logFile = path.join(this.logDir, `${date}.log`);
 
-        fs.appendFile(logFile, formattedMessage + '\n', (err) => {
+        fs.appendFile(logFile, `${formattedMessage}\n`, (err) => {
             if (err) console.error('日志写入失败:', err);
         });
 
         // 错误单独记录
         if (level === 'ERROR') {
             const errorFile = path.join(this.logDir, `${date}-error.log`);
-            fs.appendFile(errorFile, formattedMessage + '\n', () => {});
+            fs.appendFile(errorFile, `${formattedMessage}\n`, () => {});
         }
     }
 
