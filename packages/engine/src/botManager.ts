@@ -1,10 +1,10 @@
 import { randomUUID } from "crypto";
-import { Server as IOServer } from "socket.io";
+import type { Server as IOServer } from "socket.io";
 import {
-  BotConfig,
-  BotConfigInput,
-  BotSummary,
-  DataBundle,
+  type BotConfig,
+  type BotConfigInput,
+  type BotSummary,
+  type DataBundle,
   ServerEvents,
 } from "@mcbot/protocol";
 import {
@@ -15,9 +15,13 @@ import {
   loadCustomScripts as loadCustomScriptsFile,
   saveCustomScripts as saveCustomScriptsFile,
 } from "./storage";
+import { maxHealthOf } from "./utils/botStats";
 
-// 复用的核心逻辑（CommonJS JS 模块）
-const BotInstance = require("./BotInstance");
+import type { BotInstance, BotInstanceCtor } from "./types/botInstance";
+
+// 复用的核心逻辑（CommonJS JS 模块）。类型契约见 types/botInstance.ts——
+// 方法/字段名强校验（拼错编译期报错），签名从宽（逐步收紧）。
+const BotInstanceClass = require("./BotInstance") as BotInstanceCtor;
 const logger = require("./utils/logger");
 
 // 透传事件白名单 = UI（packages/ui/src/lib/engine.ts）实际监听的模块专属事件。
@@ -126,7 +130,7 @@ interface EmitChain {
 class BotManager {
   private io!: IOServer;
   private broadcaster!: EmitChain;
-  private bots = new Map<string, any>(); // id -> BotInstance
+  private bots = new Map<string, BotInstance>(); // id -> BotInstance
   private configs: BotConfig[] = [];
   private recentChat = new Map<string, string[]>(); // id -> 服务器聊天
   private recentOps = new Map<string, string[]>(); // id -> 机器人操作日志
@@ -213,6 +217,7 @@ class BotManager {
             text: payload?.msg,
             level: isActionBar ? "actionbar" : isChat ? "chat" : "info",
             segments: payload?.segments, // 可点击/可悬浮聊天片段（有则前端渲染按钮/悬浮）
+            kind: payload?.kind, // 结构化事件标记（death/kick）：UI 通知按它识别，不再匹配文案
           },
         },
       };
@@ -228,7 +233,7 @@ class BotManager {
   getConfigs(): BotConfig[] {
     return this.configs;
   }
-  getInstance(id: string): any | undefined {
+  getInstance(id: string): BotInstance | undefined {
     return this.bots.get(id);
   }
   private findByUsername(username?: string): BotConfig | undefined {
@@ -242,22 +247,6 @@ class BotManager {
 
   buildSnapshot(): BotSummary[] {
     return this.configs.map((c) => this.buildSummary(c));
-  }
-
-  /** 读取最大生命属性（RPG 服常把它调高到 >20）。取不到则回退 20。 */
-  private maxHealthOf(bot: any): number {
-    try {
-      const a = bot?.entity?.attributes;
-      if (a) {
-        const e =
-          a["minecraft:generic.max_health"] || a["generic.maxHealth"] || a["generic.max_health"];
-        const v = e?.value;
-        if (typeof v === "number" && v > 0) return Math.round(v);
-      }
-    } catch {
-      /* ignore */
-    }
-    return 20;
   }
 
   buildSummary(cfg: BotConfig): BotSummary {
@@ -274,7 +263,7 @@ class BotManager {
       uptime: online ? Math.floor((Date.now() - (inst.spawnedAt || Date.now())) / 1000) : null,
       online,
       health: online ? Math.round(bot.health) : null,
-      maxHealth: online ? this.maxHealthOf(bot) : null,
+      maxHealth: online ? maxHealthOf(bot) : null,
       food: online ? Math.round(bot.food) : null,
       level: online ? (bot.experience ? bot.experience.level : 0) : null,
       ping: online && typeof bot.player?.ping === "number" ? bot.player.ping : null,
@@ -365,8 +354,15 @@ class BotManager {
   /** 合并导入：按 用户名@host 去重加 bot、按名字加脚本，不删现有（无损）。返回各类新增数。 */
   importData(bundle: DataBundle): { bots: number; scripts: number; customScripts: number } {
     let bots = 0;
+    // 导入上限：一次最多新增 200 只（批量假人场景够用）。此前无上限，一个恶意/损坏的
+    // bundle 能一次触发上万个 createBot 把引擎打挂（scheduler/脚本步数都有上限，唯独这里漏了）
+    const MAX_IMPORT_BOTS = 200;
     if (Array.isArray(bundle.bots)) {
       for (const b of bundle.bots) {
+        if (bots >= MAX_IMPORT_BOTS) {
+          logger.warn(`[BotManager] 导入已达单次上限 ${MAX_IMPORT_BOTS} 只，其余忽略`);
+          break;
+        }
         if (!b || !b.username || !b.host) continue;
         if (this.configs.some((c) => c.username === b.username && c.host === b.host)) continue; // 已存在则跳过
         if (validateBotInput(b)) continue; // 非法配置(端口/长度)跳过
@@ -417,7 +413,7 @@ class BotManager {
     saveCustomScriptsFile(scripts);
   }
   /** 遍历所有在线实例（用于同步脚本库等）。 */
-  eachInstance(fn: (inst: any) => void): void {
+  eachInstance(fn: (inst: BotInstance) => void): void {
     for (const inst of this.bots.values()) {
       try {
         fn(inst);
@@ -565,7 +561,7 @@ class BotManager {
   private spawn(cfg: BotConfig): void {
     if (this.bots.has(cfg.id)) return;
     try {
-      const inst = new BotInstance(
+      const inst = new BotInstanceClass(
         this.toInstanceConfig(cfg),
         this.makeBroadcaster(cfg.id),
         () => this.persist(),

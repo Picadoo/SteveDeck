@@ -36,11 +36,15 @@ ENV PORT=8723
 # 容器内必须绑 0.0.0.0：引擎默认 127.0.0.1 会让端口映射够不着（镜像级兜底，compose 同名变量可覆盖）
 ENV ENGINE_HOST=0.0.0.0
 
-COPY --from=build /app/deploy /app
+# --chown 随 COPY 落盘（RUN chown -R 会把整个 /app 再复制一层，镜像白翻倍）
+COPY --from=build --chown=node:node /app/deploy /app
 # 网页客户端构建产物：引擎检测到 MCBOT_UI_DIST 即在根路径直出（手机浏览器/扫码直连）
-COPY --from=build /app/packages/ui/dist /app/ui-dist
+COPY --from=build --chown=node:node /app/packages/ui/dist /app/ui-dist
 ENV MCBOT_UI_DIST=/app/ui-dist
-RUN mkdir -p /data
+# 非 root 运行（node 镜像自带 uid=1000 的 node 用户）；/data 卷须归它所有才能写配置/令牌。
+# 注意：从旧版（root 运行）升级的已有卷需手动一次 chown：docker run --rm -v <卷名>:/data alpine chown -R 1000:1000 /data
+RUN mkdir -p /data && chown node:node /data
+USER node
 
 EXPOSE 8723
 VOLUME ["/data"]

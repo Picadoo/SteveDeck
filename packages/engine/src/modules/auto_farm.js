@@ -25,12 +25,7 @@ module.exports = (botInstance) => {
         stats: { harvested: {}, planted: {}, boneMealUsed: 0, startTime: null, lastHarvest: null }
     };
 
-    const emitLog = (msg) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('log', {
-            user: bot.username, ownerId: botInstance.config.ownerId,
-            msg, time: new Date().toLocaleTimeString()
-        });
-    };
+    const emitLog = (msg) => botInstance.uiLog(msg);
 
     // 读取作物生长阶段（兼容 getProperties 返回字符串/缺失 → 回退 metadata）
     const cropAge = (block) => {

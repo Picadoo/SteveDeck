@@ -1,7 +1,8 @@
-import { Server as IOServer, Socket } from "socket.io";
-import { ClientCommands, CommandAck, BotSettings } from "@mcbot/protocol";
+import type { Server as IOServer, Socket } from "socket.io";
+import { ClientCommands, type CommandAck, type BotSettings } from "@mcbot/protocol";
 import { botManager } from "../botManager";
-import { Ack, ok, fail } from "./ack";
+import { type Ack, ok, fail } from "./ack";
+import type { BotInstance } from "../types/botInstance";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { isChatBlocked } = require("../utils/chatSafety"); // 命令安全过滤(API-1)：存储前即时拦截
 
@@ -148,7 +149,7 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
 
 function dispatchAction(
   io: IOServer,
-  inst: any,
+  inst: BotInstance,
   id: string,
   module: string,
   action: string,
@@ -262,7 +263,7 @@ function dispatchAction(
       // 模块未挂载（旧版 lite 假人/模块挂载失败）时给友好提示，而不是 TypeError 炸 handler
       if (typeof inst.startViewer !== "function")
         return fail("该机器人未加载视角模块（重启机器人后重试）");
-      return ok(inst.startViewer(!!args.firstPerson));
+      return ok(inst.startViewer(!!args.firstPerson, args.viewDistance));
     case "viewer:stop":
       return ok({ stopped: inst.stopViewer?.() ?? false });
     case "auto_farm:scan":
@@ -596,18 +597,18 @@ function dispatchAction(
   }
 }
 
-function ensureSchedules(inst: any): void {
+function ensureSchedules(inst: BotInstance): void {
   inst.config.settings = inst.config.settings || {};
   if (!Array.isArray(inst.config.settings.schedules)) inst.config.settings.schedules = [];
 }
 
-function persistLocations(id: string, inst: any): void {
+function persistLocations(id: string, inst: BotInstance): void {
   persistSettings(id, (s) => {
     s.savedLocations = inst.savedLocations;
   });
 }
 
-function persistHunterArea(id: string, inst: any): void {
+function persistHunterArea(id: string, inst: BotInstance): void {
   persistSettings(id, (s) => {
     const cur = (s.mobHunter && (s.mobHunter as any).config) || {};
     s.mobHunter = {

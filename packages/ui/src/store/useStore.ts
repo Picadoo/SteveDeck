@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { BotStatus, BotSummary, LogLine, InventoryItem, WindowState, MonitorStat } from "@mcbot/protocol";
+import { mcPlain } from "@/lib/format";
 
 export type ConnStatus = "disconnected" | "connecting" | "online" | "error";
 
@@ -171,7 +172,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
     const id = ++toastSeq;
     set((s) => {
-      let toasts = [...s.toasts, { id, message, tone }];
+      const toasts = [...s.toasts, { id, message, tone }];
       // 上限 5 条：挤掉最旧的（其计时器一并清理）
       while (toasts.length > MAX_TOASTS) {
         const drop = toasts.shift()!;
@@ -309,6 +310,9 @@ export const useStore = create<AppState>((set, get) => ({
   appendLog: (id, line) =>
     set((s) => {
       line.seq = ++logSeq;
+      // 入库时洗一次 § 色码存下来：过滤框每输入一个字符要扫全部行，
+      // 若现场重洗是 500 行 × 每键一次的正则开销（挂机刷屏时日志页最热的重复计算）
+      line.plain = mcPlain(line.text);
       const prev = s.logs[id] ?? [];
       const next = prev.length >= MAX_LOG_LINES ? [...prev.slice(prev.length - MAX_LOG_LINES + 1), line] : [...prev, line];
       return { logs: { ...s.logs, [id]: next } };

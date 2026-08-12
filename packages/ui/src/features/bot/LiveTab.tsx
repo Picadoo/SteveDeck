@@ -10,6 +10,7 @@ import Viewer from "./Viewer";
 import ViewerModal from "./ViewerModal";
 import SimKeys from "./SimKeys";
 import type { BotSummary } from "@mcbot/protocol";
+import { memoBotTab } from "@/lib/memoBotTab";
 
 type Npc = {
   id: number;
@@ -23,7 +24,7 @@ type Npc = {
 type Container = { x: number; y: number; z: number; name: string; distance: number };
 
 /** 交互：实时视角 + 操控 + 前往坐标 + NPC/容器交互。亲自上手操作机器人都在这里。 */
-export default function LiveTab({ bot }: { bot: BotSummary }) {
+function LiveTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const setWindow = useStore((s) => s.setWindow);
   const disabled = !bot.online;
@@ -220,3 +221,6 @@ export default function LiveTab({ bot }: { bot: BotSummary }) {
     </div>
   );
 }
+
+// 字段白名单 memo：646 行的 Viewer 不该随 BOT_STATUS 每 2s 重执行（视角画面在 iframe 里自更新）
+export default memoBotTab(LiveTab, ["id", "online"]);

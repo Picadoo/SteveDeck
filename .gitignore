@@ -17,7 +17,7 @@ apps/mobile/src-tauri/gen/
 
 # 运行时数据（令牌、机器人配置、脚本）
 data/
-.test-data/
+.test-data*/
 *.log
 
 # 本地预览/调试配置

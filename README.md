@@ -54,6 +54,7 @@ Minecraft 挂机机器人控制台，引擎 24/7 跑在 Docker 上，Windows / A
 | **跟随** | 类 Baritone follow，按玩家名 / 关键词 / 最近 |
 | **垃圾清理** | 自动丢弃腐肉等垃圾 |
 | **日志监听** | 自定义规则匹配聊天 / 系统消息，触发提醒或动作 |
+| **挂机通知** | 死亡 / 被踢 / 掉线时 Webhook 推送到手机——Server酱 / 钉钉 / 飞书 / 企业微信 / Discord / Bark |
 
 <table>
   <tr>

@@ -1,23 +1,8 @@
 import { botManager } from "../botManager";
+import { maxHealthOf } from "../utils/botStats";
 
 // 物品/装备摘要助手（CJS 工具，引擎以 require 复用）
 const { itemBrief, enchantNames, customName } = require("../utils/items");
-
-/** 读取最大生命属性（RPG 服常 >20），取不到回退 20。 */
-function maxHealthOf(bot: any): number {
-  try {
-    const a = bot?.entity?.attributes;
-    if (a) {
-      const e =
-        a["minecraft:generic.max_health"] || a["generic.maxHealth"] || a["generic.max_health"];
-      const v = e?.value;
-      if (typeof v === "number" && v > 0) return Math.round(v);
-    }
-  } catch {
-    /* ignore */
-  }
-  return 20;
-}
 
 /** 其他实体（怪/NPC/Boss）当前血量：优先 entity.health，否则按注册表/下标从元数据取。取不到返回 null */
 function entityHealth(bot: any, e: any): number | null {

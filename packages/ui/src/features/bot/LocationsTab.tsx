@@ -6,6 +6,8 @@ import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
 import type { BotSummary, SavedLocationSummary } from "@mcbot/protocol";
+import { memoBotTab, eqJson } from "@/lib/memoBotTab";
+import { usePoll } from "@/lib/usePoll";
 
 type RecTarget = { kind: "new" | "existing"; id?: string; name: string };
 
@@ -25,7 +27,7 @@ function dimLabel(d?: string): string | null {
   return d;
 }
 
-export default function LocationsTab({ bot }: { bot: BotSummary }) {
+function LocationsTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [name, setName] = useState("");
   const [command, setCommand] = useState("");
@@ -37,25 +39,17 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
   const locs = bot.savedLocations ?? [];
   const atCap = locs.length >= 200; // 软上限纯防滥用，正常使用无感；满了才禁用
 
-  // 录制中：轮询步数；引擎侧若停了则收起横幅
-  useEffect(() => {
-    if (!rec) return;
-    let alive = true;
-    const tick = async () => {
+  // 录制中：轮询步数；引擎侧若停了则收起横幅。页面切后台自动暂停（见 usePoll）
+  usePoll(
+    async (alive) => {
       const r = await cmd.moduleAction<{ active: boolean; count: number }>(bot.id, "recording", "status");
-      if (!alive) return;
-      if (r.ok && r.data) {
-        setRecCount(r.data.count);
-        if (!r.data.active) setRec(null);
-      }
-    };
-    tick();
-    const t = window.setInterval(tick, 1000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [rec, bot.id]);
+      if (!alive() || !r.ok || !r.data) return;
+      setRecCount(r.data.count);
+      if (!r.data.active) setRec(null);
+    },
+    1000,
+    { enabled: !!rec, deps: [rec, bot.id] },
+  );
 
   async function saveHere(e: FormEvent) {
     e.preventDefault();
@@ -310,3 +304,6 @@ export default function LocationsTab({ bot }: { bot: BotSummary }) {
     </div>
   );
 }
+
+// 字段白名单 memo：savedLocations 是数组（每次推送新引用），按值比较——地点没增删改就不重渲
+export default memoBotTab(LocationsTab, ["id", "online", ["savedLocations", eqJson]]);

@@ -1,4 +1,4 @@
-'use strict';
+
 const { DEFAULT_RULES, matchItem, evaluateRules } = require('./rules');
 
 const USE_BUSY_MS = 1800;       // 一次「使用」占用身体时长（吃/喝约 1.6s + 余量）
@@ -7,13 +7,7 @@ const EVAL_INTERVAL_MS = 1000;  // 规则评估节奏
 module.exports = (botInstance) => {
   const bot = botInstance.bot;
 
-  const emitLog = (msg) =>
-    botInstance.io.to(botInstance._room).to('admin').emit('log', {
-      user: bot.username,
-      ownerId: botInstance.config.ownerId,
-      msg,
-      time: new Date().toLocaleTimeString(),
-    });
+  const emitLog = (msg) => botInstance.uiLog(msg);
 
   const task = (botInstance.autoUseTask = {
     active: false,

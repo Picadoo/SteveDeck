@@ -10,8 +10,10 @@ import CustomJsPanel from "./CustomJsPanel";
 import { TRIGGER_TYPES } from "./stepDefs";
 import { SCRIPT_TEMPLATES } from "./scriptTemplates";
 import type { BotSummary, ScriptSummary, BotScript } from "@mcbot/protocol";
+import { memoBotTab, eqJson } from "@/lib/memoBotTab";
+import { usePoll } from "@/lib/usePoll";
 
-export default function ScriptsTab({ bot }: { bot: BotSummary }) {
+function ScriptsTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [mode, setMode] = useState<"visual" | "js">("visual");
   const [list, setList] = useState<ScriptSummary[]>([]);
@@ -34,15 +36,15 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
       .then((r) => { if (alive && r.ok && r.data) setRec({ active: !!r.data.active, count: r.data.count || 0 }); });
     return () => { alive = false; };
   }, [bot.id, bot.online]);
-  // 录制中：每 1.5s 刷新步数
-  useEffect(() => {
-    if (!rec?.active) return;
-    const t = setInterval(async () => {
+  // 录制中：每 1.5s 刷新步数。页面切后台自动暂停（录制常态是切去别的 tab 操作，别在后台白打请求；见 usePoll）
+  usePoll(
+    async (alive) => {
       const r = await cmd.moduleAction<{ active: boolean; count: number }>(bot.id, "recording", "status");
-      if (r.ok && r.data) setRec({ active: !!r.data.active, count: r.data.count || 0 });
-    }, 1500);
-    return () => clearInterval(t);
-  }, [rec?.active, bot.id]);
+      if (alive() && r.ok && r.data) setRec({ active: !!r.data.active, count: r.data.count || 0 });
+    },
+    1500,
+    { enabled: !!rec?.active, deps: [rec?.active, bot.id] },
+  );
 
   async function startRec() {
     const r = await cmd.moduleAction(bot.id, "recording", "start");
@@ -398,3 +400,6 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
     </div>
   );
 }
+
+// 字段白名单 memo：脚本运行态走 scriptRuntime 独立订阅；bot 只关心这几个字段
+export default memoBotTab(ScriptsTab, ["id", "online", "host", ["modules", eqJson]]);

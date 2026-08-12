@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { dataPath } from "./config/paths";
-import { BotConfig } from "@mcbot/protocol";
+import type { BotConfig } from "@mcbot/protocol";
 
 /**
  * 读 JSON，区分「文件不存在」与「文件损坏」：

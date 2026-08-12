@@ -78,16 +78,15 @@ module.exports = (botInstance) => {
     let lastDiagAt = 0;     // 上次诊断播报时间
     const damageHistory = new Map(); // id -> { lastHitAt, lastDistance, name, hurtByPlayerAt }
 
-    const emitLog = (msg) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('log', {
-            user: bot.username, ownerId: botInstance.config.ownerId,
-            msg, time: new Date().toLocaleTimeString()
-        });
-    };
+    const emitLog = (msg) => botInstance.uiLog(msg);
 
-    // 统一洗码：§ 后任意字符都是格式码（含 §u/§j 等服务器自造码）——关键词匹配两侧都要洗，
-    // 否则名字里夹着码（§u庄§j稼§x汉）按看到的字填关键词永远匹配不上。
-    const stripCodes = (s) => String(s == null ? '' : s).replace(/§./g, '');
+    // 洗码/名牌解析/全息联想：共享实现见 utils/entityName.js（follow 同用，不再各拷一份）
+    const {
+        stripMcCodes: stripCodes,
+        entityDisplayName,
+        isArmorStand,
+        hologramNameFor: hologramNameIn,
+    } = require('../utils/entityName');
 
     const matchesKeywords = (entityName, keywords) => {
         if (!keywords || keywords.length === 0) return false;
@@ -100,40 +99,7 @@ module.exports = (botInstance) => {
         return botInstance.mobHunterTask.blacklist.some(item => lowerName.includes(stripCodes(item).toLowerCase()));
     };
 
-    // 展平聊天组件取纯文本：兼容三种形态——纯字符串、JSON 组件({text,extra})、
-    // NBT 解码形态({type,value} 包一层，1.20.3+ 协议的实体元数据是这种)。任一形态嵌套均可。
-    const flattenName = (node) => {
-        if (node == null) return '';
-        if (typeof node === 'string') return node;
-        if (Array.isArray(node)) return node.map(flattenName).join('');
-        if (typeof node === 'object') {
-            if ('value' in node) return typeof node.value === 'object' ? flattenName(node.value) : String(node.value);
-            let s = node.text != null ? flattenName(node.text) : '';
-            if (node.extra != null) s += flattenName(node.extra);
-            return s;
-        }
-        return '';
-    };
-
-    const getEntityDisplayName = (entity) => {
-        if (!entity) return 'unknown';
-        try {
-            if (entity.metadata && entity.metadata[2]) {
-                const customName = entity.metadata[2];
-                if (typeof customName === 'string' && customName.length > 0) {
-                    return stripCodes(customName).replace(/[{}"]/g, '').trim();
-                }
-                if (customName && typeof customName === 'object') {
-                    const cleaned = stripCodes(flattenName(customName)).trim();
-                    if (cleaned) return cleaned;
-                }
-            }
-        } catch (e) {}
-        return stripCodes(entity.customName || entity.displayName || entity.name || 'unknown').trim() || 'unknown';
-    };
-
-    const isArmorStand = (e) =>
-        e && /armor.?stand/i.test(String(e.name || e.kind || ''));
+    const getEntityDisplayName = (entity) => entityDisplayName(entity, 'unknown');
 
     // RPG 服全息名牌：怪物名字常挂在头顶的隐形盔甲架上，怪本体没有 CustomName。
     // 每轮扫描先收集带名字的盔甲架，匹配关键词时把「头顶 1.6 格半径内、脚下到 3.2 格高」
@@ -149,15 +115,7 @@ module.exports = (botInstance) => {
             }
         }
     };
-    const hologramNameFor = (entity) => {
-        for (const h of hologramStands) {
-            const dx = h.pos.x - entity.position.x;
-            const dz = h.pos.z - entity.position.z;
-            const dy = h.pos.y - entity.position.y;
-            if (dx * dx + dz * dz <= 1.6 * 1.6 && dy > -0.5 && dy < 3.2) return h.name;
-        }
-        return null;
-    };
+    const hologramNameFor = (entity) => hologramNameIn(entity, hologramStands);
 
     const isValidTarget = (entity) => {
         if (!entity || !entity.position) return false;

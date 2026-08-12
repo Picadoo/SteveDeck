@@ -332,10 +332,15 @@ export interface LogLine {
   time: string;
   text: string;
   level?: "info" | "warn" | "error" | "chat" | "actionbar";
+  /** 结构化事件标记：death=死亡、kick=被踢。UI 桌面通知按它识别（引擎改日志文案不再弄哑通知）。 */
+  kind?: "death" | "kick";
   /** 服务器聊天的可点击/可悬浮片段；有则前端渲染成可点按钮/悬浮提示 */
   segments?: ChatSegment[];
   /** 前端本地渲染序号（appendLog 时赋值，引擎不发送）：滑动窗口下稳定且唯一的 React key */
   seq?: number;
+  /** 前端本地缓存的洗码纯文本（appendLog 时赋值，引擎不发送）：日志过滤每输入一字符要扫全部行，
+   *  不缓存的话 500 行 × 每行重跑正则洗 § 色码是控制台最热的重复计算 */
+  plain?: string;
 }
 
 export interface ConnectionInfo {

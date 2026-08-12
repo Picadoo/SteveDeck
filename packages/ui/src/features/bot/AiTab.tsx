@@ -7,6 +7,7 @@ import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
 import { SCRIPT_SPEC, compactObservation } from "@mcbot/protocol";
 import type { BotSummary, BotScript, Observation } from "@mcbot/protocol";
+import { memoBotTab } from "@/lib/memoBotTab";
 
 // AI 直连走引擎 HTTP（key 存引擎侧不进浏览器；socket ack 8s 超时太短，生成要 20-60s）
 function authedFetch(pathname: string, init?: RequestInit): Promise<Response> {
@@ -45,7 +46,7 @@ function buildPrompt(obs: Observation, goal: string): string {
 // 切 tab 时 AiTab 会 unmount→remount，用模块级 Map 保留用户写到一半的目标文本
 const goalCache = new Map<string, string>();
 
-export default function AiTab({ bot }: { bot: BotSummary }) {
+function AiTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [obs, setObs] = useState<Observation | null>(null);
   const [loading, setLoading] = useState(false);
@@ -167,7 +168,7 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
             } else if (ev.type === "result") {
               setAgentLog((l) => [...l, `--- 完成（${ev.rounds} 轮）：${ev.evaluation}`]);
               if (ev.script) setGenScript(ev.script);
-              if (ev.warnings?.length) ev.warnings.forEach((w: string) => pushToast(w, "info"));
+              if (ev.warnings?.length) ev.warnings.forEach((w: string) => { pushToast(w, "info"); });
               pushToast(`Agent 完成：${ev.evaluation}`, "success");
             } else if (ev.type === "error") {
               setAgentLog((l) => [...l, `错误：${ev.message}`]);
@@ -477,3 +478,6 @@ function Row({ k, v }: { k: string; v: string }) {
     </div>
   );
 }
+
+// 字段白名单 memo：AI 生成/Agent 过程全是本地 state，bot 只用 id/online
+export default memoBotTab(AiTab, ["id", "online"]);

@@ -85,23 +85,28 @@ module.exports = (botInstance) => {
     return true;
   };
 
-  botInstance.startViewer = (firstPerson = false) => {
+  botInstance.startViewer = (firstPerson = false, viewDistance) => {
     firstPerson = !!firstPerson;
+    // viewDistance：区块数，直接决定带宽/显存/CPU。默认 3（≈48格，够看清周围）；
+    // UI 可传 2~8 覆盖（弱机调低救卡顿、好机调高看更远）；ENGINE_VIEWER_DISTANCE 改默认值。
+    const envDefault = Math.max(2, Math.min(8, Number(process.env.ENGINE_VIEWER_DISTANCE) || 3));
+    const vd = Math.max(2, Math.min(8, Number(viewDistance) || envDefault));
     // 抢占：取消任何尚未落地的延迟 stop（否则它可能稍后拆掉本次要起/复用的实例）。
     // 并自增代际：让此刻之前排程的 stop 落地时因「代际已变」而成为 no-op（幂等 + 代际化的核心）。
     cancelPendingStop();
     botInstance._viewerGen++;
-    // 已在运行且人称一致 → 原地复用，避免无谓重启（端口不变）
-    if (botInstance._viewerPort && botInstance._viewerFirstPerson === firstPerson)
-      return { port: botInstance._viewerPort, reused: true, firstPerson };
-    // 切人称：先就地关旧服务（其端口进入 2s 延迟回收，新服务必然换端口）
+    // 已在运行且人称/视距一致 → 原地复用，避免无谓重启（端口不变）
+    if (botInstance._viewerPort && botInstance._viewerFirstPerson === firstPerson && botInstance._viewerDistance === vd)
+      return { port: botInstance._viewerPort, reused: true, firstPerson, viewDistance: vd };
+    // 切人称/视距：先就地关旧服务（其端口进入 2s 延迟回收，新服务必然换端口）
     if (botInstance._viewerPort) closeViewerNow();
 
     // 直取子模块入口，不走根 index.js：根入口饿加载 headless/viewer 渲染链，
     // 会把 node-canvas（我们已不装的原生包）拽进来——服务端只需要 web 模式这一个函数。
     const mineflayerViewer = require('prismarine-viewer/lib/mineflayer');
-    // viewDistance：3 区块≈48格，足够看清周围又省带宽/显存/CPU；ENGINE_VIEWER_DISTANCE 可覆盖（2~8）
-    const viewDistance = Math.max(2, Math.min(8, Number(process.env.ENGINE_VIEWER_DISTANCE) || 3));
+    // 绑定地址跟随引擎主端口的暴露模型（CORE-6 同款）：默认只绑回环。此前视角服务无鉴权还绑全网卡，
+    // 桌面场景等于把 bot 实时画面开给整个局域网。Docker/远程部署已设 ENGINE_HOST=0.0.0.0，行为不变。
+    const host = process.env.ENGINE_HOST || '127.0.0.1';
 
     let lastErr;
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -109,11 +114,12 @@ module.exports = (botInstance) => {
       usedPorts.add(port); // 立刻占位：重试/并发都不会重选同一端口
       try {
         // firstPerson=true 第一人称（镜头=机器人视线）；false 第三人称（看得到本体、可 orbit 自由转镜头）
-        mineflayerViewer(bot, { port, firstPerson, viewDistance });
+        mineflayerViewer(bot, { port, host, firstPerson, viewDistance: vd });
         botInstance._viewerFirstPerson = firstPerson;
+        botInstance._viewerDistance = vd;
         botInstance._viewerPort = port;
         portOwners.set(port, botInstance); // 记录端口归属(MODB-6)
-        return { port, firstPerson };
+        return { port, firstPerson, viewDistance: vd };
       } catch (e) {
         lastErr = e;
         // 该端口同步失败：保留占位、延迟回收，换下一个端口重试

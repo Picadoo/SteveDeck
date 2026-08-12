@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { X, ArrowUp, ArrowDown, Trash2, Code2, Blocks, Plus } from "lucide-react";
 import { Button, Input, Switch } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
@@ -142,14 +143,23 @@ export default function ScriptEditor({
   const requestCloseRef = useRef(requestClose);
   requestCloseRef.current = requestClose;
 
-  // 自建弹窗容器（没用共享 Modal）：补 Esc 关闭，与其他弹窗行为一致（同样走丢稿确认）
+  // 自建弹窗容器（因标题栏有积木/JSON 切换，不套共享 Modal）：补 Esc 关闭 + 锁滚动 + 打开还焦，
+  // 与共享 Modal 行为对齐（关闭同样走丢稿确认）。容器经 createPortal 挂到 body（见 return），
+  // 免疫祖先 transform 截断——这是它此前唯一缺的一块。
   useEffect(() => {
     if (!open) return;
+    const prevFocused = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") requestCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      if (prevFocused && document.contains(prevFocused)) prevFocused.focus();
+    };
   }, [open]);
 
   useEffect(() => {
@@ -218,8 +228,9 @@ export default function ScriptEditor({
 
   const triggerDef = TRIGGER_TYPES.find((t) => t.type === s.trigger.type);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  // Portal 到 body：与共享 Modal 同理，免疫祖先 transform（移动端抽屉动画）导致的 fixed 定位截断
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="脚本编辑器">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={requestClose} aria-hidden />
       <div className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
@@ -310,7 +321,8 @@ export default function ScriptEditor({
       <datalist id="mc-items">{items.map((n) => <option key={n} value={n} />)}</datalist>
       <datalist id="mc-entities">{entities.map((n) => <option key={n} value={n} />)}</datalist>
       <datalist id="mc-players">{players.map((n) => <option key={n} value={n} />)}</datalist>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -323,7 +335,7 @@ function StepList({ steps, onChange, depth }: { steps: any[]; onChange: (s: any[
       step[f.k] =
         f.type === "number" ? 0 : f.type === "bool" ? false : f.type === "select" ? f.options?.[0]?.value ?? "" : "";
     });
-    def?.containers?.forEach((c) => (step[c.key] = []));
+    def?.containers?.forEach((c) => { step[c.key] = []; });
     if (atIndex == null) {
       onChange([...steps, step]);
     } else {

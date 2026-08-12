@@ -184,6 +184,20 @@ class BotInstance {
         } catch (e) { /* ignore */ }
     }
 
+    // 结构化关键事件（death/kick/offline/online）：推 Webhook 挂机通知。
+    // 与 uiLog 分开——uiLog 是给「开着客户端的人」看的，这里是给「人不在」的场景推手机。
+    notifyEvent(kind, message) {
+        try {
+            require('./notify/webhook').publishBotEvent({
+                kind,
+                botId: this.config.id,
+                username: this.config.username,
+                host: this.config.host,
+                message,
+            });
+        } catch (e) { /* 通知不可用不影响主流程 */ }
+    }
+
     // ===== 直接坐标包移动（模组服）=====
     // mineflayer 走路靠客户端物理模拟，需要"看懂"周围方块自己算；模组服（模组方块 / varint 丢的区块）算不动 → 走不了。
     // 这里改成像 MinecraftConsoleClient 那样：关掉物理，直接发 position 包告诉服务器"我到这了"，不依赖物理。
@@ -407,6 +421,7 @@ class BotInstance {
 
                 logger.info(`[${this.config.username}] 登录成功，正在挂载功能模块...`);
                 this.uiLog('✅ 已进入服务器');
+                this.notifyEvent('online', '已进入服务器'); // 默认关（重连成功也算，开着会偏吵）
 
                 // 2. 模块挂载：逐个 try/catch 隔离——单个模块构造抛错不再连累后续模块与状态推送
                 // lite 假人（氛围组）：防挂机踢 + 视角/背包（这两个只挂函数/轻监听，重活都在用户点开时才发生），
@@ -571,6 +586,8 @@ class BotInstance {
                 ownerId: this.config.ownerId,
                 error: `已停止重连：${this._fatalReason}`
             });
+            // 「彻底掉线且不会自己回来」是挂机场景最需要推到手机的事件
+            this.notifyEvent('offline', `已停止重连（不可恢复）：${this._fatalReason}`);
             return;
         }
 
@@ -581,6 +598,7 @@ class BotInstance {
                 ownerId: this.config.ownerId,
                 error: '达到最大重连次数，已停止重连'
             });
+            this.notifyEvent('offline', `达到最大重连次数（${this.maxReconnectAttempts}），已停止重连`);
             return;
         }
 
@@ -709,10 +727,13 @@ class BotInstance {
         this.bot.on('kicked', (reason) => {
             const text = extractText(reason).replace(/§./gi, '').trim();
             logger.warn(`[${this.config.username}] 被踢出: ${text || '(无原因)'}`);
+            // kind 是结构化事件标记：UI 桌面通知按它识别（不再靠匹配中文文案——改文案曾会静默弄哑通知）
             this.io.to(this._room).to('admin').emit('log', {
                 user: this.config.username, ownerId: this.config.ownerId,
-                msg: `被服务器踢出: ${text || '(无原因)'}`, time: new Date().toLocaleTimeString()
+                msg: `被服务器踢出: ${text || '(无原因)'}`, time: new Date().toLocaleTimeString(),
+                kind: 'kick'
             });
+            this.notifyEvent('kick', `被服务器踢出：${text || '(无原因)'}`);
             if (isFatalKick(reason)) this._fatalReason = text || '不可恢复的断开';
         });
 
@@ -721,8 +742,10 @@ class BotInstance {
         this.bot.on('death', () => {
             this.io.to(this._room).to('admin').emit('log', {
                 user: this.config.username, ownerId: this.config.ownerId,
-                msg: '机器人死亡，正在自动复活…', time: new Date().toLocaleTimeString()
+                msg: '机器人死亡，正在自动复活…', time: new Date().toLocaleTimeString(),
+                kind: 'death'
             });
+            this.notifyEvent('death', '死亡，正在自动复活');
             // 捕获死亡点（用最后一次存活坐标——death 时 entity 常已失效）：供「死亡返回」与脚本变量 {deathX/Y/Z}
             const dp = this._lastAlivePos;
             if (dp) {

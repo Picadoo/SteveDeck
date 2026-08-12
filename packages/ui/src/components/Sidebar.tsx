@@ -1,10 +1,10 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { Bot, Plus, LogOut, Heart, Drumstick, Server, ChevronDown, Cpu, Users } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { StatusDot, IconButton, Badge } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { disconnect } from "@/lib/engine";
-import { usePageVisible } from "@/lib/usePageVisible";
+import { usePoll } from "@/lib/usePoll";
 import { healthPct, healthTone } from "@/lib/format";
 import AddBotDialog from "@/features/bot/AddBotDialog";
 import BatchAddDialog from "@/features/bot/BatchAddDialog";
@@ -21,27 +21,20 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   // 引擎进程资源占用（只看本软件，不看宿主机其他程序）：5s 轮询，页面后台暂停；旧引擎无端点则不显示
   const [engineStats, setEngineStats] = useState<{ cpuPct: number; rssMB: number } | null>(null);
-  const visible = usePageVisible();
-  useEffect(() => {
-    if (conn.status !== "online" || !visible) return;
-    let alive = true;
-    const poll = async () => {
+  usePoll(
+    async (alive) => {
       try {
         const r = await fetch(`${conn.url.replace(/\/+$/, "")}/api/engine-stats`, {
           headers: { Authorization: `Bearer ${conn.token}` },
         });
-        if (alive && r.ok) setEngineStats(await r.json());
+        if (alive() && r.ok) setEngineStats(await r.json());
       } catch {
         /* 引擎暂不可达：保留上次值 */
       }
-    };
-    poll();
-    const t = setInterval(poll, 5000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [conn.status, conn.url, conn.token, visible]);
+    },
+    5000,
+    { enabled: conn.status === "online", deps: [conn.url, conn.token, conn.status] },
+  );
 
   // 稳定引用：行内闭包会让 memo(BotRow) 永远不等价。
   // onNavigate 走 ref——调用方若传内联箭头（每渲染新引用），不至于击穿全部 BotRow 的 memo。
@@ -202,7 +195,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-// memo：任一 bot 的状态推送只重渲它自己的行（upsertBot 对未变化 bot 保留旧引用 + 无变化短路）
+// memo：任一 bot 的状态推送只重渲它自己的行（upsertBot 的 slice 只替换目标项，未变化 bot 保留旧引用）
 const BotRow = memo(function BotRow({
   bot,
   active,

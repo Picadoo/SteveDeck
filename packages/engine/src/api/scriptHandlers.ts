@@ -1,7 +1,7 @@
-import { Socket } from "socket.io";
+import type { Socket } from "socket.io";
 import { ClientCommands } from "@mcbot/protocol";
 import { botManager } from "../botManager";
-import { Ack, ok, fail } from "./ack";
+import { type Ack, ok, fail } from "./ack";
 
 /** 脚本库为全局（单主人）。运行/停止作用于指定机器人实例。 */
 export function registerScriptHandlers(socket: Socket): void {

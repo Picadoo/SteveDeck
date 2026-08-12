@@ -17,40 +17,11 @@ module.exports = (botInstance) => {
     };
     const task = botInstance.followTask;
 
-    const emitLog = (msg) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('log', {
-            user: bot.username, ownerId: botInstance.config.ownerId,
-            msg, time: new Date().toLocaleTimeString()
-        });
-    };
-    const stripCodes = (s) => String(s == null ? '' : s).replace(/§./g, '');
-
-    // 实体显示名：metadata 名牌（字符串/JSON 组件）→ customName/displayName/类型名
-    const displayNameOf = (e) => {
-        if (!e) return '';
-        try {
-            const cn = e.metadata && e.metadata[2];
-            if (typeof cn === 'string' && cn) return stripCodes(cn).trim();
-            if (cn && typeof cn === 'object') {
-                const flat = (cn.text || '') +
-                    (Array.isArray(cn.extra) ? cn.extra.map(x => (typeof x === 'string' ? x : (x && x.text) || '')).join('') : '');
-                if (flat) return stripCodes(flat).trim();
-            }
-        } catch (err) { /* ignore */ }
-        return stripCodes(e.customName || e.displayName || e.name || '').trim();
-    };
-    const isArmorStand = (e) => e && /armor.?stand/i.test(String(e.name || e.kind || ''));
-
-    // 全息名牌联想（与追怪同思路）：名字挂在头顶隐形盔甲架上时，按名牌匹配本体
-    const hologramNameFor = (entity, stands) => {
-        for (const h of stands) {
-            const dx = h.pos.x - entity.position.x;
-            const dz = h.pos.z - entity.position.z;
-            const dy = h.pos.y - entity.position.y;
-            if (dx * dx + dz * dz <= 1.6 * 1.6 && dy > -0.5 && dy < 3.2) return h.name;
-        }
-        return null;
-    };
+    const emitLog = (msg) => botInstance.uiLog(msg);
+    // 洗码/名牌解析/全息联想：共享实现见 utils/entityName.js（与追怪同一套）。
+    // 相比旧本地版是纯升级：展平支持 1.20.3+ NBT {value} 形态与任意嵌套。
+    const { stripMcCodes: stripCodes, entityDisplayName, isArmorStand, hologramNameFor } = require('../utils/entityName');
+    const displayNameOf = (e) => entityDisplayName(e, '');
 
     const findTarget = () => {
         if (!bot.entity) return null;

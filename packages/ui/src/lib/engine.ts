@@ -74,6 +74,54 @@ export async function fetchConnectionInfo(): Promise<{
   }
 }
 
+// ===== Webhook 挂机通知（引擎侧推送到钉钉/飞书/企业微信/Discord/Server酱/Bark）=====
+export interface NotifyConfig {
+  enabled: boolean;
+  url: string;
+  preset: "generic" | "dingtalk" | "feishu" | "wecom" | "discord" | "serverchan" | "bark";
+  events: { death: boolean; kick: boolean; offline: boolean; online: boolean };
+  cooldownSec: number;
+}
+
+async function engineApi<T>(path: string, init?: RequestInit): Promise<T | null> {
+  const { url, token } = useStore.getState().conn;
+  if (!url || !token) return null;
+  try {
+    const r = await fetch(url + path, {
+      ...init,
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    });
+    if (!r.ok) return null;
+    return (await r.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** 读通知配置；旧引擎（无此接口）返回 null，设置页据此提示升级引擎 */
+export function fetchNotifyConfig(): Promise<NotifyConfig | null> {
+  return engineApi<NotifyConfig>("/api/notify/config");
+}
+export function saveNotifyConfig(cfg: Partial<NotifyConfig>): Promise<NotifyConfig | null> {
+  return engineApi<NotifyConfig>("/api/notify/config", { method: "POST", body: JSON.stringify(cfg) });
+}
+/** 用已保存的配置发一条测试消息，返回渠道侧成败与原因 */
+export async function testNotify(): Promise<{ ok: boolean; error?: string }> {
+  const { url, token } = useStore.getState().conn;
+  if (!url || !token) return { ok: false, error: "未连接到引擎" };
+  try {
+    const r = await fetch(url + "/api/notify/test", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token },
+    });
+    const body = await r.json().catch(() => ({}));
+    if (r.ok && body?.ok) return { ok: true };
+    return { ok: false, error: body?.error || `HTTP ${r.status}` };
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+}
+
 /** 解析连接串 mcbot://host:port?token=xxx → { url, token } */
 export function parseConnectionString(input: string): { url: string; token: string } | null {
   const s = input.trim();
@@ -242,17 +290,34 @@ export function connect(url: string, token: string): void {
   socket.on(ServerEvents.BOTS_SNAPSHOT, (p: { bots: BotSummary[] }) =>
     useStore.getState().setBots(p.bots ?? []),
   );
-  socket.on(ServerEvents.BOT_STATUS, (p: { bot: BotStatus }) =>
-    useStore.getState().upsertBot(p.bot),
-  );
+  socket.on(ServerEvents.BOT_STATUS, (p: { bot: BotStatus }) => {
+    const b = p.bot;
+    // 低血量告警（桌面壳收托盘时）：跌破阈值（30% 血量，至少 3 颗心）的那一帧提醒一次。
+    // 边沿触发（上一帧在阈值上方才报）+ notifyDesktop 自带 60s 同键冷却，战斗抖动不会刷屏。
+    if (b?.online && typeof b.health === "number" && b.health > 0) {
+      const prev = useStore.getState().bots.find((x) => x.id === b.id);
+      const max = b.maxHealth || 20;
+      const threshold = Math.max(6, Math.round(max * 0.3));
+      const wasAbove = !prev || typeof prev.health !== "number" || prev.health > threshold;
+      if (b.health <= threshold && wasAbove) {
+        notifyDesktop(`hp:${b.id}`, `${b.username}@${b.host}`, `血量告急：${b.health}/${max}，请查看`);
+      }
+    }
+    useStore.getState().upsertBot(b);
+  });
   socket.on(ServerEvents.BOT_DELETED, (p: { id: string }) => useStore.getState().removeBot(p.id));
   socket.on(ServerEvents.BOT_LOG, (p: { id: string; line: LogLine }) => {
     if (!p.id) return;
     useStore.getState().appendLog(p.id, p.line);
-    // 桌面壳 + 窗口收进托盘时：死亡/被踢这类关键事件发系统通知（窗口可见时 UI 内日志/toast 已足够）
+    // 桌面壳 + 窗口收进托盘时：死亡/被踢这类关键事件发系统通知（窗口可见时 UI 内日志/toast 已足够）。
+    // 首选结构化 kind（引擎 ≥0.1.4 的日志自带，文案随便改都不影响识别）；
+    // 老引擎日志无 kind → 回退文案匹配（勿删：兼容旧引擎，直到不再支持时一并移除）
+    const kind = p.line?.kind;
     const t = p.line?.text || "";
-    if (t.includes("机器人死亡")) notifyDesktop(`death:${p.id}`, botName(p.id), "机器人死亡，正在自动复活");
-    else if (t.includes("被服务器踢出")) notifyDesktop(`kick:${p.id}`, botName(p.id), t);
+    if (kind === "death" || (!kind && t.includes("机器人死亡")))
+      notifyDesktop(`death:${p.id}`, botName(p.id), "机器人死亡，正在自动复活");
+    else if (kind === "kick" || (!kind && t.includes("被服务器踢出")))
+      notifyDesktop(`kick:${p.id}`, botName(p.id), t);
   });
   socket.on(ServerEvents.BOT_ERROR, (p: { id: string; error: string }) => {
     if (!p.id) return;
@@ -446,12 +511,12 @@ export const cmd = {
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "js", action: "pin", args: { name, pinned } }),
   },
   viewer: {
-    start: (id: string, firstPerson = false) =>
-      emitAck<{ port: number; reused?: boolean; firstPerson?: boolean }>(ClientCommands.MODULE_ACTION, {
+    start: (id: string, firstPerson = false, viewDistance?: number) =>
+      emitAck<{ port: number; reused?: boolean; firstPerson?: boolean; viewDistance?: number }>(ClientCommands.MODULE_ACTION, {
         id,
         module: "viewer",
         action: "start",
-        args: { firstPerson },
+        args: { firstPerson, viewDistance },
       }),
     stop: (id: string) =>
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "viewer", action: "stop" }),

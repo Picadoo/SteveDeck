@@ -1,4 +1,4 @@
-'use strict';
+
 
 // 内置默认规则：auto-eat —— 饱食度 < 17 时用任意食物（右键空气）。可被用户编辑/删除。
 const DEFAULT_RULES = [

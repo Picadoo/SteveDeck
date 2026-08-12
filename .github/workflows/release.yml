@@ -15,8 +15,30 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # 发布门禁：测试不过不发版（此前 tag 一打就直接出包/推镜像，坏版本能溜出去）
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      # tag 必须与所有版本位点一致：防「tag v0.1.4 发出 0.1.3 的安装包/镜像」
+      # （安装包版本取 tauri.conf.json、镜像标签取 tag，两边不一致就发出错版包）
+      - run: node scripts/bump-version.mjs --check "${GITHUB_REF_NAME#v}"
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm --filter @mcbot/engine test:unit
+      - run: pnpm --filter @mcbot/ui test
+      - run: pnpm --filter @mcbot/engine test
+
   windows-installer:
     runs-on: windows-latest
+    needs: test
     steps:
       - uses: actions/checkout@v5
 
@@ -70,6 +92,7 @@ jobs:
 
   docker-image:
     runs-on: ubuntu-latest
+    needs: test
     steps:
       - uses: actions/checkout@v5
 

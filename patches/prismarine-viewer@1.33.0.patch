@@ -154,18 +154,22 @@ index baf11fe92ad4294e5ddcd04081734b5512802171..000e19ea0a31e728dd5f9582dc6207a7
        }
        new TWEEN.Tween(botMesh.position).to({ x: pos.x, y: pos.y, z: pos.z }, 50).start()
 diff --git a/lib/mineflayer.js b/lib/mineflayer.js
-index 06634bf6415ec41410e95ec816bebcc239726497..9463d7cb172fde7d486341155099e7b08f08beb4 100644
+index 06634bf6415ec41410e95ec816bebcc239726497..b902ab67fd7ef83da83ae028127f9ac6485a6d81 100644
 --- a/lib/mineflayer.js
 +++ b/lib/mineflayer.js
-@@ -1,10 +1,16 @@
+@@ -1,17 +1,111 @@
  const EventEmitter = require('events')
 -const { WorldView } = require('../viewer')
+-
+-module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, prefix = '' }) => {
 +// [mc-bot-player 魔改] 直取 WorldView，不经 viewer/index.js：那个入口会饿加载
 +// entities.js→Entity.js→utils.js→node-canvas（原生包，宿主未必装）。
 +// web 模式服务端只用 WorldView（纯 events/vec3），完全不需要 canvas 渲染链。
 +const { WorldView } = require('../viewer/lib/worldView')
- 
- module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, prefix = '' }) => {
++
++// [mc-bot-player 魔改] 新增 host 选项：视角服务无鉴权，绑定地址必须可控（跟随引擎 ENGINE_HOST，
++// 默认回环）。不传 host 保持原行为（绑全部网卡），对上游其他调用方无破坏。
++module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, prefix = '', host }) => {
    const express = require('express')
  
    const app = express()
@@ -175,7 +179,52 @@ index 06634bf6415ec41410e95ec816bebcc239726497..9463d7cb172fde7d486341155099e7b0
    const http = require('http').createServer(app)
  
    const io = require('socket.io')(http, { path: prefix + '/socket.io' })
-@@ -12,6 +18,47 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+ 
++  // [mc-bot-player 魔改] 图集/方块状态就近回退：桌面包为省体积会裁掉部分版本的
++  // textures/<版本>.png 与 blocksStates/<版本>.json，被裁版本此前直接 404 → 整个世界黑屏。
++  // 回退到「数值上最接近的已有版本」（优先 ≤请求版本的最高者——旧资源渲染新世界只缺新方块，
++  // 不会错位）。两类文件走同一个解析函数，图集与 blocksStates 必定同版本成对，UV 对齐。
++  const assetVersionFallback = (() => {
++    const fsMod = require('fs')
++    const pathMod = require('path')
++    const pub = pathMod.join(__dirname, '../public')
++    let avail = null // 惰性扫描一次：图集与 blocksStates 都存在的版本集合
++    const load = () => {
++      if (avail) return avail
++      try {
++        const states = new Set(
++          fsMod.readdirSync(pathMod.join(pub, 'blocksStates')).filter(f => f.endsWith('.json')).map(f => f.slice(0, -5))
++        )
++        avail = fsMod.readdirSync(pathMod.join(pub, 'textures'))
++          .filter(f => f.endsWith('.png')).map(f => f.slice(0, -4)).filter(v => states.has(v))
++      } catch (e) { avail = [] }
++      return avail
++    }
++    const num = v => v.split('.').map(n => parseInt(n, 10) || 0)
++    const cmp = (a, b) => { const x = num(a); const y = num(b); return (x[0] - y[0]) || ((x[1] || 0) - (y[1] || 0)) || ((x[2] || 0) - (y[2] || 0)) }
++    return (want) => {
++      const list = load()
++      if (list.includes(want)) return want
++      const sorted = [...list].sort(cmp)
++      let best = null
++      for (const v of sorted) { if (cmp(v, want) <= 0) best = v; else break }
++      return best || sorted[0] || null
++    }
++  })()
++  app.use(prefix + '/', (req, res, next) => {
++    const m = req.path.match(/^\/(textures|blocksStates)\/(\d[\d.]*)\.(png|json)$/)
++    if (!m) return next()
++    const kind = m[1]; const ver = m[2]; const ext = m[3]
++    if ((kind === 'textures') !== (ext === 'png')) return next() // 扩展名与目录不配对的怪请求不管
++    const fsMod = require('fs')
++    const pathMod = require('path')
++    if (fsMod.existsSync(pathMod.join(__dirname, '../public', kind, ver + '.' + ext))) return next() // 存在则交给静态层
++    const fb = assetVersionFallback(ver)
++    if (!fb || fb === ver) return next() // 一个可用版本都没有 → 交静态层 404（前端自会报错）
++    res.set('Cache-Control', 'no-store') // 回退是降级策略：重新打包补全材质后应立即生效，不被缓存钉死
++    res.redirect(302, prefix + '/' + kind + '/' + fb + '.' + ext)
++  })
++
    const { setupRoutes } = require('./common')
    setupRoutes(app, prefix)
  
@@ -223,7 +272,7 @@ index 06634bf6415ec41410e95ec816bebcc239726497..9463d7cb172fde7d486341155099e7b0
    const sockets = []
    const primitives = {}
  
-@@ -49,24 +96,49 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+@@ -49,24 +143,49 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
      socket.emit('version', bot.version)
      sockets.push(socket)
  
@@ -281,6 +330,18 @@ index 06634bf6415ec41410e95ec816bebcc239726497..9463d7cb172fde7d486341155099e7b0
      }
  
      bot.on('move', botPosition)
+@@ -78,8 +197,9 @@ module.exports = (bot, { viewDistance = 6, firstPerson = false, port = 3000, pre
+     })
+   })
+ 
+-  http.listen(port, () => {
+-    console.log(`Prismarine viewer web server running on *:${port}`)
++  // [mc-bot-player 魔改] 按 host 绑定；listen(port, undefined, cb) 等价于绑全部网卡，兼容不传 host 的调用
++  http.listen(port, host, () => {
++    console.log(`Prismarine viewer web server running on ${host || '*'}:${port}`)
+   })
+ 
+   bot.viewer.close = () => {
 diff --git a/public/index.js b/public/index.js
 index 0afed53917728228a4a8048aac7bfc278ae2bc08..b1c6bee65d85f388f94b56ed751397861b4fd647 100644
 --- a/public/index.js

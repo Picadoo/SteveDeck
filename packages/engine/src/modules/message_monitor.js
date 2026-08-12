@@ -7,25 +7,8 @@
 // 规则持久化在 settings.monitorRules（跨重启）；统计为本次引擎会话累计，跨「重连」保留、引擎重启或手动重置才清。
 
 const { validatePattern } = require("../utils/safePattern");
+const { parseNum, stripColor } = require("../utils/monitorParse"); // 纯解析逻辑（中文单位数字/洗色码），见该文件
 const { ServerEvents } = require("@mcbot/protocol"); // 事件名统一走协议常量，杜绝两端字符串漂移
-
-const UNITS = { 千: 1e3, 万: 1e4, 亿: 1e8, 兆: 1e12, 万亿: 1e12, 京: 1e16 };
-
-/** 解析带中文单位/逗号的数字："162.41亿"→1.6241e10  "50.31兆"→5.031e13  "1,500,000"→1500000 */
-function parseNum(str) {
-  if (str == null) return null;
-  const s = String(str).replace(/,/g, "").trim();
-  const m = s.match(/(-?\d+(?:\.\d+)?)\s*(万亿|京|千|万|亿|兆)?/);
-  if (!m) return null;
-  let v = parseFloat(m[1]);
-  if (isNaN(v)) return null;
-  if (m[2] && UNITS[m[2]]) v *= UNITS[m[2]];
-  return v;
-}
-
-function stripColor(s) {
-  return String(s == null ? "" : s).replace(/§./gi, "");
-}
 
 module.exports = (botInstance) => {
   const bot = botInstance.bot;

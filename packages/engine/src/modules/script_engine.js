@@ -2,12 +2,12 @@
  * 脚本引擎 - 双模式（AI JSON / 玩家可视化）
  * 支持：顺序执行、条件判断（含 && || !）、循环、子脚本调用（带参数）、触发器、变量插值
  */
-const logger = require('../utils/logger');
 const { goals } = require('mineflayer-pathfinder');
 const { isChatBlocked } = require('../utils/chatSafety');
 const waitForTeleport = require('../utils/waitForTeleport');
 const { findMatchingSlot, slotText } = require('../utils/guiMatch');
 const { customName } = require('../utils/items');
+const { compare, evalBoolExpr } = require('../utils/scriptExpr'); // 布尔表达式求值 + 比较（纯逻辑，见该文件）
 const { ServerEvents } = require('@mcbot/protocol'); // 事件名统一走协议常量，杜绝两端字符串漂移
 
 const MAX_CALL_DEPTH = 5;
@@ -29,12 +29,7 @@ module.exports = (botInstance) => {
     botInstance._scheduleFired = {};   // "HH:MM" -> dateStringYMD
     botInstance._lastVarsEmit = 0;
 
-    const emitLog = (msg) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('log', {
-            user: bot.username, ownerId: botInstance.config.ownerId,
-            msg: `[脚本] ${msg}`, time: new Date().toLocaleTimeString()
-        });
-    };
+    const emitLog = (msg) => botInstance.uiLog(`[脚本] ${msg}`);
 
     const emitStatus = (name, status, detail) => {
         botInstance.io.to(botInstance._room).to('admin').emit(ServerEvents.SCRIPT_STATUS, {
@@ -159,44 +154,10 @@ module.exports = (botInstance) => {
         }
     }
 
+    // 布尔表达式求值（&& || ! 括号）抽到 utils/scriptExpr.js（纯逻辑，可单测）；
+    // 叶子求值 evalAtom 仍是本闭包函数（依赖 bot 运行时状态），作为回调传入。
     function evalExpr(s) {
-        s = s.trim();
-        if (!s) return true;
-
-        // 顶层 || (最低优先级，从右向左找)
-        let depth = 0;
-        for (let i = s.length - 2; i >= 0; i--) {
-            const c = s[i];
-            if (c === ')') depth++;
-            else if (c === '(') depth--;
-            else if (depth === 0 && c === '|' && s[i + 1] === '|') {
-                return evalExpr(s.slice(0, i)) || evalExpr(s.slice(i + 2));
-            }
-        }
-        // 顶层 &&
-        depth = 0;
-        for (let i = s.length - 2; i >= 0; i--) {
-            const c = s[i];
-            if (c === ')') depth++;
-            else if (c === '(') depth--;
-            else if (depth === 0 && c === '&' && s[i + 1] === '&') {
-                return evalExpr(s.slice(0, i)) && evalExpr(s.slice(i + 2));
-            }
-        }
-        // NOT
-        if (s.startsWith('!')) return !evalExpr(s.slice(1));
-        // 括号
-        if (s.startsWith('(') && s.endsWith(')')) {
-            // 确认括号配对
-            let d = 0, balanced = true;
-            for (let i = 0; i < s.length; i++) {
-                if (s[i] === '(') d++;
-                else if (s[i] === ')') d--;
-                if (d === 0 && i < s.length - 1) { balanced = false; break; }
-            }
-            if (balanced) return evalExpr(s.slice(1, -1));
-        }
-        return evalAtom(s);
+        return evalBoolExpr(s, evalAtom);
     }
 
     function evalAtom(c) {
@@ -225,7 +186,7 @@ module.exports = (botInstance) => {
             const total = bot.inventory.items()
                 .filter(item => item.name.toLowerCase().includes(name))
                 .reduce((sum, item) => sum + item.count, 0);
-            return compare(total, m[2], parseInt(m[3]));
+            return compare(total, m[2], parseInt(m[3], 10));
         }
 
         if (c === 'players_nearby') return hasNearbyPlayers();
@@ -248,7 +209,7 @@ module.exports = (botInstance) => {
 
         m = c.match(/^gui_slot_has\s+(\d+)\s+(.+)$/);
         if (m && bot.currentWindow) {
-            const slot = parseInt(m[1]);
+            const slot = parseInt(m[1], 10);
             const name = m[2].trim().toLowerCase();
             const item = bot.currentWindow.slots[slot];
             return !!item && slotText(item, true).includes(name);
@@ -262,8 +223,10 @@ module.exports = (botInstance) => {
             const varVal = botInstance._scriptVars[m[1]];
             const rawCmp = m[3].trim();
             const cmpVal = isNaN(rawCmp) ? rawCmp : parseFloat(rawCmp);
-            if (m[2] === '==' || m[2] === '=') return varVal == cmpVal;
-            if (m[2] === '!=') return varVal != cmpVal;
+            // 相等/不等按「字符串形态」宽松比较：脚本变量常是字符串 "5" 与字面量 5 混比，
+            // 转字符串再 === 既保留原来的宽松意图，又避免 == 的隐式转换陷阱（NaN/null/布尔等）。
+            if (m[2] === '==' || m[2] === '=') return String(varVal) === String(cmpVal);
+            if (m[2] === '!=') return String(varVal) !== String(cmpVal);
             const aNum = Number(varVal), bNum = Number(cmpVal);
             if (!isNaN(aNum) && !isNaN(bNum)) return compare(aNum, m[2], bNum);
             return false;
@@ -271,16 +234,6 @@ module.exports = (botInstance) => {
 
         emitLog(`未知条件: ${c}`);
         return false;
-    }
-
-    function compare(a, op, b) {
-        switch (op) {
-            case '<': return a < b;
-            case '>': return a > b;
-            case '<=': return a <= b;
-            case '>=': return a >= b;
-            default: return false;
-        }
     }
 
     function hasNearbyPlayers() {

@@ -1,6 +1,6 @@
 import * as os from "os";
 import QRCode from "qrcode";
-import { ConnectionInfo, PROTOCOL_VERSION } from "@mcbot/protocol";
+import { type ConnectionInfo, PROTOCOL_VERSION } from "@mcbot/protocol";
 
 /** 列出可达的 IPv4 地址候选（外网/内网优先，回环兜底）。 */
 export function listAddresses(): string[] {

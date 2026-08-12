@@ -3,11 +3,12 @@ import { Settings2, FileCode2, Pickaxe, MapPin } from "lucide-react";
 import { Card, Switch, Button, Input } from "@/components/ui/primitives";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
-import { usePageVisible } from "@/lib/usePageVisible";
+import { usePoll } from "@/lib/usePoll";
 import { MODULES, defaultConfig, type ModuleDef } from "./moduleDefs";
 import ModuleConfigDialog from "./ModuleConfigDialog";
 import AutoUsePanel from "./AutoUsePanel";
 import type { BotSummary } from "@mcbot/protocol";
+import { memoBotTab, eqJson } from "@/lib/memoBotTab";
 
 const STATS_MODULES = new Set(["auto_farm", "automine", "mob_hunter"]);
 const AREA_MODULES = new Set(["automine", "mob_hunter"]);
@@ -36,7 +37,7 @@ const STAT_LABELS: Record<string, string> = {
 };
 const STAT_ORDER = Object.keys(STAT_LABELS);
 
-export default function ModulesTab({ bot }: { bot: BotSummary }) {
+function ModulesTab({ bot }: { bot: BotSummary }) {
   const moduleConfigs = useStore((s) => s.moduleConfigs);
   const setModuleConfig = useStore((s) => s.setModuleConfig);
   const pushToast = useStore((s) => s.pushToast);
@@ -89,34 +90,32 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
     ...(moduleConfigs[`${bot.id}:${def.key}`] || {}),
   });
 
-  // 实时统计轮询（仅在线 + 有激活的统计型模块时 + 页面可见时）
-  const visible = usePageVisible();
+  // 无激活的统计型模块时清空（usePoll 在此场景 enabled=false 不跑）
+  const hasActiveStatsModule = MODULES.some((d) => STATS_MODULES.has(d.key) && isActive(d));
   useEffect(() => {
-    const active = MODULES.filter((d) => STATS_MODULES.has(d.key) && isActive(d));
-    if (!bot.online || active.length === 0) {
-      setStats({});
-      return;
-    }
-    if (!visible) return; // 页面后台：暂停拉取（恢复可见时立即拉一次）
-    let cancelled = false;
-    const poll = async () => {
-      // 攒一次 setStats：循环里逐个 set 各隔一个 await，React 18 不会合并成一次渲染
+    if (!bot.online || !hasActiveStatsModule) setStats({});
+  }, [bot.online, hasActiveStatsModule]);
+
+  // 实时统计轮询（仅在线 + 有激活的统计型模块 + 页面可见；见 usePoll）
+  usePoll(
+    async (alive) => {
+      const active = MODULES.filter((d) => STATS_MODULES.has(d.key) && isActive(d));
+      // 并行拉各模块统计，攒一次 setStats（逐个 set 会隔着 await 各触发一次渲染，React 18 合并不了）
+      const results = await Promise.all(active.map((d) => cmd.moduleAction(bot.id, d.key, "stats")));
+      if (!alive()) return;
       const merged: Record<string, any> = {};
-      for (const d of active) {
-        const r = await cmd.moduleAction(bot.id, d.key, "stats");
-        if (cancelled) return;
+      active.forEach((d, i) => {
+        const r = results[i];
         if (r.ok && r.data) merged[d.key] = r.data;
-      }
+      });
       if (Object.keys(merged).length) setStats((s) => ({ ...s, ...merged }));
-    };
-    poll();
-    const t = setInterval(poll, 3500);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bot.id, bot.online, bot.modules.autofarm, bot.modules.automine, bot.modules.mobhunter, visible]);
+    },
+    3500,
+    {
+      enabled: bot.online && hasActiveStatsModule,
+      deps: [bot.id, bot.modules.autofarm, bot.modules.automine, bot.modules.mobhunter],
+    },
+  );
 
   function onToggle(def: ModuleDef, active: boolean) {
     setOpt(def.key, active); // 立即反映，开关即时动画
@@ -423,3 +422,6 @@ function StatsGrid({ data }: { data: Record<string, any> }) {
     </div>
   );
 }
+
+// 字段白名单 memo：modules 是对象（每次推送新引用），按值比较——开关状态没变就不重渲
+export default memoBotTab(ModulesTab, ["id", "online", ["modules", eqJson]]);

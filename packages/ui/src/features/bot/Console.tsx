@@ -38,7 +38,8 @@ function Console({ botId }: { botId: string }) {
     );
     const shown = byLevel.filter((l) => {
       if (!terms.length) return true;
-      const t = mcPlain(l.text).toLowerCase();
+      // 首选 appendLog 缓存的 plain（入库时洗好），老日志行（热重载残留）现场兜底
+      const t = (l.plain ?? mcPlain(l.text)).toLowerCase();
       return incl.every((w) => t.includes(w)) && !excl.some((w) => t.includes(w));
     });
     return { byLevel, shown };
@@ -154,6 +155,9 @@ const LogRow = memo(function LogRow({
 }) {
   return (
     <div
+      // content-visibility:auto —— 滚出视口的日志行跳过渲染/布局（500 行长列表的持续开销大头）。
+      // contain-intrinsic-size 给未渲染行一个占位高度，避免滚动条跳动。
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 20px" } as React.CSSProperties}
       className={cn(
         "whitespace-pre-wrap break-words",
         line.level === "error" && "text-danger",

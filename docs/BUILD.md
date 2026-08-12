@@ -5,10 +5,17 @@ monorepo，使用 pnpm。先 `pnpm install`。
 ## 通用
 
 ```bash
-pnpm install            # 安装依赖
+pnpm install            # 安装依赖（同时激活 .githooks 本地门禁）
 pnpm build              # 构建 packages（protocol → engine → ui）
-pnpm test               # 构建并运行引擎控制面测试
+pnpm test               # 构建 + 引擎单测 + UI 单测 + 引擎控制面端到端（与 CI 同一套）
 ```
+
+## Git hooks（本地门禁）
+
+`pnpm install` 会通过 `prepare` 脚本把 `core.hooksPath` 指到 `.githooks/`，零依赖、无需 husky：
+
+- **pre-commit**：Biome lint 全仓（<1s，error 才拦，存量 warning 不挡）。跳过：`git commit -n`。
+- **pre-push**：全仓 typecheck + 引擎单测 + UI 单测 + 版本位点一致性（约 15-30s，CI 的快速子集——CI 红之前本地先红）。跳过：`git push --no-verify`。
 
 ## 引擎（Docker 镜像）
 
@@ -83,6 +90,24 @@ UI 已做响应式适配（移动端汉堡抽屉 + 触摸友好），手机端�
 
 > release APK 需配置签名密钥；多架构构建去掉 `--target aarch64` 即可。
 
-## CI
+## CI / 发布
 
-`.github/workflows/ci.yml`：在 push/PR 时构建各包、运行引擎测试，并在 Windows runner 上构建桌面包。
+- `.github/workflows/ci.yml`：push/PR 时跑 Biome lint → 版本位点一致性 → 构建各包 → 全仓库 typecheck → 引擎单测 + UI 单测（vitest）+ 引擎控制面端到端 → Docker 镜像构建验证。
+- `.github/workflows/release.yml`：打 `v*` 标签触发。先跑与 CI 相同的测试门禁（不过不发版，且额外校验 **tag 与包版本一致**），再在 Windows runner 出带签名的安装包、推 GHCR 镜像。
+
+### 版本号与发版流程
+
+产品版本散落在多个文件（根/引擎 package.json、desktop/mobile 的 package.json + tauri.conf.json + Cargo.toml/lock），统一用脚本管理：
+
+```bash
+pnpm bump 0.1.4          # 一键同步所有版本位点
+pnpm bump --check        # 校验一致（CI 每次跑；pre-push 也会跑）
+```
+
+发版：`pnpm bump 0.1.4` → 提交 → `git tag v0.1.4 && git push origin v0.1.4`。
+tag 与版本位点不一致时 release 门禁直接拦下，不会发出错版本的安装包/镜像。
+
+## 测试
+
+- 引擎：`pnpm --filter @mcbot/engine test:unit`（node:test 纯逻辑单测）+ `test`（控制面端到端，起真引擎不连 MC）。
+- UI：`pnpm --filter @mcbot/ui test`（vitest，测 `src/lib` 下的纯逻辑：数值/文本解析、编辑距离、指标计算等；不渲染组件）。

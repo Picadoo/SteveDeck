@@ -5,6 +5,7 @@
 import * as fs from "fs";
 import { dataPath } from "../config/paths";
 import { buildObservation } from "./observe";
+import { botManager } from "../botManager";
 import { SCRIPT_SPEC, SCRIPT_DO_TYPES, compactObservation } from "@mcbot/protocol";
 
 export interface AiConfig {
@@ -225,15 +226,22 @@ export interface AgentProgress {
 export async function runAgent(
   botId: string,
   goal: string,
-  opts: { maxRounds?: number; waitSec?: number; onProgress?: (p: AgentProgress) => void },
+  opts: {
+    maxRounds?: number;
+    waitSec?: number;
+    onProgress?: (p: AgentProgress) => void;
+    /** 客户端是否已断开（SSE close）。true 时终止循环——用户关了页面，bot 不该继续被 AI 驱动 */
+    shouldStop?: () => boolean;
+  },
 ): Promise<{ script: any; rounds: number; evaluation: string; warnings: string[] }> {
   const maxRounds = Math.min(opts.maxRounds ?? 3, 5);
   const waitSec = Math.min(opts.waitSec ?? 15, 60);
   const emit = opts.onProgress ?? (() => {});
+  const shouldStop = opts.shouldStop ?? (() => false);
   const cfg = loadAiConfig();
   if (!cfg.apiKey) throw new Error("未配置 AI API Key（AI 标签 → API 设置）");
 
-  const inst = (require("../botManager") as any).botManager.getInstance(botId);
+  const inst = botManager.getInstance(botId);
   if (!inst?.bot?.entity) throw new Error("机器人不在线");
 
   const systemPrompt = [
@@ -251,10 +259,16 @@ export async function runAgent(
 
   const history: ChatMsg[] = [{ role: "system", content: systemPrompt }];
   let currentScript: any = null;
-  let warnings: string[] = [];
+  const warnings: string[] = [];
   let lastEval = "";
 
   for (let round = 1; round <= maxRounds; round++) {
+    // 客户端已断开：立即收手（不再生成/运行新脚本），当前已在跑的脚本保持原状由用户处置
+    if (shouldStop()) {
+      lastEval = "客户端已断开，Agent 提前终止";
+      logger.info(`[AI Agent] ${lastEval}（第 ${round} 轮前）`);
+      break;
+    }
     // 1. 感知当前状态
     emit({ round, maxRounds, phase: "observe", message: `第 ${round} 轮：感知世界状态…` });
     const obs = buildObservation(botId);
@@ -295,6 +309,12 @@ export async function runAgent(
       throw e;
     }
 
+    // 生成期间（callModel 可达十几秒）客户端断了：别再把新脚本跑起来
+    if (shouldStop()) {
+      lastEval = "客户端已断开，Agent 提前终止（脚本未运行）";
+      logger.info(`[AI Agent] ${lastEval}`);
+      break;
+    }
     emit({ round, maxRounds, phase: "run", message: `运行脚本「${currentScript.name}」…`, script: currentScript });
 
     // 3. 保存并运行脚本
@@ -313,9 +333,11 @@ export async function runAgent(
       break;
     }
 
-    // 4. 等待脚本执行
+    // 4. 等待脚本执行（1s 分片睡：客户端断开能在 1s 内感知，而不是睡满整个观察窗）
     emit({ round, maxRounds, phase: "wait", message: `等待 ${waitSec} 秒观察效果…` });
-    await new Promise((r) => setTimeout(r, waitSec * 1000));
+    for (let waited = 0; waited < waitSec && !shouldStop(); waited++) {
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
 
   return { script: currentScript, rounds: maxRounds, evaluation: lastEval, warnings };

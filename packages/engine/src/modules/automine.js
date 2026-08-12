@@ -48,9 +48,7 @@ module.exports = (botInstance) => {
     const BLACKLIST_MS = 180000; // 拉黑 3 分钟：环境会变（别人挖通了/自己挖出新通道），到期自动解禁
     const posKey = (p) => `${p.x},${p.y},${p.z}`;
 
-    const emitLog = (msg) => botInstance.io.to(botInstance._room).to('admin').emit('log', {
-        user: bot.username, ownerId: botInstance.config.ownerId, msg, time: new Date().toLocaleTimeString(),
-    });
+    const emitLog = (msg) => botInstance.uiLog(msg); // 统一走 BotInstance.uiLog（此前 9 个模块各拷一份 emit）
 
     const schedule = (ms) => {
         if (task._tickTimer) clearTimeout(task._tickTimer);

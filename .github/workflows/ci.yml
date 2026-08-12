@@ -21,7 +21,16 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Lint：Biome（error 才阻断；存量风格告警不挡 CI）。放在 build 前，快速失败。
+      - run: pnpm lint
+      # 版本位点一致性（pnpm 包 / tauri.conf / Cargo）：漂移过一次（desktop 停 0.1.0/0.1.2），这里堵死
+      - run: node scripts/bump-version.mjs --check
       - run: pnpm build
+      # 类型检查：protocol 用 tsup 打包（不查类型）、UI 的 build 已含 tsc --noEmit，
+      # 这里统一跑全仓库 typecheck，堵住「构建通过但类型烂」的盲区
+      - run: pnpm typecheck
+      - run: pnpm --filter @mcbot/engine test:unit
+      - run: pnpm --filter @mcbot/ui test
       - run: pnpm --filter @mcbot/engine test
 
   engine-image:
@@ -29,12 +38,16 @@ jobs:
     needs: build-test
     steps:
       - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
           push: false
           tags: stevedeck-engine:ci
+          # 层缓存（此前 CI 每次全量构建镜像，约 3-5min → 命中缓存后大幅缩短）
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # 桌面安装包不在 CI 构建：带「更新签名」的 Windows 包由 release.yml 在打 tag 时产出（需签名密钥）。
   # 放进 CI 会（1）每次 push 重复约 15min 构建（2）让 fork PR 因取不到签名密钥而必红、外部贡献者无法修。

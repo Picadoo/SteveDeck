@@ -80,7 +80,7 @@ module.exports = (botInstance) => {
     botInstance.interactWithNPC = async (input) => {
         const target = bot.nearestEntity((entity) => {
             if (entity === bot.entity) return false;
-            let name = (entity.customName || entity.username || "").replace(/§./gi, '').toLowerCase();
+            const name = (entity.customName || entity.username || "").replace(/§./gi, '').toLowerCase();
             return name.includes(input.toLowerCase()) || entity.id.toString() === input;
         });
 

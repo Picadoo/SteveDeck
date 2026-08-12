@@ -3,12 +3,7 @@ module.exports = (botInstance) => {
     let loopTimer = null;   // 下一轮 fishingLoop 的定时器句柄
     let fishTimeout = null; // 本轮 60s 超时定时器句柄
 
-    const emitLog = (msg) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('log', {
-            user: bot.username, ownerId: botInstance.config.ownerId,
-            msg, time: new Date().toLocaleTimeString()
-        });
-    };
+    const emitLog = (msg) => botInstance.uiLog(msg);
 
     async function fishingLoop() {
         if (!botInstance.fishingActive || !bot.entity) return;

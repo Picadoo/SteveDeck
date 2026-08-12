@@ -58,6 +58,25 @@ function saveMarks(botId: string, m: Mark[]): void {
  *  - 走动：摇杆 / 跳 / 左右转（control.set / control.turn），与看/转解耦。
  * 内嵌默认懒启动（按需开渲染服务，省资源）；弹出则自动开。
  */
+// 视距（区块数）：直接决定画面范围与带宽/显存/CPU。全局记忆（localStorage），
+// 改变会重启渲染服务并重载 iframe（与切人称同代价）。弱机调低救卡顿，好机调高看更远。
+const DIST_KEY = "mcbot.viewer.dist";
+const DIST_OPTIONS = [
+  { v: 2, label: "近" },
+  { v: 3, label: "标准" },
+  { v: 5, label: "远" },
+  { v: 7, label: "超远" },
+] as const;
+function loadDist(): number {
+  try {
+    const n = Number(localStorage.getItem(DIST_KEY));
+    if (DIST_OPTIONS.some((o) => o.v === n)) return n;
+  } catch {
+    /* ignore */
+  }
+  return 3;
+}
+
 // 视角延迟释放：切 tab / 关弹窗不立即停渲染服务，KEEPALIVE 内重新打开则复用
 // （秒回，不重启 worker / 不重渲世界）；超时没回才真停。跨组件 mount 保活，故用模块级 map。
 const VIEWER_KEEPALIVE_MS = 120_000;
@@ -105,6 +124,7 @@ export default function Viewer({
   const [nonce, setNonce] = useState(0); // 「重试」：自增触发启动 effect 重跑（重启渲染服务）
   // 默认第三人称（仿原版 F5）：看得到机器人本体，自由转镜头
   const [firstPerson, setFirstPerson] = useState(false);
+  const [viewDist, setViewDist] = useState<number>(loadDist);
   const [walk, setWalk] = useState(false); // 操控模式：显示摇杆
   const [showMods, setShowMods] = useState(false); // 模块快速开关折叠（默认收起，不挤占视角）
   const [showHelp, setShowHelp] = useState(false); // 操作说明默认收起，点 ? 展开
@@ -166,7 +186,7 @@ export default function Viewer({
     let cancelled = false;
     setLoading(true);
     setErr(false);
-    cmd.viewer.start(bot.id, firstPerson).then((r) => {
+    cmd.viewer.start(bot.id, firstPerson, viewDist).then((r) => {
       // 已卸载，或已被更晚的一次 start 取代 → 丢弃本次结果，避免把 iframe 切回旧端口
       if (cancelled || gen !== startGen.current) return;
       setLoading(false);
@@ -187,7 +207,7 @@ export default function Viewer({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [started, firstPerson, bot.id, nonce]);
+  }, [started, firstPerson, viewDist, bot.id, nonce]);
 
   // 组件卸载（切 tab / 切 bot / 关弹窗）：不立即停，挂起延迟释放——2 分钟内切回则复用，
   // 超时没回才真停。切 tab 配脚本再回来视角秒在，不必重启 worker/重渲世界。
@@ -426,8 +446,28 @@ export default function Viewer({
           </div>
         )}
 
-        {/* 工具条（右上）：人称切换 + 放大（内嵌时） */}
+        {/* 工具条（右上）：视距 + 人称切换 + 放大（内嵌时） */}
         <div className="absolute right-2 top-2 z-20 flex items-center gap-1">
+          <select
+            value={viewDist}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setViewDist(v);
+              try {
+                localStorage.setItem(DIST_KEY, String(v));
+              } catch {
+                /* ignore */
+              }
+            }}
+            title="视距（区块数）：调低更流畅省流量，调高看得更远（切换会重载画面）"
+            className="cursor-pointer appearance-none rounded-md border-0 bg-black/55 px-2 py-1 text-[11px] text-white outline-none transition-colors hover:bg-black/75"
+          >
+            {DIST_OPTIONS.map((o) => (
+              <option key={o.v} value={o.v} className="bg-neutral-900 text-white">
+                视距·{o.label}
+              </option>
+            ))}
+          </select>
           {/* 驾驶(操控)时人称被绑定为第一人称，隐藏独立切换避免破坏绑定；观察时才可自由切看法 */}
           {!walk && (
             <button

@@ -69,6 +69,7 @@ test('auto_use 模块：低饱食 + 背包有面包 → 触发 equip+activateIte
   };
   const inst = {
     bot, io: { to: () => ({ to: () => ({ emit: () => {} }) }) },
+    uiLog: () => {}, // 模块日志统一走 uiLog（真实实现在 BotInstance）
     config: { ownerId: 'o1' }, _room: 'user:o1',
     timers: [], cleanupHooks: [],
     bodyBusy: 0,
@@ -100,6 +101,7 @@ test('effect_missing：适配层把 mineflayer 数字键 effects 转成按名字
   };
   const inst = {
     bot, io: { to: () => ({ to: () => ({ emit: () => {} }) }) },
+    uiLog: () => {},
     config: { ownerId: 'o' }, _room: 'r', timers: [], cleanupHooks: [],
     bodyBusy: 0, isBodyBusy() { return false; }, setBodyBusy() {},
     getMcData: () => ({ effects: { 1: { id: 1, name: 'Speed' } }, foodsByName: {} }),

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/primitives";
 import McText from "@/components/McText";
 import ChatOverlay from "./ChatOverlay";
 import { ItemIcon } from "@/components/ItemIcon";
+import { MC_TIP_CLASS, McItemTipBody } from "./inventory/McItemTip";
+import { mcPlain } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import type { BotSummary, WindowSlot } from "@mcbot/protocol";
 
@@ -192,6 +194,7 @@ function SlotGrid({
             }}
             onMouseMove={active ? (e) => onHover({ it: it!, x: e.clientX, y: e.clientY }) : undefined}
             onMouseLeave={active ? () => onHover(null) : undefined}
+            aria-label={it ? `格子 ${slotIdx}：${mcPlain(it.display || it.name || it.id || "物品")}` : `空格子 ${slotIdx}`}
             className={cn(
               "relative flex aspect-square items-center justify-center rounded border p-0.5 transition-colors",
               // 空格也可点：手里拿着东西时点空格=放下（之前 disabled 导致光标物品放不进空位）
@@ -241,36 +244,21 @@ function ItemTip({ hover, onEnter, onLeave }: { hover: Hover; onEnter: () => voi
     setStyle({ left, top, maxHeight: safeBottom - top });
   }, [hover.x, hover.y, it]);
 
-  const name = it.display || it.name || "";
   return (
     <div
       ref={ref}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
-      className="fixed z-[100] max-w-[18rem] overflow-y-auto overscroll-contain rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
+      className={cn("fixed z-[100] max-w-[18rem] overflow-y-auto overscroll-contain", MC_TIP_CLASS)}
       style={style}
     >
-      <div className="text-sm font-semibold leading-snug">
-        <McText text={name} onDark />
-        {it.count > 1 ? (
-          <span className="ml-1 text-[11px] font-normal text-white/50">×{it.count}</span>
-        ) : null}
-      </div>
-      {it.enchants && it.enchants.length > 0 && (
-        <div className="mt-1 space-y-0.5">
-          {it.enchants.map((e, i) => (
-            <div key={i} className="text-[11px] text-[#9d8bff]">
-              {e}
-            </div>
-          ))}
-        </div>
-      )}
-      {it.lore && (
-        <div className="mt-1 whitespace-pre-line text-[11px] leading-snug text-white/75">
-          <McText text={it.lore} onDark />
-        </div>
-      )}
-      {it.id && <div className="mt-1.5 text-[10px] text-white/30">minecraft:{it.id}</div>}
+      <McItemTipBody
+        name={it.display || it.name || ""}
+        count={it.count}
+        enchants={it.enchants}
+        lore={it.lore}
+        texture={it.id}
+      />
     </div>
   );
 }

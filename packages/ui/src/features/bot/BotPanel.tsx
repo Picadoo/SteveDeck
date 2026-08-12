@@ -13,7 +13,7 @@ import { useStore } from "@/store/useStore";
 import { Button, Input, Badge, StatusDot } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
-import { usePageVisible } from "@/lib/usePageVisible";
+import { usePoll } from "@/lib/usePoll";
 import { computeMetrics, loadCfg, saveCfg, defaultCfg, type HeaderCfg } from "@/lib/headerMetrics";
 import HeaderMetricsConfig from "./HeaderMetricsConfig";
 import AddBotDialog, { type EditInitial } from "./AddBotDialog";
@@ -27,6 +27,7 @@ import ScriptsTab from "./ScriptsTab";
 import InventoryTab from "./InventoryTab";
 import AiTab from "./AiTab";
 import QuickCommands from "./QuickCommands";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { cn } from "@/lib/cn";
 
 type Tab = "overview" | "live" | "modules" | "scripts" | "inventory" | "locations" | "ai" | "console";
@@ -52,27 +53,23 @@ export default function BotPanel() {
   useEffect(() => {
     if (host) setMetricsCfg(loadCfg(host));
   }, [host]);
-  const visible = usePageVisible();
-  useEffect(() => {
-    const id = bot?.id;
-    if (!id || !bot?.online || (metricsCfg.pinned.length === 0 && !metricsCfgOpen)) return;
-    if (!visible) return; // 页面后台：暂停计分板轮询（恢复可见时立即拉一次）
-    let live = true;
-    const poll = async () => {
+  // 计分板轮询：钉了指标或正在配置时才拉；页面后台自动暂停（见 usePoll）
+  usePoll(
+    async (alive) => {
+      const id = bot?.id;
+      if (!id) return;
       const r = await cmd.moduleAction(id, "scoreboard", "get");
-      if (!live || !r.ok || !r.data) return;
+      if (!alive() || !r.ok || !r.data) return;
       const sb = r.data as { items?: { raw?: string; name?: string }[]; sidebar?: { raw?: string; name?: string }[] };
       const lines = (sb.items || sb.sidebar || []).map((it) => it.raw || it.name || "").filter(Boolean);
       setSbLines(lines);
-    };
-    poll();
-    const t = setInterval(poll, 3000);
-    return () => {
-      live = false;
-      clearInterval(t);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bot?.id, bot?.online, metricsCfg.pinned.length, metricsCfgOpen, visible]);
+    },
+    3000,
+    {
+      enabled: !!bot?.id && !!bot?.online && (metricsCfg.pinned.length > 0 || metricsCfgOpen),
+      deps: [bot?.id, bot?.online, metricsCfg.pinned.length, metricsCfgOpen],
+    },
+  );
 
   if (!bot) {
     return (
@@ -229,16 +226,18 @@ export default function BotPanel() {
         <TabButton active={tab === "console"} onClick={() => setTab("console")}>日志</TabButton>
       </div>
 
-      {/* 内容 */}
+      {/* 内容。标签页级边界：单个 tab 渲染崩溃不连累其他 tab/聊天栏；key=tab 使切换标签自动重置错误态 */}
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {tab === "overview" && <OverviewTab bot={bot} />}
-        {tab === "live" && <LiveTab bot={bot} />}
-        {tab === "modules" && <ModulesTab bot={bot} />}
-        {tab === "scripts" && <ScriptsTab bot={bot} />}
-        {tab === "inventory" && <InventoryTab bot={bot} />}
-        {tab === "locations" && <LocationsTab bot={bot} />}
-        {tab === "ai" && <AiTab bot={bot} />}
-        {tab === "console" && <Console botId={bot.id} />}
+        <ErrorBoundary key={tab} label="当前标签页">
+          {tab === "overview" && <OverviewTab bot={bot} />}
+          {tab === "live" && <LiveTab bot={bot} />}
+          {tab === "modules" && <ModulesTab bot={bot} />}
+          {tab === "scripts" && <ScriptsTab bot={bot} />}
+          {tab === "inventory" && <InventoryTab bot={bot} />}
+          {tab === "locations" && <LocationsTab bot={bot} />}
+          {tab === "ai" && <AiTab bot={bot} />}
+          {tab === "console" && <Console botId={bot.id} />}
+        </ErrorBoundary>
       </div>
 
       {/* 快捷指令条（按键/点按钮发指令，按服务器各存各的） */}

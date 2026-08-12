@@ -81,7 +81,8 @@ function emitAck(client, ev, payload) {
   // 8. /health
   try {
     const h = await fetch(URL + "/health").then((r) => r.json());
-    check("/health 返回 ok", h.status === "ok" && h.version === "0.1.0");
+    // 版本号从 package.json 动态读取，测试只验证「有值」——别硬编码具体版本，升版不该炸测试
+    check("/health 返回 ok", h.status === "ok" && typeof h.version === "string" && h.version.length > 0);
   } catch (e) {
     check("/health 返回 ok", false);
   }
@@ -94,6 +95,31 @@ function emitAck(client, ev, payload) {
     check("/api/bots 带令牌返回 200", authed.status === 200);
   } catch (e) {
     check("/api/bots 鉴权", false);
+  }
+
+  // 10. 贴图图标：版本就近回退（1.16.5 无同名贴图目录 → 302 到 1.16.4 的真实贴图路径）。
+  //     解析规则细节在 icons.test.cjs 单测；这里验证 HTTP 层真实行为。
+  try {
+    const icon = await fetch(URL + "/textures/1.16.5/_icon/wheat_seeds.png", { redirect: "manual" });
+    const loc = String(icon.headers.get("location") || "");
+    check("图标版本就近回退 302", icon.status === 302 && loc.includes("/textures/1.16.4/"));
+  } catch (e) {
+    check("图标版本就近回退 302", false);
+  }
+
+  // 11. 挂机通知配置 API（读默认值 → 保存 → 读回；发送逻辑在 webhook.test.cjs 单测）
+  try {
+    const auth = { Authorization: "Bearer " + TOKEN };
+    const nc = await fetch(URL + "/api/notify/config", { headers: auth }).then((r) => r.json());
+    check("通知配置默认关闭", !!nc && nc.enabled === false && nc.preset === "generic");
+    const saved = await fetch(URL + "/api/notify/config", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true, url: "https://example.com/hook", preset: "dingtalk" }),
+    }).then((r) => r.json());
+    check("通知配置可保存并回读", !!saved && saved.enabled === true && saved.preset === "dingtalk" && saved.url === "https://example.com/hook");
+  } catch (e) {
+    check("通知配置 API", false);
   }
 
   client.close();

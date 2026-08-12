@@ -3,12 +3,7 @@ const { closestName } = require('../utils/closestName');
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
 
-    const emitLog = (msg) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('log', {
-            user: bot.username, ownerId: botInstance.config.ownerId,
-            msg, time: new Date().toLocaleTimeString()
-        });
-    };
+    const emitLog = (msg) => botInstance.uiLog(msg);
 
     botInstance.trashCleanerTask = {
         active: false,
