@@ -56,14 +56,28 @@ module.exports = (botInstance) => {
         });
     };
 
-    const emitVars = () => {
-        const now = Date.now();
-        if (now - botInstance._lastVarsEmit < 300) return; // 节流 300ms
-        botInstance._lastVarsEmit = now;
+    const sendVars = () => {
+        botInstance._lastVarsEmit = Date.now();
         botInstance.io.to(botInstance._room).to('admin').emit(ServerEvents.SCRIPT_VARS, {
             user: bot.username, ownerId: botInstance.config.ownerId,
             vars: { ...botInstance._scriptVars }
         });
+    };
+    // 节流 300ms，但不丢尾帧：窗口内的连续变更在窗口结束时补发最终值。
+    // 旧实现窗口内直接 return——脚本快速连改变量（set_var×N/循环计数）后若不再变更，
+    // 前端变量面板会永远停在第一帧旧值（live-test 端到端抓到的真实 bug）。
+    const emitVars = () => {
+        const since = Date.now() - botInstance._lastVarsEmit;
+        if (since < 300) {
+            if (!botInstance._varsEmitTimer) {
+                botInstance._varsEmitTimer = setTimeout(() => {
+                    botInstance._varsEmitTimer = null;
+                    sendVars();
+                }, 300 - since);
+            }
+            return;
+        }
+        sendVars();
     };
 
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -1261,6 +1275,7 @@ module.exports = (botInstance) => {
     botInstance.cleanupHooks.push(() => {
         if (botInstance._runningScript) botInstance._runningScript.aborted = true;
         if (botInstance._triggerTimer) clearInterval(botInstance._triggerTimer);
+        if (botInstance._varsEmitTimer) { clearTimeout(botInstance._varsEmitTimer); botInstance._varsEmitTimer = null; }
         bot.removeListener('message', onChatForTrigger);
         bot.removeListener('respawn', onRespawnForTrigger);
         bot.removeListener('health', onHealthForTrigger);
