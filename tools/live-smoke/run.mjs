@@ -134,7 +134,34 @@ function emitAck(client, ev, payload, timeout = 8000) {
     check('跟随模块上报活动状态（无玩家=待命）', !!fst?.ok && String(fst?.data?.activity || '').includes('待命'), `(${fst?.data?.activity})`);
     await emitAck(client, 'module:toggle', { id, module: 'follow', active: false });
 
-    // ===== 场景 5：断线自动重连 + 模块状态恢复（挂机产品的命根子路径） =====
+    // ===== 场景 5：定时广告 + 盯人监听（真实发送/真实命中） =====
+    const adv = await emitAck(client, 'module:toggle', {
+        id, module: 'auto_chat', active: true,
+        config: { messages: ['出售钻石剑，私聊我', '收购绿宝石'], intervalSec: 10 },
+    });
+    check('开启定时广告', !!adv?.ok, adv?.error);
+    let sawAd = false;
+    for (let i = 0; i < 20; i++) { // 开启 3s 后发第一条，等回显
+        await delay(500);
+        if (state.logs.some((l) => String(l.text).includes('出售钻石剑'))) { sawAd = true; break; }
+    }
+    check('广告消息真实发送（服务器回显）', sawAd);
+    const ast = await emitAck(client, 'module:action', { id, module: 'auto_chat', action: 'stats' });
+    check('广告模块上报活动（轮播+倒计时）', !!ast?.ok && String(ast?.data?.activity || '').includes('轮播'), `(${ast?.data?.activity})`);
+    await emitAck(client, 'module:toggle', { id, module: 'auto_chat', active: false });
+
+    const pw = await emitAck(client, 'module:toggle', {
+        id, module: 'player_watch', active: true, config: { names: ['TestSteve'] },
+    });
+    check('开启盯人监听', !!pw?.ok, pw?.error);
+    await emitAck(client, 'bot:chat', { id, message: '盯人监听测试消息' });
+    await delay(1500);
+    const wlog = await emitAck(client, 'module:action', { id, module: 'player_watch', action: 'log' });
+    const hits = wlog?.data?.hits || [];
+    check('盯人命中记录（含名字的消息入册）', !!wlog?.ok && hits.some((h) => String(h.text).includes('盯人监听测试')), `(命中 ${hits.length} 条)`);
+    await emitAck(client, 'module:toggle', { id, module: 'player_watch', active: false });
+
+    // ===== 场景 6：断线自动重连 + 模块状态恢复（挂机产品的命根子路径） =====
     await delay(500);
 
     console.log('  [场景] 杀掉服务器，验证断线检测与重连排定…');

@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Swords, Fish, Pickaxe, Wheat, Crosshair, Trash2, Footprints } from "lucide-react";
+import { Swords, Fish, Pickaxe, Wheat, Crosshair, Trash2, Footprints, Megaphone, Eye } from "lucide-react";
 import type { ModuleFlags } from "@mcbot/protocol";
 
 export type FieldType = "switch" | "number" | "tags" | "select" | "multiselect";
@@ -213,6 +213,52 @@ export const MODULES: ModuleDef[] = [
         placeholder: "rotten_flesh, cobblestone",
         registry: "items",
         registryMatch: "includes",
+      },
+    ],
+  },
+  {
+    key: "auto_chat",
+    name: "定时广告",
+    icon: Megaphone,
+    desc: "固定间隔循环喊话（摆摊/招募/公告）",
+    activeFlag: "autochat",
+    applyVia: "toggle",
+    fields: [
+      {
+        key: "messages",
+        label: "消息列表（依次轮播）",
+        type: "tags",
+        default: [],
+        placeholder: "出售钻石剑 /w 我 或 收各种矿石",
+        hint: "每条是一句完整的话；开启 3 秒后发第一条，之后按间隔轮播",
+      },
+      {
+        key: "intervalSec",
+        label: "发送间隔（秒）",
+        type: "number",
+        default: 60,
+        min: 10,
+        max: 3600,
+        hint: "下限 10 秒——太快会被服务器当刷屏禁言/踢出",
+      },
+      { key: "random", label: "随机顺序（不按列表轮播）", type: "switch", default: false },
+    ],
+  },
+  {
+    key: "player_watch",
+    name: "盯人监听",
+    icon: Eye,
+    desc: "记录与指定玩家相关的全部聊天",
+    activeFlag: "playerwatch",
+    applyVia: "toggle",
+    fields: [
+      {
+        key: "names",
+        label: "玩家名（逗号分隔，可多个）",
+        type: "tags",
+        default: [],
+        placeholder: "Steve, Alex",
+        hint: "消息文本包含名字即记录（各服聊天格式不同，宽匹配连提到他的公告也能抓到）；最近 200 条",
       },
     ],
   },

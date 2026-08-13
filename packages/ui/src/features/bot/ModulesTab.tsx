@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Settings2, FileCode2, Pickaxe, MapPin } from "lucide-react";
+import { Settings2, FileCode2, Pickaxe, MapPin, ScrollText } from "lucide-react";
 import { Card, Switch, Button, Input } from "@/components/ui/primitives";
+import Modal from "@/components/ui/Modal";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { usePoll } from "@/lib/usePoll";
@@ -12,7 +13,10 @@ import { memoBotTab, eqJson } from "@/lib/memoBotTab";
 
 // 有运行统计的模块（3.5s 轮询 `模块:stats`）：开着却看不到效果是明确的用户痛点，
 // 现在所有常驻模块都上报「当前活动」（activity 字段单独渲染为状态行）+ 关键计数。
-const STATS_MODULES = new Set(["auto_farm", "automine", "mob_hunter", "combat", "fishing", "follow", "trash_cleaner"]);
+const STATS_MODULES = new Set([
+  "auto_farm", "automine", "mob_hunter", "combat", "fishing", "follow", "trash_cleaner",
+  "auto_chat", "player_watch",
+]);
 const AREA_MODULES = new Set(["automine", "mob_hunter"]);
 
 // 统计字段的中文标签（只展示标量字段；activity 不在其中——单独渲染为状态行）
@@ -42,6 +46,9 @@ const STAT_LABELS: Record<string, string> = {
   catches: "上钩",
   target: "跟随目标",
   cleaned: "已清理(叠)",
+  sent: "已发送",
+  lastMsg: "最近消息",
+  watchHits: "命中条数",
 };
 const STAT_ORDER = Object.keys(STAT_LABELS);
 
@@ -124,6 +131,7 @@ function ModulesTab({ bot }: { bot: BotSummary }) {
       deps: [
         bot.id, bot.modules.autofarm, bot.modules.automine, bot.modules.mobhunter,
         bot.modules.combat, bot.modules.fishing, bot.modules.follow, bot.modules.trashcleaner,
+        bot.modules.autochat, bot.modules.playerwatch,
       ],
     },
   );
@@ -204,6 +212,8 @@ function ModulesTab({ bot }: { bot: BotSummary }) {
             {AREA_MODULES.has(def.key) && bot.online && (
               <AreaActions bot={bot} moduleKey={def.key} stats={active ? st : undefined} />
             )}
+
+            {def.key === "player_watch" && bot.online && active && <WatchLogSection bot={bot} />}
 
             {def.fields.length > 0 && (
               <Button size="sm" variant="ghost" className="mt-3 w-full" onClick={() => setEditing(def)}>
@@ -316,6 +326,58 @@ function AreaActions({ bot, moduleKey, stats }: { bot: BotSummary; moduleKey: st
           </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** 盯人监听的命中记录：按需拉取（打开弹窗才请求），新的在前 */
+function WatchLogSection({ bot }: { bot: BotSummary }) {
+  const [open, setOpen] = useState(false);
+  const [log, setLog] = useState<{ names: string[]; total: number; hits: { time: string; name: string; text: string }[] } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    const pull = () =>
+      cmd.moduleAction(bot.id, "player_watch", "log").then((r) => {
+        if (alive && r.ok && r.data) setLog(r.data as NonNullable<typeof log>);
+      });
+    pull();
+    const t = setInterval(pull, 3000); // 弹窗开着时轻量刷新
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [open, bot.id]);
+
+  return (
+    <div className="mt-2 border-t border-border/40 pt-2">
+      <Button size="sm" variant="ghost" className="w-full" onClick={() => setOpen(true)}>
+        <ScrollText className="h-3.5 w-3.5" /> 查看命中记录
+      </Button>
+      <Modal open={open} onClose={() => setOpen(false)} title="盯人监听记录" size="lg">
+        {!log ? (
+          <p className="py-6 text-center text-sm text-muted">加载中…</p>
+        ) : log.hits.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted">
+            还没有命中记录（监听：{log.names.join("、") || "未配置"}）
+          </p>
+        ) : (
+          <div className="max-h-[55vh] space-y-1 overflow-y-auto font-mono text-xs">
+            <p className="mb-2 font-sans text-[11px] text-muted">
+              监听 {log.names.join("、")} · 累计 {log.total} 条（保留最近 200 条，新的在前）
+            </p>
+            {log.hits.map((h, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 快照列表整体重建，无行内状态
+              <div key={i} className="rounded bg-surface-2/50 px-2 py-1">
+                <span className="mr-2 select-none text-muted">{h.time}</span>
+                <span className="mr-2 rounded bg-accent/15 px-1 text-accent">{h.name}</span>
+                <span className="break-all">{h.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

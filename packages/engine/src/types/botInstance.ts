@@ -114,6 +114,13 @@ export interface BotInstance {
   getFollowStats?: () => any;
   getTrashStats?: () => any;
   getAutoUseStats?: () => any;
+  autoChatTask?: ModuleTask | null;
+  toggleAutoChat?: (on: boolean, config?: any) => void;
+  getAutoChatStats?: () => any;
+  playerWatchTask?: ModuleTask | null;
+  togglePlayerWatch?: (on: boolean, config?: any) => void;
+  getPlayerWatchStats?: () => any;
+  getPlayerWatchLog?: () => any;
   setMineAreaSel1(): any;
   setMineAreaSel2(): any;
   clearMineArea(): any;

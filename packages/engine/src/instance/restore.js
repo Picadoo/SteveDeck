@@ -55,6 +55,12 @@ module.exports.mixin = {
                     const cfg = (typeof au === 'object' && Array.isArray(au.rules)) ? { rules: au.rules } : {};
                     if (active) this.toggleAutoUse(true, cfg);
                 }
+                if (settings.autoChat?.active && this.toggleAutoChat) {
+                    this.toggleAutoChat(true, settings.autoChat.config || {});
+                }
+                if (settings.playerWatch?.active && this.togglePlayerWatch) {
+                    this.togglePlayerWatch(true, settings.playerWatch.config || {});
+                }
                 const activeScript = settings.activeScript;
                 if (activeScript && this._scripts?.[activeScript] && this._runningScript == null) {
                     logger.info(`[${this.config.username}] 断线恢复脚本: ${activeScript}`);

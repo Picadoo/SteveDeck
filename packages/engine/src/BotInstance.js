@@ -198,6 +198,7 @@ class BotInstance {
                     'interact', 'automine', 'trash_cleaner', 'auto_farm', 'mob_hunter',
                     'follow', 'scoreboard', 'script_engine', 'window_gui',
                     'custom_js', 'bot_viewer', 'message_monitor', 'auto_use',
+                    'auto_chat', 'player_watch',
                 ];
                 for (const name of MODULE_NAMES) {
                     try {

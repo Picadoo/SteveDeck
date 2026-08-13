@@ -231,6 +231,8 @@ export interface ModuleFlags {
   mobhunter?: boolean;
   follow?: boolean;
   trashcleaner?: boolean;
+  autochat?: boolean;
+  playerwatch?: boolean;
   script?: string | null;
 }
 

@@ -89,6 +89,25 @@ export function registerModuleHandlers(_io: IOServer, socket: Socket): void {
               (s) => ((s as any).autoUse = { active, rules: inst.autoUseTask?.rules || (config?.rules) || [] }),
             );
             break;
+          case "auto_chat":
+            inst.toggleAutoChat?.(active, config || {});
+            // 存引擎收敛后的任务态（间隔下限夹取后的值），重连恢复用同一份
+            persistSettings(id, (s) => ((s as any).autoChat = {
+              active,
+              config: {
+                messages: inst.autoChatTask?.messages || [],
+                intervalSec: inst.autoChatTask?.intervalSec || 60,
+                random: !!inst.autoChatTask?.random,
+              },
+            }));
+            break;
+          case "player_watch":
+            inst.togglePlayerWatch?.(active, config || {});
+            persistSettings(id, (s) => ((s as any).playerWatch = {
+              active,
+              config: { names: inst.playerWatchTask?.names || [] },
+            }));
+            break;
           default:
             return ack?.(fail(`未知模块 ${module}`));
         }
@@ -283,6 +302,13 @@ function dispatchAction(
       return ok(inst.getTrashStats?.() ?? null);
     case "auto_use:stats":
       return ok(inst.getAutoUseStats?.() ?? null);
+    case "auto_chat:stats":
+      return ok(inst.getAutoChatStats?.() ?? null);
+    case "player_watch:stats":
+      return ok(inst.getPlayerWatchStats?.() ?? null);
+    // 盯人命中记录（模块页「查看记录」按需拉取，不进状态推送）
+    case "player_watch:log":
+      return ok(inst.getPlayerWatchLog?.() ?? { names: [], total: 0, hits: [] });
     case "automine:sel1": {
       const res = inst.setMineAreaSel1?.();
       return res?.success ? ok(res) : fail(res?.error || "设置失败");

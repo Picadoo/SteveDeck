@@ -283,6 +283,8 @@ class BotManager {
             mobhunter: !!(inst.mobHunterTask?.active),
             follow: !!(inst.followTask?.active),
             trashcleaner: !!(inst.trashCleanerTask?.active),
+            autochat: !!(inst.autoChatTask?.active),
+            playerwatch: !!(inst.playerWatchTask?.active),
             script:
               (inst._runningScript?.name) ||
               (inst._customJs && `JS:${inst._customJs.name}`) ||
