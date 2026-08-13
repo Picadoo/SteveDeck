@@ -555,6 +555,13 @@ module.exports = (botInstance) => {
                 for (let i = 0; i < count && !ctx.aborted; i++) {
                     const entity = findTarget();
                     if (!entity) { emitLog('没有可攻击目标'); break; }
+                    // 攻击距离校验：MC 服务器只接受 ~4 格内的攻击，nearestEntity 可能找到几十格外的目标——
+                    // 以前会静默发无效攻击包（挥空还可能触发反作弊），现在明确提示先靠近。
+                    const dist = bot.entity.position.distanceTo(entity.position);
+                    if (dist > 6) {
+                        emitLog(`目标 ${entity.name || entity.id} 距离 ${dist.toFixed(1)} 格（>6），请先用 goto/goto_nearest 靠近`);
+                        break;
+                    }
                     emitLog(`攻击 ${entity.name || entity.username || entity.id} (${i + 1}/${count})`);
                     try { bot.attack(entity); } catch (_e) {}
                     if (i < count - 1) await sleep(interval);
