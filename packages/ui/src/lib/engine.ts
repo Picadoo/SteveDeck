@@ -269,7 +269,10 @@ export function connect(url: string, token: string): void {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 8000,
     timeout: 8000,
-    transports: ["websocket", "polling"],
+    // polling 先行 + websocket 升级（Engine.IO 标准路径）：websocket 打头时一旦 WS 层失败不会降级，
+    // 开着系统代理的机器（WebView2 跟随系统代理，环回 WS 被代理截走）桌面版会卡死在
+    // 「websocket error」。polling 走 XHR 与 /health 探测同通道，可用性一致；升级失败自动保持 polling。
+    transports: ["polling", "websocket"],
   });
 
   socket.on("connect", () => {
