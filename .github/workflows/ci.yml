@@ -33,6 +33,30 @@ jobs:
       - run: pnpm --filter @mcbot/ui test
       - run: pnpm --filter @mcbot/engine test
 
+  # 真实连接冒烟：起官方 vanilla 1.20.4，引擎真实连接跑全链路——进服/状态/聊天/AI观察/
+  # 脚本引擎（变量/循环/插值/条件）/断线自动重连+模块恢复。server.jar 走缓存（URL 即内容指纹）。
+  live-smoke:
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/cache@v4
+        with:
+          path: tools/live-smoke/.run/vanilla/server.jar
+          key: mc-server-jar-1.20.4-8dd1a280
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test:live
+
   engine-image:
     runs-on: ubuntu-latest
     needs: build-test
