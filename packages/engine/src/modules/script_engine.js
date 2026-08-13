@@ -10,6 +10,7 @@ const { customName } = require('../utils/items');
 const { compare, evalBoolExpr } = require('../utils/scriptExpr'); // 布尔表达式求值 + 比较（纯逻辑，见该文件）
 const scriptVars = require('../utils/scriptVars'); // 变量插值 + 安全数学求值（纯逻辑，有单测）
 const { validatePattern } = require('../utils/safePattern'); // 用户正则的 ReDoS 防护（与消息监听同一道闸）
+const { createStepExecutor } = require('../utils/scriptFlow'); // 控制流执行器（纯逻辑依赖注入，有单测）
 const { ServerEvents } = require('@mcbot/protocol'); // 事件名统一走协议常量，杜绝两端字符串漂移
 
 const MAX_CALL_DEPTH = 5;
@@ -975,147 +976,22 @@ module.exports = (botInstance) => {
         }
     }
 
-    // ==================== 步骤执行器（递归） ====================
-    async function executeSteps(steps, ctx, basePath = []) {
-        if (!Array.isArray(steps)) return;
-
-        for (let i = 0; i < steps.length; i++) {
-            if (ctx.aborted || !bot.entity) return;
-            // auto_use 让位：自动使用正在用东西(吃/喝 ~1.6s)时，脚本在步与步之间等它落下，避免互相打断
-            while (botInstance.isBodyBusy?.() && !ctx.aborted && bot.entity) {
-                await sleep(50);
-            }
-            if (ctx.aborted || !bot.entity) return;
-            ctx.totalSteps = (ctx.totalSteps || 0) + 1;
-            if (ctx.totalSteps > MAX_TOTAL_STEPS) {
-                emitLog(`总执行步数超过 ${MAX_TOTAL_STEPS}，强制终止（疑似死循环）`);
-                ctx.aborted = true;
-                return;
-            }
-
-            const step = steps[i];
-            if (!step?.do) continue;
-            if (step.disabled) continue;        // 编辑器禁用的步骤跳过
-            if (step.do === 'note') continue;   // 注释块不执行
-            const stepPath = [...basePath, i];
-            const pathStr = stepPath.join('-');
-
-            try {
-                emitProgress(pathStr, step.do, ctx.loopIter);
-
-                if (step.do === 'if') {
-                    if (evalCondition(step.cond)) {
-                        if (step.then) await executeSteps(step.then, ctx, [...stepPath, 'then']);
-                    } else {
-                        if (step.else) await executeSteps(step.else, ctx, [...stepPath, 'else']);
-                    }
-                    continue;
-                }
-
-                if (step.do === 'repeat') {
-                    const times = Number(step.times) || 0;
-                    const subSteps = step.steps || [];
-                    if (times <= 0 && subSteps.length === 0) {
-                        emitLog('已阻止空的无限重复块');
-                        continue;
-                    }
-                    let count = 0;
-                    while (!ctx.aborted) {
-                        if (times > 0 && count >= times) break;
-                        const prevIter = ctx.loopIter;
-                        ctx.loopIter = count + 1;
-                        await executeSteps(subSteps, ctx, [...stepPath, 'steps']);
-                        ctx.loopIter = prevIter;
-                        count++;
-                        await sleep(0);
-                    }
-                    continue;
-                }
-
-                if (step.do === 'while') {
-                    const subSteps = step.steps || [];
-                    const maxIter = Number(step.max) || 10000;
-                    let count = 0;
-                    while (!ctx.aborted && count < maxIter) {
-                        if (!evalCondition(step.cond)) break;
-                        const prevIter = ctx.loopIter;
-                        ctx.loopIter = count + 1;
-                        await executeSteps(subSteps, ctx, [...stepPath, 'steps']);
-                        ctx.loopIter = prevIter;
-                        count++;
-                        await sleep(0);
-                    }
-                    continue;
-                }
-
-                if (step.do === 'break_if') {
-                    if (evalCondition(step.cond)) {
-                        emitLog(`break_if 触发: ${step.cond}`);
-                        return;
-                    }
-                    continue;
-                }
-
-                if (step.cond && !evalCondition(step.cond)) continue;
-
-                if (step.do === 'run_script') {
-                    const scriptName = resolveVars(String(step.name || ''));
-                    if (!scriptName) { emitLog('run_script 缺少 name'); continue; }
-                    if (ctx.callDepth >= MAX_CALL_DEPTH) {
-                        emitLog(`子脚本嵌套超过 ${MAX_CALL_DEPTH} 层`); continue;
-                    }
-                    const subScript = botInstance._scripts[scriptName];
-                    if (!subScript) { emitLog(`子脚本不存在: ${scriptName}`); continue; }
-
-                    // 参数注入：保存原值，调用后还原
-                    const savedVars = {};
-                    if (step.args && typeof step.args === 'object') {
-                        for (const [k, v] of Object.entries(step.args)) {
-                            savedVars[k] = botInstance._scriptVars[k];
-                            const resolved = typeof v === 'string' ? resolveVars(v) : v;
-                            botInstance._scriptVars[k] = resolved;
-                        }
-                        emitVars();
-                    }
-
-                    emitLog(`调用子脚本: ${scriptName}`);
-                    const subCtx = { ...ctx, callDepth: ctx.callDepth + 1 };
-                    try {
-                        await executeSteps(subScript.steps || [], subCtx, [...stepPath, 'sub']);
-                    } finally {
-                        for (const [k, v] of Object.entries(savedVars)) {
-                            if (v === undefined) delete botInstance._scriptVars[k];
-                            else botInstance._scriptVars[k] = v;
-                        }
-                        if (Object.keys(savedVars).length > 0) emitVars();
-                    }
-                    if (subCtx.aborted) ctx.aborted = true;
-                    ctx.totalSteps = subCtx.totalSteps;
-                    continue;
-                }
-
-                // 叶子动作：支持失败自动重试（step.retry 次，间隔 step.retryDelay 秒），默认不重试 → 行为不变
-                const maxRetry = Math.max(0, Number(step.retry) || 0);
-                const retryDelay = (Number(step.retryDelay) || 1) * 1000;
-                let attempt = 0;
-                for (;;) {
-                    try {
-                        await executeAction(step, ctx);
-                        break;
-                    } catch (actErr) {
-                        if (attempt >= maxRetry || ctx.aborted) throw actErr;
-                        attempt++;
-                        emitLog(`↻ ${step.do} 失败，第 ${attempt}/${maxRetry} 次重试: ${actErr.message}`);
-                        await sleep(retryDelay);
-                    }
-                }
-
-            } catch (err) {
-                emitLog(`步骤 ${i + 1} (${step.do}) 出错: ${err.message}`);
-                emitError(pathStr, step.do, err.message);
-            }
-        }
-    }
+    // ==================== 步骤执行器（控制流实现在 utils/scriptFlow.js，语义有单测） ====================
+    const executeSteps = createStepExecutor({
+        maxCallDepth: MAX_CALL_DEPTH,
+        maxTotalSteps: MAX_TOTAL_STEPS,
+        botAlive: () => !!bot.entity,
+        isBodyBusy: () => !!botInstance.isBodyBusy?.(),
+        evalCondition,
+        resolveVars,
+        getScript: (name) => botInstance._scripts[name],
+        getVar: (k) => botInstance._scriptVars[k],
+        setVar: (k, v) => { botInstance._scriptVars[k] = v; },
+        deleteVar: (k) => { delete botInstance._scriptVars[k]; },
+        executeAction: (step, ctx) => executeAction(step, ctx),
+        emitLog, emitProgress, emitError, emitVars,
+        sleep,
+    });
 
     // ==================== 脚本运行入口 ====================
     async function runScript(name, opts = {}) {
