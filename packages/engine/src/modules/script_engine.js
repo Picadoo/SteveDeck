@@ -12,6 +12,7 @@ const scriptVars = require('../utils/scriptVars'); // 变量插值 + 安全数�
 const { validatePattern } = require('../utils/safePattern'); // 用户正则的 ReDoS 防护（与消息监听同一道闸）
 const { createStepExecutor } = require('../utils/scriptFlow'); // 控制流执行器（纯逻辑依赖注入，有单测）
 const { parseCondAtom } = require('../utils/scriptCond'); // 条件叶子解析（纯逻辑，有单测）
+const { shouldTrigger: sharedShouldTrigger } = require('../utils/scriptTrigger'); // 触发器判定（时间/状态注入，有单测）
 const { ServerEvents } = require('@mcbot/protocol'); // 事件名统一走协议常量，杜绝两端字符串漂移
 
 const MAX_CALL_DEPTH = 5;
@@ -1081,70 +1082,19 @@ module.exports = (botInstance) => {
         }
     }
 
+    // 触发器判定实现在 utils/scriptTrigger.js（时间/状态注入，有单测）；这里只提供 bot 探针。
+    const triggerProbe = {
+        health: () => bot.health,
+        food: () => bot.food,
+        playersNearby: () => hasNearbyPlayers(),
+        hostileNearby: (dist) => Object.values(bot.entities).some(e =>
+            e && e !== bot.entity && e.position && /hostile/i.test(String(e.kind || '')) &&
+            bot.entity.position.distanceTo(e.position) <= dist
+        ),
+        inventoryFull: () => bot.inventory.slots.filter((s, i) => i >= 9 && i <= 44 && !s).length === 0,
+    };
     function shouldTrigger(name, trigger) {
-        if (!trigger) return false;
-        switch (trigger.type) {
-            case 'schedule': {
-                const now = new Date();
-                const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-                const want = trigger.time || trigger.value; // 可视化编辑器存 value，旧数据存 time
-                if (!want || time !== want) return false;
-                const today = now.toDateString();
-                if (botInstance._scheduleFired[want] === today) return false;
-                botInstance._scheduleFired[want] = today;
-                return true;
-            }
-            case 'chat_match': {
-                const pat = trigger.pattern || trigger.value; // 可视化编辑器存 value
-                const flag = botInstance._lastChatTrigger;
-                if (flag && pat && flag.pattern === pat && Date.now() - flag.time < 3000) {
-                    botInstance._lastChatTrigger = null;
-                    return true;
-                }
-                return false;
-            }
-            case 'health_below':
-                return bot.health < (Number(trigger.value) || 5);
-            case 'food_below':
-                return bot.food < (Number(trigger.value) || 10);
-            case 'mob_nearby': {
-                // 敌对生物进入指定距离（默认 8 格）
-                const dist = Number(trigger.value) || 8;
-                return Object.values(bot.entities).some(e =>
-                    e && e !== bot.entity && e.position && /hostile/i.test(String(e.kind || '')) &&
-                    bot.entity.position.distanceTo(e.position) <= dist
-                );
-            }
-            case 'damage': {
-                // 受到伤害（血量下降时由 health 监听置位，3 秒内消费）
-                if (botInstance._justDamaged && Date.now() - botInstance._justDamaged < 3000) {
-                    botInstance._justDamaged = null;
-                    return true;
-                }
-                return false;
-            }
-            case 'respawn':
-                if (botInstance._justRespawned) {
-                    botInstance._justRespawned = false;
-                    return true;
-                }
-                return false;
-            case 'player_nearby':
-                return hasNearbyPlayers();
-            case 'inventory_full':
-                return bot.inventory.slots.filter((s, i) => i >= 9 && i <= 44 && !s).length === 0;
-            case 'interval': {
-                const key = `_triggerLast_${trigger.type}_${name}`;
-                const now = Date.now();
-                const interval = (Number(trigger.seconds ?? trigger.value) || 60) * 1000; // 编辑器存 value
-                if (!botInstance[key] || now - botInstance[key] >= interval) {
-                    botInstance[key] = now;
-                    return true;
-                }
-                return false;
-            }
-            default: return false;
-        }
+        return sharedShouldTrigger(trigger, name, { now: new Date(), state: botInstance, probe: triggerProbe });
     }
 
     const onChatForTrigger = (jsonMsg) => {
