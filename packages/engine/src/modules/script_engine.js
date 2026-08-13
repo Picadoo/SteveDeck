@@ -9,6 +9,7 @@ const { findMatchingSlot, slotText } = require('../utils/guiMatch');
 const { customName } = require('../utils/items');
 const { compare, evalBoolExpr } = require('../utils/scriptExpr'); // 布尔表达式求值 + 比较（纯逻辑，见该文件）
 const scriptVars = require('../utils/scriptVars'); // 变量插值 + 安全数学求值（纯逻辑，有单测）
+const { validatePattern } = require('../utils/safePattern'); // 用户正则的 ReDoS 防护（与消息监听同一道闸）
 const { ServerEvents } = require('@mcbot/protocol'); // 事件名统一走协议常量，杜绝两端字符串漂移
 
 const MAX_CALL_DEPTH = 5;
@@ -87,7 +88,14 @@ module.exports = (botInstance) => {
         return new Promise((resolve) => {
             let regex = null;
             if (isRegex) {
-                try { regex = new RegExp(pattern); } catch (_e) { /* fallback to plain */ }
+                // API-3：用户正则先过 ReDoS 防护（与消息监听规则同一道闸）——灾难性回溯（如 (a+)+）
+                // 会对每条聊天 exec，冻结事件循环拖垮同引擎所有 bot。被拒时降级为纯文本包含匹配。
+                const v = validatePattern(pattern);
+                if (!v.ok) {
+                    emitLog(`wait_chat 正则被拒绝（${v.error}），按纯文本匹配`);
+                } else {
+                    try { regex = new RegExp(pattern); } catch (_e) { /* fallback to plain */ }
+                }
             }
             const timer = setTimeout(() => {
                 bot.removeListener('message', onMsg);
