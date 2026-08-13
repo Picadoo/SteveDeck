@@ -645,7 +645,13 @@ module.exports = (botInstance) => {
         const stats = botInstance.mobHunterTask.stats;
         if (!stats.startTime) return null;
         const runTime = (Date.now() - stats.startTime) / 1000 / 60;
+        const curTarget = botInstance.mobHunterTask.currentTarget
+            ? getEntityDisplayName(botInstance.mobHunterTask.currentTarget) : null;
         return {
+            // 当前活动：暂停（检测到玩家）> 追击目标 > 搜索——追怪「原地发呆」时用户能看出是哪种情况
+            activity: botInstance.mobHunterTask.pausedByPlayer
+                ? '检测到玩家，已暂停（安全策略）'
+                : curTarget ? `追击 ${curTarget}` : '搜索目标中…',
             mode: botInstance.mobHunterTask.mode,
             keywords: botInstance.mobHunterTask.keywords,
             totalKills: stats.totalKills,

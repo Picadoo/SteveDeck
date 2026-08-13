@@ -5,6 +5,15 @@ module.exports = (botInstance) => {
 
     const emitLog = (msg) => botInstance.uiLog(msg);
 
+    // 运行统计：模块页展示抛竿/上钩与当前状态（此前钓鱼开着完全无反馈）
+    const stats = { casts: 0, catches: 0, startedAt: 0, phase: '' };
+    botInstance.getFishingStats = () => ({
+        activity: stats.phase || '准备中…',
+        casts: stats.casts,
+        catches: stats.catches,
+        runTime: stats.startedAt ? Math.round((Date.now() - stats.startedAt) / 60000) : 0,
+    });
+
     async function fishingLoop() {
         if (!botInstance.fishingActive || !bot.entity) return;
 
@@ -52,12 +61,16 @@ module.exports = (botInstance) => {
             await bot.equip(rod, 'hand');
 
             // 超时保护：60秒无鱼上钩自动重试。成功/失败都 clearTimeout，避免每轮遗留一个 60s 计时器
+            stats.casts++;
+            stats.phase = '等待咬钩…';
             const fishPromise = bot.fish();
             const timeoutPromise = new Promise((_, reject) => {
                 fishTimeout = setTimeout(() => reject(new Error('钓鱼超时(60s)')), 60000);
             });
             try {
                 await Promise.race([fishPromise, timeoutPromise]);
+                stats.catches++;
+                stats.phase = '收线！重新抛竿…';
             } finally {
                 if (fishTimeout) { clearTimeout(fishTimeout); fishTimeout = null; }
             }
@@ -68,6 +81,9 @@ module.exports = (botInstance) => {
             // 超时不刷屏，只在非超时错误时打日志
             if (!err.message.includes('超时')) {
                 emitLog(`钓鱼出错: ${err.message}`);
+                stats.phase = `出错重试：${err.message.slice(0, 40)}`;
+            } else {
+                stats.phase = '60s 无鱼上钩，重新抛竿…';
             }
             if (botInstance.fishingActive) loopTimer = setTimeout(fishingLoop, 2000);
         }
@@ -78,6 +94,8 @@ module.exports = (botInstance) => {
         botInstance.fishingActive = state;
 
         if (state && !prevState) {
+            stats.startedAt = Date.now();
+            stats.phase = '准备抛竿…';
             fishingLoop();
         } else if (!state && prevState) {
             try { bot.activateItem(); } catch (_e) {}

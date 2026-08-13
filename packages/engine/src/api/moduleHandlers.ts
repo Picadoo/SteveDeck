@@ -272,6 +272,15 @@ function dispatchAction(
       return ok(inst.getFarmStats?.() ?? null);
     case "automine:stats":
       return ok(inst.getMineStats?.() ?? null);
+    // 轻量模块的运行统计（模块页 3.5s 轮询展示「在干什么」）
+    case "combat:stats":
+      return ok(inst.getCombatStats?.() ?? null);
+    case "fishing:stats":
+      return ok(inst.getFishingStats?.() ?? null);
+    case "follow:stats":
+      return ok(inst.getFollowStats?.() ?? null);
+    case "trash_cleaner:stats":
+      return ok(inst.getTrashStats?.() ?? null);
     case "automine:sel1": {
       const res = inst.setMineAreaSel1?.();
       return res?.success ? ok(res) : fail(res?.error || "设置失败");

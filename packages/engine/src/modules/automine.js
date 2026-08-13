@@ -428,7 +428,12 @@ module.exports = (botInstance) => {
     botInstance.getMineStats = () => {
         const s = task.stats;
         const runTime = s.startTime ? (Date.now() - s.startTime) / 60000 : 0;
+        // 当前活动：近 20s 挖过 = 正在产出；否则在找方块（含区域内已挖空的情况，让用户看出「不动」的原因）
+        const sinceMine = s.lastMine ? Date.now() - s.lastMine : Infinity;
         const out = {
+            activity: sinceMine < 20000
+                ? `挖掘中（累计 ${s.total}）`
+                : `寻找可挖方块中…（超过 ${sinceMine === Infinity ? 0 : Math.floor(sinceMine / 1000)}s 未挖到，可能附近已挖空/够不着）`,
             minedByType: s.minedByType, total: s.total,
             runTime: Math.floor(runTime), rate: (s.total / Math.max(runTime, 1)).toFixed(2),
             lastMine: s.lastMine ? new Date(s.lastMine).toLocaleTimeString() : '从未', fullEvents: s.fullEvents,

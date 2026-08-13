@@ -241,7 +241,12 @@ module.exports = (botInstance) => {
         const runTime = (Date.now() - stats.startTime) / 1000 / 60;
         const totalHarvested = Object.values(stats.harvested).reduce((a, b) => a + b, 0);
         const totalPlanted = Object.values(stats.planted).reduce((a, b) => a + b, 0);
+        // 当前活动：近 30s 收割过 = 正在干活；否则巡田等作物成熟（让「站着不动」有解释）
+        const sinceHarvest = stats.lastHarvest ? Date.now() - stats.lastHarvest.getTime() : Infinity;
         return {
+            activity: sinceHarvest < 30000
+                ? `收割/补种中（累计 ${totalHarvested}）`
+                : '巡田中，等待作物成熟…',
             cropTypes: botInstance.farmTask.cropTypes.map(t => CROP_DATABASE[t]?.name || t).join(', '),
             harvestedByType: stats.harvested,
             plantedByType: stats.planted,

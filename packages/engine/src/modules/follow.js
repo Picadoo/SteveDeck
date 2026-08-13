@@ -73,6 +73,21 @@ module.exports = (botInstance) => {
         return null;
     };
 
+    // 运行统计：模块页展示当前跟随对象与实时距离（此前只有开关，跟丢了也看不出来）
+    botInstance.getFollowStats = () => {
+        const modeText = task.config.mode === 'player' ? `玩家 ${task.config.target}`
+            : task.config.mode === 'keyword' ? `关键词 ${task.config.target}` : '最近的玩家';
+        if (task.targetId != null) {
+            const ent = bot.entities[task.targetId];
+            const d = ent?.position && bot.entity ? bot.entity.position.distanceTo(ent.position) : null;
+            return {
+                activity: `跟随 ${task.targetName}${d != null ? `（${d.toFixed(1)} 格）` : ''}`,
+                target: task.targetName,
+            };
+        }
+        return { activity: `未找到目标（${modeText}），待命中…`, target: '—' };
+    };
+
     let lostSince = 0;
     let lastLostLogAt = 0;
     const tick = () => {

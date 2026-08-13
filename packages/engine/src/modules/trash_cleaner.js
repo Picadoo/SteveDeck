@@ -11,6 +11,19 @@ module.exports = (botInstance) => {
         timer: null
     };
 
+    // 运行统计：模块页展示扫描节奏与已清理数量（此前只有丢弃时的日志，闲时像没在工作）
+    const stats = { cleanedStacks: 0, lastCleanAt: 0, lastItem: null };
+    botInstance.getTrashStats = () => {
+        const t = botInstance.trashCleanerTask;
+        const recent = Date.now() - stats.lastCleanAt < 12000;
+        return {
+            activity: recent
+                ? `丢弃 ${stats.lastItem}`
+                : `监视背包中（每 10s 扫描，黑名单 ${t.trashItems.length} 项）`,
+            cleaned: stats.cleanedStacks,
+        };
+    };
+
     // 执行清理的函数
     const cleanInventory = async () => {
         if (!botInstance.trashCleanerTask.active || !bot.inventory) return;
@@ -30,6 +43,9 @@ module.exports = (botInstance) => {
                     emitLog(`自动清理: 丢弃 ${item.name} x${item.count}`);
 
                     await bot.tossStack(item);
+                    stats.cleanedStacks++;
+                    stats.lastCleanAt = Date.now();
+                    stats.lastItem = `${item.name} x${item.count}`;
                     // 稍微等待一下，防止丢弃动作太快导致封号或出错
                     await new Promise(resolve => setTimeout(resolve, 500));
                 } catch (err) {

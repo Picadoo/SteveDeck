@@ -121,10 +121,21 @@ function emitAck(client, ev, payload, timeout = 8000) {
     check('变量插值 greet=第3轮', state.scriptVars.greet === '第3轮', `(greet=${state.scriptVars.greet})`);
     check('条件分支选对 + 聊天真实到服（回显）', state.logs.some((l) => String(l.text).includes('count=3')));
 
-    // ===== 场景 4：断线自动重连 + 模块状态恢复（挂机产品的命根子路径） =====
+    // ===== 场景 4：模块运行反馈（「开了看不出效果」的修复验证：无动作时也能看出原因） =====
     const tog = await emitAck(client, 'module:toggle', { id, module: 'combat', active: true });
     check('开启战斗模块（settings 持久化）', !!tog?.ok, tog?.error);
-    await delay(1000);
+    await delay(800);
+    const cst = await emitAck(client, 'module:action', { id, module: 'combat', action: 'stats' });
+    check('战斗模块上报活动状态（空服=警戒中）', !!cst?.ok && String(cst?.data?.activity || '').includes('警戒'), `(${cst?.data?.activity})`);
+    const fol = await emitAck(client, 'module:toggle', { id, module: 'follow', active: true, config: { mode: 'nearest_player', distance: 3 } });
+    check('开启跟随模块', !!fol?.ok, fol?.error);
+    await delay(800);
+    const fst = await emitAck(client, 'module:action', { id, module: 'follow', action: 'stats' });
+    check('跟随模块上报活动状态（无玩家=待命）', !!fst?.ok && String(fst?.data?.activity || '').includes('待命'), `(${fst?.data?.activity})`);
+    await emitAck(client, 'module:toggle', { id, module: 'follow', active: false });
+
+    // ===== 场景 5：断线自动重连 + 模块状态恢复（挂机产品的命根子路径） =====
+    await delay(500);
 
     console.log('  [场景] 杀掉服务器，验证断线检测与重连排定…');
     const logCountBefore = state.logs.length;

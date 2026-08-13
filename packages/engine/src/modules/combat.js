@@ -12,6 +12,20 @@ module.exports = (botInstance) => {
         ...botInstance.combatConfig 
     };
 
+    // 运行统计：模块页展示「在干什么」——开着却看不到效果是用户明确反馈过的痛点
+    const stats = { attacks: 0, lastTarget: null, lastAttackAt: 0, startedAt: Date.now() };
+    botInstance.getCombatStats = () => {
+        const cfg = botInstance.combatConfig;
+        const recent = Date.now() - stats.lastAttackAt < 3000;
+        return {
+            activity: recent
+                ? `攻击 ${stats.lastTarget || '目标'}`
+                : `警戒中（${cfg.range} 格内无${cfg.attackPlayers && cfg.attackMobs ? '目标' : cfg.attackPlayers ? '玩家' : '怪物'}）`,
+            attacks: stats.attacks,
+            lastTarget: stats.lastTarget || '—',
+        };
+    };
+
     const attackInterval = setInterval(() => {
         if (!bot?.entity || !botInstance.combatConfig.enabled) return;
         if (botInstance.isBodyBusy?.()) return; // 用东西时让位一拍(auto_use)
@@ -50,6 +64,9 @@ module.exports = (botInstance) => {
                 if (t.position && entities[t.id]) {
                     bot.lookAt(t.position.offset(0, (t.height || 1.8) / 2, 0), true);
                     bot.attack(t);
+                    stats.attacks++;
+                    stats.lastTarget = t.username || t.displayName || t.name || String(t.id);
+                    stats.lastAttackAt = Date.now();
                 }
             } catch (_err) {
                 // 实体在攻击瞬间消失，忽略

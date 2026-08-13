@@ -108,6 +108,11 @@ export interface BotInstance {
   toggleAutoMine(on: boolean, config?: any): any;
   stopAutoMine?: () => void;
   getMineStats(): any;
+  /** 轻量模块的运行统计（模块页展示「在干什么」）：spawn 后由各模块挂载 */
+  getCombatStats?: () => any;
+  getFishingStats?: () => any;
+  getFollowStats?: () => any;
+  getTrashStats?: () => any;
   setMineAreaSel1(): any;
   setMineAreaSel2(): any;
   clearMineArea(): any;

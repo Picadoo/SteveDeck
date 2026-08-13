@@ -10,10 +10,12 @@ import AutoUsePanel from "./AutoUsePanel";
 import type { BotSummary } from "@mcbot/protocol";
 import { memoBotTab, eqJson } from "@/lib/memoBotTab";
 
-const STATS_MODULES = new Set(["auto_farm", "automine", "mob_hunter"]);
+// 有运行统计的模块（3.5s 轮询 `模块:stats`）：开着却看不到效果是明确的用户痛点，
+// 现在所有常驻模块都上报「当前活动」（activity 字段单独渲染为状态行）+ 关键计数。
+const STATS_MODULES = new Set(["auto_farm", "automine", "mob_hunter", "combat", "fishing", "follow", "trash_cleaner"]);
 const AREA_MODULES = new Set(["automine", "mob_hunter"]);
 
-// 统计字段的中文标签（只展示标量字段）
+// 统计字段的中文标签（只展示标量字段；activity 不在其中——单独渲染为状态行）
 const STAT_LABELS: Record<string, string> = {
   cropTypes: "作物",
   totalHarvested: "收割",
@@ -34,6 +36,12 @@ const STAT_LABELS: Record<string, string> = {
   currentTarget: "当前目标",
   isPaused: "已暂停",
   runTime: "运行(分)",
+  attacks: "攻击次数",
+  lastTarget: "最近目标",
+  casts: "抛竿",
+  catches: "上钩",
+  target: "跟随目标",
+  cleaned: "已清理(叠)",
 };
 const STAT_ORDER = Object.keys(STAT_LABELS);
 
@@ -113,7 +121,10 @@ function ModulesTab({ bot }: { bot: BotSummary }) {
     3500,
     {
       enabled: bot.online && hasActiveStatsModule,
-      deps: [bot.id, bot.modules.autofarm, bot.modules.automine, bot.modules.mobhunter],
+      deps: [
+        bot.id, bot.modules.autofarm, bot.modules.automine, bot.modules.mobhunter,
+        bot.modules.combat, bot.modules.fishing, bot.modules.follow, bot.modules.trashcleaner,
+      ],
     },
   );
 
@@ -182,6 +193,12 @@ function ModulesTab({ bot }: { bot: BotSummary }) {
               <Switch checked={checkedOf(def)} onChange={(v) => onToggle(def, v)} disabled={!bot.online} />
             </div>
 
+            {typeof st?.activity === "string" && st.activity && (
+              <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-accent/8 px-2.5 py-1.5 text-[11px] text-accent">
+                <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
+                <span className="truncate" title={st.activity}>{st.activity}</span>
+              </div>
+            )}
             {st && <StatsGrid data={st} />}
 
             {AREA_MODULES.has(def.key) && bot.online && (
