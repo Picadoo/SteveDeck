@@ -58,7 +58,60 @@ docker logs stevedeck-engine     # 记下「访问令牌」和「连接串」
 同一机器人的同类事件默认 60 秒内只推一次，不怕死亡循环刷屏。配置存在引擎端（`data/notify.json`），
 桌面/手机客户端共享同一份，配一次全端生效。
 
-## 五、常见问题
+## 五、脚本（自动化编排）
+
+「脚本」标签页可视化编排机器人行为：一切皆步骤（与 AI 生成、录制回放同构），支持循环、条件、变量、子脚本与触发器。
+
+### 常用动作（按类）
+
+| 类别 | 动作 |
+|---|---|
+| 移动 | `goto`（坐标/实体）· `goto_location`（保存地点，完整到达链）· `goto_nearest` · `return_home`（优先名为「家/home」的地点） |
+| 聊天 | `chat` · `cmd` · `whisper` · `wait_chat`（等消息，支持正则捕获存变量） |
+| 界面 | `interact`（右键实体开菜单）· `click_slot` · `find_and_click_slot`（按名字/lore 找格子）· `wait_gui_item` · `close_gui` |
+| 物品 | `equip` · `equip_best_weapon` · `equip_best_tool` · `deposit`（存箱，可配合地点）· `drop` · `drop_all`（保留关键词）· `use_item` · `craft` |
+| 世界 | `dig`（找→走近→换工具→挖）· `place` · `attack`（≤6 格内目标）· `look` / `look_at` |
+| 流程 | `wait` · `wait_until`（等条件）· `wait_spawn` · `set_var` · `math_var` · `log` · `stop` · `run_script`（子脚本带参数） |
+
+### 条件语法（if / while / break_if / wait_until 通用）
+
+- 数值：`health<10` `food>=6`（支持 `< > <= >=`）
+- 背包：`inventory_full` · `inventory_has 钻石` · `inventory_count 圆石>=64`
+- 状态：`alive` / `dead` · `holding 剑` · `players_nearby` / `no_players_nearby`
+- 界面：`gui_open` / `gui_closed` · `gui_has 下一页` · `gui_slot_has 13 确认`
+- 变量：`var counter>=5` · `var mode==auto`（`==`/`!=` 按字符串宽松比较）
+- 组合：`&&`（且）`||`（或）`!`（非）与括号，如 `health<10 && !gui_open`
+
+### 变量
+
+- 步骤里所有文本字段支持 `{变量名}` 插值；未赋值的变量原样显示（便于发现拼写错）。
+- `set_var` 特殊取值：`$health` `$food` `$x/$y/$z`（当前坐标）、`$scoreboard:关键词`（计分板取数）、`=1+2*3`（安全数学表达式，只允许数字与运算符）。
+- 死亡后自动写入 `{deathX}/{deathY}/{deathZ}`（死亡点坐标）。
+
+### 触发器（脚本自动启动）
+
+| 类型 | 说明 |
+|---|---|
+| `manual` | 只手动启动（默认） |
+| `schedule` | 每天到点触发一次（HH:MM，当天去重） |
+| `interval` | 每 N 秒触发 |
+| `chat_match` | 聊天包含指定文本（3 秒内消费一次） |
+| `health_below` / `food_below` | 低于阈值 |
+| `damage` / `respawn` | 受伤 / 重生后 |
+| `mob_nearby` / `player_nearby` | 敌对生物 / 玩家靠近 |
+| `inventory_full` | 背包满 |
+
+同一时刻只跑一个脚本；`health_below` 与 `damage` 是**保命触发器**，可抢占正在运行的普通脚本（保命脚本自身不被抢占）。
+
+### 控制流语义要点（容易踩的坑）
+
+- `repeat` 的 `times=0` 表示**无限循环**（配合循环脚本用；空的无限块会被拦截）；整个脚本有 10 万步熔断兜底。
+- `while` 需要 `cond`，默认最多 10000 轮（可用 `max` 调整）。
+- `break_if` 跳出的是**最近一层步骤序列**：写在循环体里的效果是「跳过本轮剩余步骤进入下一轮」（continue 语义）；要提前结束循环请用 `while` 的条件。
+- 任何叶子动作可加 `cond`（不满足则跳过该步）与 `retry`/`retryDelay`（失败自动重试 N 次）。
+- 循环脚本（loop 开）手动启动后会记住：断线重连自动续跑。
+
+## 六、常见问题
 
 - **一直「重连中」**：检查服务器地址/端口/版本是否正确；查看「日志」里的踢出原因。
 - **连不上引擎**：确认地址可达、令牌正确、（公网）端口已放行。
