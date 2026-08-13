@@ -1,5 +1,3 @@
-const _Vec3 = require('vec3');
-
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
     let mcData = null;
