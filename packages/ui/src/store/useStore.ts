@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { BotStatus, BotSummary, LogLine, InventoryItem, WindowState, MonitorStat } from "@mcbot/protocol";
-import { mcPlain } from "@/lib/format";
+import { pushLogLine } from "@/lib/logBuffer";
 
 export type ConnStatus = "disconnected" | "connecting" | "online" | "error";
 
@@ -23,11 +23,6 @@ export interface Toast {
 let toastSeq = 0;
 const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const MAX_TOASTS = 5;
-
-const MAX_LOG_LINES = 500;
-// 日志渲染序号：单调递增，给 React 当稳定 key。满 500 条后 appendLog 是滑动窗口，
-// 基于内容/下标的 key 会整窗左移 → 500 行 unmount+remount（低端机 30-80ms/条）。
-let logSeq = 0;
 
 /** 脚本运行时反馈（来自引擎 script_status/progress/error/vars），按机器人 id 键 */
 export interface ScriptRuntime {
@@ -307,16 +302,9 @@ export const useStore = create<AppState>((set, get) => ({
       moduleConfigs: {},
       selectedId: null,
     }),
+  // seq 赋值/plain 缓存/滑动窗口在 lib/logBuffer.ts（纯逻辑，有单测）
   appendLog: (id, line) =>
-    set((s) => {
-      line.seq = ++logSeq;
-      // 入库时洗一次 § 色码存下来：过滤框每输入一个字符要扫全部行，
-      // 若现场重洗是 500 行 × 每键一次的正则开销（挂机刷屏时日志页最热的重复计算）
-      line.plain = mcPlain(line.text);
-      const prev = s.logs[id] ?? [];
-      const next = prev.length >= MAX_LOG_LINES ? [...prev.slice(prev.length - MAX_LOG_LINES + 1), line] : [...prev, line];
-      return { logs: { ...s.logs, [id]: next } };
-    }),
+    set((s) => ({ logs: { ...s.logs, [id]: pushLogLine(s.logs[id] ?? [], line) } })),
   clearLog: (id) => set((s) => ({ logs: { ...s.logs, [id]: [] } })),
   setSelected: (id) => set({ selectedId: id }),
 }));
