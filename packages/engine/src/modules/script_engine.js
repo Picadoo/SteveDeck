@@ -11,6 +11,7 @@ const { compare, evalBoolExpr } = require('../utils/scriptExpr'); // 布尔表�
 const scriptVars = require('../utils/scriptVars'); // 变量插值 + 安全数学求值（纯逻辑，有单测）
 const { validatePattern } = require('../utils/safePattern'); // 用户正则的 ReDoS 防护（与消息监听同一道闸）
 const { createStepExecutor } = require('../utils/scriptFlow'); // 控制流执行器（纯逻辑依赖注入，有单测）
+const { parseCondAtom } = require('../utils/scriptCond'); // 条件叶子解析（纯逻辑，有单测）
 const { ServerEvents } = require('@mcbot/protocol'); // 事件名统一走协议常量，杜绝两端字符串漂移
 
 const MAX_CALL_DEPTH = 5;
@@ -148,80 +149,50 @@ module.exports = (botInstance) => {
         return evalBoolExpr(s, evalAtom);
     }
 
+    // 叶子条件 = 解析（utils/scriptCond.js，纯逻辑有单测）+ 执行（此处，读 bot 运行时状态）
     function evalAtom(c) {
-        c = c.trim();
-        let m;
-
-        m = c.match(/^health\s*([<>]=?)\s*(\d+\.?\d*)$/);
-        if (m) return compare(bot.health, m[1], parseFloat(m[2]));
-
-        m = c.match(/^food\s*([<>]=?)\s*(\d+\.?\d*)$/);
-        if (m) return compare(bot.food, m[1], parseFloat(m[2]));
-
-        if (c === 'inventory_full') {
-            return bot.inventory.slots.filter((s, i) => i >= 9 && i <= 44 && !s).length === 0;
+        const p = parseCondAtom(c);
+        if (!p) { emitLog(`未知条件: ${c}`); return false; }
+        switch (p.kind) {
+            case 'health': return compare(bot.health, p.op, p.value);
+            case 'food': return compare(bot.food, p.op, p.value);
+            case 'inventory_full':
+                return bot.inventory.slots.filter((s, i) => i >= 9 && i <= 44 && !s).length === 0;
+            case 'inventory_has':
+                return bot.inventory.items().some(item => item.name.toLowerCase().includes(p.name));
+            case 'inventory_count': {
+                const total = bot.inventory.items()
+                    .filter(item => item.name.toLowerCase().includes(p.name))
+                    .reduce((sum, item) => sum + item.count, 0);
+                return compare(total, p.op, p.value);
+            }
+            case 'players_nearby': return hasNearbyPlayers();
+            case 'no_players_nearby': return !hasNearbyPlayers();
+            case 'holding': return !!bot.heldItem?.name.toLowerCase().includes(p.name);
+            case 'gui_open': return !!bot.currentWindow;
+            case 'gui_closed': return !bot.currentWindow;
+            case 'gui_has':
+                // 同时搜 name + lore，菜单按钮关键信息常在 lore 里；界面没开 = 条件不成立
+                return !!bot.currentWindow && findMatchingSlot(bot.currentWindow.slots, p.name, { matchLore: true }) >= 0;
+            case 'gui_slot_has': {
+                if (!bot.currentWindow) return false;
+                const item = bot.currentWindow.slots[p.slot];
+                return !!item && slotText(item, true).includes(p.name);
+            }
+            case 'alive': return bot.health > 0;
+            case 'dead': return bot.health <= 0;
+            case 'var': {
+                const varVal = botInstance._scriptVars[p.name];
+                // 相等/不等按「字符串形态」宽松比较：脚本变量常是字符串 "5" 与字面量 5 混比，
+                // 转字符串再 === 既保留原来的宽松意图，又避免 == 的隐式转换陷阱（NaN/null/布尔等）。
+                if (p.op === '==' || p.op === '=') return String(varVal) === String(p.value);
+                if (p.op === '!=') return String(varVal) !== String(p.value);
+                const aNum = Number(varVal), bNum = Number(p.value);
+                if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) return compare(aNum, p.op, bNum);
+                return false;
+            }
+            default: return false;
         }
-
-        m = c.match(/^inventory_has\s+(.+)$/);
-        if (m) {
-            const name = m[1].trim().toLowerCase();
-            return bot.inventory.items().some(item => item.name.toLowerCase().includes(name));
-        }
-
-        m = c.match(/^inventory_count\s+(.+?)\s*([<>]=?)\s*(\d+)$/);
-        if (m) {
-            const name = m[1].trim().toLowerCase();
-            const total = bot.inventory.items()
-                .filter(item => item.name.toLowerCase().includes(name))
-                .reduce((sum, item) => sum + item.count, 0);
-            return compare(total, m[2], parseInt(m[3], 10));
-        }
-
-        if (c === 'players_nearby') return hasNearbyPlayers();
-        if (c === 'no_players_nearby') return !hasNearbyPlayers();
-
-        m = c.match(/^holding\s+(.+)$/);
-        if (m) {
-            const held = bot.heldItem;
-            return held?.name.toLowerCase().includes(m[1].trim().toLowerCase());
-        }
-
-        if (c === 'gui_open') return !!bot.currentWindow;
-        if (c === 'gui_closed') return !bot.currentWindow;
-
-        m = c.match(/^gui_has\s+(.+)$/);
-        if (m && bot.currentWindow) {
-            // 同时搜 name + lore，菜单按钮关键信息常在 lore 里
-            return findMatchingSlot(bot.currentWindow.slots, m[1].trim(), { matchLore: true }) >= 0;
-        }
-
-        m = c.match(/^gui_slot_has\s+(\d+)\s+(.+)$/);
-        if (m && bot.currentWindow) {
-            const slot = parseInt(m[1], 10);
-            const name = m[2].trim().toLowerCase();
-            const item = bot.currentWindow.slots[slot];
-            return !!item && slotText(item, true).includes(name);
-        }
-
-        if (c === 'alive') return bot.health > 0;
-        if (c === 'dead') return bot.health <= 0;
-
-        m = c.match(/^var\s+(\w+)\s*([<>=!]+)\s*(.+)$/);
-        if (m) {
-            const varVal = botInstance._scriptVars[m[1]];
-            const rawCmp = m[3].trim();
-            const cmpVal = Number.isNaN(Number(rawCmp)) ? rawCmp : parseFloat(rawCmp);
-            // 相等/不等按「字符串形态」宽松比较：脚本变量常是字符串 "5" 与字面量 5 混比，
-            // 转字符串再 === 既保留原来的宽松意图，又避免 == 的隐式转换陷阱（NaN/null/布尔等）。
-            if (m[2] === '==' || m[2] === '=') return String(varVal) === String(cmpVal);
-            if (m[2] === '!=') return String(varVal) !== String(cmpVal);
-            const aNum = Number(varVal), bNum = Number(cmpVal);
-            if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) return compare(aNum, m[2], bNum);
-            return false;
-        }
-
-        emitLog(`未知条件: ${c}`);
-        return false;
     }
 
     function hasNearbyPlayers() {
