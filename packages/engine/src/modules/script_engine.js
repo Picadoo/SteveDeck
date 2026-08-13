@@ -8,6 +8,7 @@ const waitForTeleport = require('../utils/waitForTeleport');
 const { findMatchingSlot, slotText } = require('../utils/guiMatch');
 const { customName } = require('../utils/items');
 const { compare, evalBoolExpr } = require('../utils/scriptExpr'); // 布尔表达式求值 + 比较（纯逻辑，见该文件）
+const scriptVars = require('../utils/scriptVars'); // 变量插值 + 安全数学求值（纯逻辑，有单测）
 const { ServerEvents } = require('@mcbot/protocol'); // 事件名统一走协议常量，杜绝两端字符串漂移
 
 const MAX_CALL_DEPTH = 5;
@@ -64,33 +65,11 @@ module.exports = (botInstance) => {
 
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-    // ==================== 变量插值 ====================
-    function resolveVars(str) {
-        if (typeof str !== 'string') return str;
-        return str.replace(/\{(\w+)\}/g, (_, name) => {
-            const v = botInstance._scriptVars[name];
-            return v !== undefined ? String(v) : `{${name}}`;
-        });
-    }
-
-    function resolveStep(step) {
-        const out = {};
-        for (const k of Object.keys(step)) {
-            const v = step[k];
-            if (typeof v === 'string') out[k] = resolveVars(v);
-            else out[k] = v;
-        }
-        return out;
-    }
-
-    // 安全数学表达式：只允许数字、运算符、括号
-    function evalMath(expr) {
-        const resolved = resolveVars(String(expr));
-        if (!/^[\d\s+\-*/()%.]+$/.test(resolved)) return resolved;
-        try {
-            return Function(`"use strict"; return (${resolved})`)();
-        } catch { return resolved; }
-    }
+    // ==================== 变量插值（实现在 utils/scriptVars.js，有单测） ====================
+    const getVar = (name) => botInstance._scriptVars[name];
+    const resolveVars = (str) => scriptVars.resolveVars(str, getVar);
+    const resolveStep = (step) => scriptVars.resolveStep(step, getVar);
+    const evalMath = (expr) => scriptVars.evalMath(expr, getVar);
 
     // ==================== 通用轮询等待 ====================
     async function pollUntil(fn, timeout, ctx) {
