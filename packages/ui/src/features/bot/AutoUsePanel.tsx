@@ -4,6 +4,7 @@ import { Card, Switch, Button, Badge, Input } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
+import { usePoll } from "@/lib/usePoll";
 import { cn } from "@/lib/cn";
 import type { BotSummary, AutoUseRule } from "@mcbot/protocol";
 
@@ -125,6 +126,21 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
 
   const enabledCount = rules.filter((r) => r.enabled).length;
 
+  // 运行反馈：开着时 3.5s 轮询「当前活动 + 使用次数」（与模块页统计同通道，修「开了看不出效果」）
+  const [runStats, setRunStats] = useState<{ activity?: string; uses?: number } | null>(null);
+  useEffect(() => {
+    if (!checked || !bot.online) setRunStats(null);
+  }, [checked, bot.online]);
+  usePoll(
+    async (alive) => {
+      const r = await cmd.moduleAction(bot.id, "auto_use", "stats");
+      if (!alive()) return;
+      if (r.ok && r.data) setRunStats(r.data as { activity?: string; uses?: number });
+    },
+    3500,
+    { enabled: bot.online && checked, deps: [bot.id, checked] },
+  );
+
   return (
     <Card className="p-4">
       <div className="flex items-start justify-between">
@@ -139,6 +155,16 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
         </div>
         <Switch checked={checked} onChange={toggle} disabled={!bot.online} />
       </div>
+
+      {checked && runStats?.activity && (
+        <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-accent/8 px-2.5 py-1.5 text-[11px] text-accent">
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
+          <span className="truncate" title={runStats.activity}>{runStats.activity}</span>
+          {typeof runStats.uses === "number" && runStats.uses > 0 && (
+            <span className="ml-auto shrink-0 text-muted">已使用 {runStats.uses} 次</span>
+          )}
+        </div>
+      )}
 
       <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-surface-2/50 px-2.5 py-2">
         <span className="text-[11px] text-muted">

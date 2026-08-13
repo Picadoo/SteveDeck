@@ -17,6 +17,16 @@ module.exports = (botInstance) => {
     cooldowns: {},
   });
 
+  // 运行统计：面板展示监控节奏与最近一次使用（此前只有使用瞬间的一条日志，平时像没在工作）
+  const stats = { uses: 0, lastItem: null, lastRule: null, lastUseAt: 0 };
+  botInstance.getAutoUseStats = () => ({
+    activity: Date.now() - stats.lastUseAt < 5000
+      ? `使用 ${stats.lastItem}（规则「${stats.lastRule}」）`
+      : `监控中（${task.rules.filter((r) => r?.enabled !== false).length} 条规则，每秒评估）`,
+    uses: stats.uses,
+    lastItem: stats.lastItem || '—',
+  });
+
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // 背包快照：附 isFood 注解，供纯逻辑按「类别=食物」匹配。
@@ -98,6 +108,10 @@ module.exports = (botInstance) => {
       const item = matchItem(items, rule.match);
       if (!item) return;
       task.cooldowns[rule.id] = state.now;
+      stats.uses++;
+      stats.lastItem = item.displayName || item.name;
+      stats.lastRule = rule.id;
+      stats.lastUseAt = state.now;
       emitLog(`自动使用「${rule.id}」：${item.displayName || item.name}`);
       await performUse(rule, item);
     } catch (e) {

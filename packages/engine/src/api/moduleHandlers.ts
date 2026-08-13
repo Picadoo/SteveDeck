@@ -281,6 +281,8 @@ function dispatchAction(
       return ok(inst.getFollowStats?.() ?? null);
     case "trash_cleaner:stats":
       return ok(inst.getTrashStats?.() ?? null);
+    case "auto_use:stats":
+      return ok(inst.getAutoUseStats?.() ?? null);
     case "automine:sel1": {
       const res = inst.setMineAreaSel1?.();
       return res?.success ? ok(res) : fail(res?.error || "设置失败");

@@ -113,6 +113,7 @@ export interface BotInstance {
   getFishingStats?: () => any;
   getFollowStats?: () => any;
   getTrashStats?: () => any;
+  getAutoUseStats?: () => any;
   setMineAreaSel1(): any;
   setMineAreaSel2(): any;
   clearMineArea(): any;
