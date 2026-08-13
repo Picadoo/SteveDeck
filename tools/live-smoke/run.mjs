@@ -1,0 +1,162 @@
+// 真实连接冒烟（自包含）：自动启停本地 vanilla → 引擎真实连接 → 全链路验证。
+// 场景：控制面/进服状态/聊天/AI观察/模块开关/脚本引擎（变量/循环/插值/条件/聊天）/断线自动重连+模块恢复。
+// 用法：pnpm test:live（首次自动下载官方 server.jar，需要 Java 17+）
+import { createRequire } from 'node:module';
+import { rmSync } from 'node:fs';
+import path from 'node:path';
+import { ensureServerFiles, resetWorld, startServer, RUN_DIR, MC_PORT, MC_VERSION } from './vanilla.mjs';
+
+const require = createRequire(import.meta.url);
+const ENGINE = path.resolve(RUN_DIR, '../../../packages/engine');
+
+// 引擎数据目录每次清空：测试自包含，不受上次残留 bot 配置影响
+const DATA_DIR = path.join(RUN_DIR, 'engine-data');
+rmSync(DATA_DIR, { recursive: true, force: true });
+process.env.MCBOT_DATA_DIR = DATA_DIR;
+
+const { startEngine } = require(path.join(ENGINE, 'dist/index.js'));
+const { io } = require(path.join(ENGINE, 'node_modules/socket.io-client'));
+
+const TOKEN = 'livetest';
+const PORT = 8797;
+const URL = `http://127.0.0.1:${PORT}`;
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function emitAck(client, ev, payload, timeout = 8000) {
+    return new Promise((res) => {
+        let done = false;
+        client.emit(ev, payload, (r) => { done = true; res(r); });
+        setTimeout(() => { if (!done) res(null); }, timeout);
+    });
+}
+
+(async () => {
+    console.log('=== 准备本地 vanilla 测试服 ===');
+    await ensureServerFiles();
+    resetWorld();
+    let server = await startServer();
+    console.log(`  [vanilla] 就绪 127.0.0.1:${MC_PORT}（${MC_VERSION}）`);
+
+    const engine = await startEngine({ port: PORT, token: TOKEN });
+    let failures = 0;
+    const check = (name, cond, extra) => {
+        if (cond) console.log('  ✓', name, extra ?? '');
+        else { console.error('  ✗', name, extra ?? ''); failures++; }
+    };
+
+    const client = io(URL, { auth: { token: TOKEN }, reconnection: false });
+    const state = { logs: [], status: null, snapshot: null, scriptStatus: [], scriptVars: {} };
+    client.on('bot:log', (p) => {
+        state.logs.push(p.line);
+        console.log('  [日志]', p.line.time ?? '', String(p.line.text).slice(0, 110));
+    });
+    client.on('bot:status', (p) => (state.status = p.bot));
+    client.on('bots:snapshot', (p) => (state.snapshot = p));
+    client.on('script_status', (p) => state.scriptStatus.push(p.status));
+    client.on('script_vars', (p) => (state.scriptVars = p.vars || {}));
+    await new Promise((res) => { client.on('connect', res); setTimeout(res, 3000); });
+    check('控制面连接', client.connected);
+
+    const findBot = (id) => (state.status?.id === id ? state.status : (state.snapshot?.bots || []).find((x) => x.id === id));
+    const waitOnline = async (id, seconds) => {
+        for (let i = 0; i < seconds * 2; i++) {
+            await delay(500);
+            const b = findBot(id);
+            if (b?.online && b.health != null) return b;
+        }
+        return null;
+    };
+
+    // ===== 场景 1：建 bot 连接进服 =====
+    const addRes = await emitAck(client, 'bot:add', {
+        username: 'TestSteve', host: '127.0.0.1', port: MC_PORT, version: MC_VERSION, auth: 'offline',
+        settings: { reconnectDelay: 2 }, // 重连场景加速：2s 起步
+    });
+    check('bot:add', !!addRes?.ok, addRes?.error);
+    const id = addRes?.data?.id;
+    await emitAck(client, 'bot:reconnect', { id });
+
+    const online = await waitOnline(id, 60);
+    check('进服在线（spawn + 状态摘要）', !!online);
+    if (online) {
+        check(`协商版本 = ${MC_VERSION}`, online.version === MC_VERSION, `(${online.version})`);
+        check('生命值有效', typeof online.health === 'number' && online.health > 0, `(${online.health}/${online.maxHealth})`);
+        check('坐标有效', online.pos && typeof online.pos.x === 'number', online.pos && `(${Math.round(online.pos.x)},${Math.round(online.pos.y)},${Math.round(online.pos.z)})`);
+    }
+
+    // ===== 场景 2：聊天 + AI 观察 =====
+    const chat = await emitAck(client, 'bot:chat', { id, message: 'SteveDeck 冒烟测试：你好，本地测试服！' });
+    check('bot:chat 发送', !!chat?.ok, chat?.error);
+    const obs = await emitAck(client, 'ai:observe', { id });
+    const o = obs?.data?.observation ?? obs?.data ?? null;
+    check('ai:observe 返回且含自身状态', !!obs?.ok && !!o?.self && typeof o.self.health === 'number', obs?.error);
+
+    // ===== 场景 3：脚本引擎全链路 =====
+    const smokeScript = {
+        name: '冒烟脚本',
+        trigger: { type: 'manual' },
+        steps: [
+            { do: 'set_var', name: 'count', value: '0' },
+            { do: 'repeat', times: 3, steps: [{ do: 'math_var', name: 'count', op: '+', value: 1 }] },
+            { do: 'set_var', name: 'greet', value: '第{count}轮' },
+            {
+                do: 'if', cond: 'var count >= 3',
+                then: [{ do: 'chat', msg: '脚本冒烟通过 count={count}' }],
+                else: [{ do: 'chat', msg: '脚本冒烟失败分支' }],
+            },
+            { do: 'wait', s: 0.5 },
+        ],
+    };
+    const sv = await emitAck(client, 'script:save', { id, script: smokeScript });
+    check('script:save', !!sv?.ok, sv?.error);
+    const st = await emitAck(client, 'script:start', { id, name: '冒烟脚本' });
+    check('script:start', !!st?.ok, st?.error);
+    let scriptDone = false;
+    for (let i = 0; i < 40; i++) {
+        await delay(500);
+        if (state.scriptStatus.includes('stopped')) { scriptDone = true; break; }
+    }
+    check('脚本运行结束（running → stopped）', scriptDone, `(${state.scriptStatus.join(',')})`);
+    check('循环+数学变量 count=3', String(state.scriptVars.count) === '3', `(count=${state.scriptVars.count})`);
+    check('变量插值 greet=第3轮', state.scriptVars.greet === '第3轮', `(greet=${state.scriptVars.greet})`);
+    check('条件分支选对 + 聊天真实到服（回显）', state.logs.some((l) => String(l.text).includes('count=3')));
+
+    // ===== 场景 4：断线自动重连 + 模块状态恢复（挂机产品的命根子路径） =====
+    const tog = await emitAck(client, 'module:toggle', { id, module: 'combat', active: true });
+    check('开启战斗模块（settings 持久化）', !!tog?.ok, tog?.error);
+    await delay(1000);
+
+    console.log('  [场景] 杀掉服务器，验证断线检测与重连排定…');
+    const logCountBefore = state.logs.length;
+    await server.stop();
+    let sawReconnectPlan = false;
+    for (let i = 0; i < 30; i++) {
+        await delay(500);
+        if (state.logs.slice(logCountBefore).some((l) => /将在 .*秒后重连/.test(String(l.text)))) { sawReconnectPlan = true; break; }
+    }
+    check('断线后排定自动重连（指数退避日志）', sawReconnectPlan);
+
+    console.log('  [场景] 重启服务器，验证自动连回…');
+    server = await startServer(); // 世界已生成，秒级就绪
+    const back = await waitOnline(id, 90);
+    check('服务器恢复后自动连回（无人工干预）', !!back);
+
+    // restoreModules 延迟 3.5s 激活模块——多等一拍再验证战斗模块自动恢复
+    await delay(6000);
+    const restored = findBot(id);
+    check('重连后战斗模块自动恢复（restoreModules）', restored?.modules?.combat === true, `(combat=${restored?.modules?.combat})`);
+
+    // ===== 收尾 =====
+    await emitAck(client, 'bot:stop', { id });
+    await delay(800);
+    await emitAck(client, 'bot:delete', { id });
+    client.close();
+    engine.server.close();
+    await server.stop();
+    await delay(300);
+    console.log(failures === 0 ? '\n真实连接冒烟 ALL PASS ✅' : `\n${failures} FAIL ❌`);
+    process.exit(failures === 0 ? 0 : 1);
+})().catch(async (e) => {
+    console.error('TEST ERROR', e);
+    process.exit(1);
+});

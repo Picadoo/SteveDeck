@@ -21,6 +21,7 @@
     "lint": "biome lint --error-on-warnings .",
     "lint:fix": "biome lint --write .",
     "test": "pnpm build && pnpm --filter @mcbot/engine test:unit && pnpm --filter @mcbot/ui test && pnpm --filter @mcbot/engine test",
+    "test:live": "node tools/live-smoke/run.mjs",
     "bump": "node scripts/bump-version.mjs",
     "prepare": "node -e \"try{require('fs').statSync('.git');require('child_process').execSync('git config core.hooksPath .githooks')}catch(e){}\"",
     "start:engine": "pnpm --filter @mcbot/engine start",
