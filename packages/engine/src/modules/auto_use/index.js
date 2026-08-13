@@ -22,7 +22,7 @@ module.exports = (botInstance) => {
   botInstance.getAutoUseStats = () => ({
     activity: Date.now() - stats.lastUseAt < 5000
       ? `使用 ${stats.lastItem}（规则「${stats.lastRule}」）`
-      : `监控中（${task.rules.filter((r) => r?.enabled !== false).length} 条规则，每秒评估）`,
+      : `监控中（${task.rules.filter((r) => r?.enabled !== false).length} 条规则）`,
     uses: stats.uses,
     lastItem: stats.lastItem || '—',
   });

@@ -19,7 +19,7 @@ module.exports = (botInstance) => {
         return {
             activity: recent
                 ? `丢弃 ${stats.lastItem}`
-                : `监视背包中（每 10s 扫描，黑名单 ${t.trashItems.length} 项）`,
+                : `监视中（黑名单 ${t.trashItems.length} 项）`,
             cleaned: stats.cleanedStacks,
         };
     };

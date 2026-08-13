@@ -52,7 +52,7 @@ function QuickCommands({ bot }: { bot: BotSummary }) {
             onClick={() => setEditing(true)}
             className="shrink-0 rounded-md px-2 py-1 text-[11px] text-muted hover:bg-surface-2 hover:text-fg"
           >
-            ＋ 添加快捷指令（点按钮即发指令）
+            ＋ 快捷指令
           </button>
         ) : (
           <>

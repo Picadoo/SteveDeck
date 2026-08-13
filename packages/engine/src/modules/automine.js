@@ -433,7 +433,7 @@ module.exports = (botInstance) => {
         const out = {
             activity: sinceMine < 20000
                 ? `挖掘中（累计 ${s.total}）`
-                : `寻找可挖方块中…（超过 ${sinceMine === Infinity ? 0 : Math.floor(sinceMine / 1000)}s 未挖到，可能附近已挖空/够不着）`,
+                : (sinceMine === Infinity ? '寻找可挖方块中…' : `${Math.floor(sinceMine / 1000)}s 未挖到——附近可能已挖空/够不着`),
             minedByType: s.minedByType, total: s.total,
             runTime: Math.floor(runTime), rate: (s.total / Math.max(runTime, 1)).toFixed(2),
             lastMine: s.lastMine ? new Date(s.lastMine).toLocaleTimeString() : '从未', fullEvents: s.fullEvents,

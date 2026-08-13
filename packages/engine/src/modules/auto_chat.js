@@ -40,7 +40,7 @@ module.exports = (botInstance) => {
         const remain = task.nextAt ? Math.max(0, Math.round((task.nextAt - Date.now()) / 1000)) : 0;
         return {
             activity: task.messages.length === 0
-                ? '未配置消息——点「配置」添加要轮播的内容'
+                ? '未配置消息——请在「配置」里添加'
                 : `轮播中（${task.messages.length} 条 · 每 ${task.intervalSec}s · 下一条 ${remain}s 后）`,
             sent: task.sent,
             lastMsg: task.lastMsg ? String(task.lastMsg).slice(0, 30) : '—',

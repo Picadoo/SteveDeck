@@ -38,7 +38,7 @@ module.exports = (botInstance) => {
             ? `命中 ${task.lastHit.name}：${task.lastHit.text.slice(0, 40)}`
             : task.names.length
                 ? `监听中（${task.names.join('、')}）`
-                : '未配置目标——点「配置」添加要盯的玩家名',
+                : '未配置目标——请在「配置」里添加',
         watchHits: task.count,
     });
 

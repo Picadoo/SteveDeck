@@ -213,12 +213,15 @@ function ModulesTab({ bot }: { bot: BotSummary }) {
               <AreaActions bot={bot} moduleKey={def.key} stats={active ? st : undefined} />
             )}
 
-            {def.key === "player_watch" && bot.online && active && <WatchLogSection bot={bot} />}
-
-            {def.fields.length > 0 && (
-              <Button size="sm" variant="ghost" className="mt-3 w-full" onClick={() => setEditing(def)}>
-                <Settings2 className="h-3.5 w-3.5" /> 配置
-              </Button>
+            {(def.fields.length > 0 || (def.key === "player_watch" && active)) && (
+              <div className="mt-3 flex gap-2">
+                {def.key === "player_watch" && bot.online && active && <WatchLogSection bot={bot} />}
+                {def.fields.length > 0 && (
+                  <Button size="sm" variant="ghost" className="flex-1" onClick={() => setEditing(def)}>
+                    <Settings2 className="h-3.5 w-3.5" /> 配置
+                  </Button>
+                )}
+              </div>
             )}
           </Card>
         );
@@ -351,9 +354,9 @@ function WatchLogSection({ bot }: { bot: BotSummary }) {
   }, [open, bot.id]);
 
   return (
-    <div className="mt-2 border-t border-border/40 pt-2">
-      <Button size="sm" variant="ghost" className="w-full" onClick={() => setOpen(true)}>
-        <ScrollText className="h-3.5 w-3.5" /> 查看命中记录
+    <>
+      <Button size="sm" variant="ghost" className="flex-1" onClick={() => setOpen(true)}>
+        <ScrollText className="h-3.5 w-3.5" /> 记录
       </Button>
       <Modal open={open} onClose={() => setOpen(false)} title="盯人监听记录" size="lg">
         {!log ? (
@@ -378,7 +381,7 @@ function WatchLogSection({ bot }: { bot: BotSummary }) {
           </div>
         )}
       </Modal>
-    </div>
+    </>
   );
 }
 
@@ -446,7 +449,7 @@ function BehaviorCard({ bot }: { bot: BotSummary }) {
         <div className="min-w-0">
           <div className="text-sm font-medium">允许破坏方块寻路</div>
           <p className="text-[11px] leading-relaxed text-muted">
-            默认关闭（无破坏模式）。多数服务器地图受保护，开启后寻路会尝试挖/搭方块，反而更容易卡路径。
+            多数服地图受保护，开启反而容易卡路径；自建/创造服再开。
           </p>
         </div>
         <Switch checked={!!behavior?.allowDig} onChange={toggleDig} disabled={disabled} />
@@ -454,8 +457,8 @@ function BehaviorCard({ bot }: { bot: BotSummary }) {
       <div className="mt-2 border-t border-border/40 pt-2.5">
         <div className="text-sm font-medium">复活后自动指令</div>
         <p className="mb-1.5 text-[11px] leading-relaxed text-muted">
-          死亡后自动复活（内置）。若服务器死亡会回主城，可填 <code className="rounded bg-surface-2 px-1">/back</code>、
-          <code className="rounded bg-surface-2 px-1">/spawn</code> 等返回原处；留空则不执行。
+          会被传回主城的服可填 <code className="rounded bg-surface-2 px-1">/back</code> 或
+          <code className="rounded bg-surface-2 px-1">/spawn</code>；留空不执行（复活本身是自动的）。
         </p>
         <div className="flex gap-1.5">
           <Input
@@ -473,8 +476,8 @@ function BehaviorCard({ bot }: { bot: BotSummary }) {
         <div className="min-w-0">
           <div className="text-sm font-medium">死亡后返回原位</div>
           <p className="text-[11px] leading-relaxed text-muted">
-            重生后（先跑上面的复活指令）自动寻路走回死亡点。原版类服可用；模组服寻路可能失效，建议改用复活指令/脚本。
-            复杂返回（如先选副本）可在脚本里用 <code className="rounded bg-surface-2 px-1">{"{deathX} {deathY} {deathZ}"}</code> 配合 respawn 触发器。
+            重生后自动寻路回死亡点（原版类服可用）。复杂返回改用脚本：respawn 触发器 +
+            <code className="rounded bg-surface-2 px-1">{"{deathX} {deathY} {deathZ}"}</code>。
           </p>
         </div>
         <Switch checked={!!behavior?.returnOnDeath} onChange={toggleReturn} disabled={disabled} />

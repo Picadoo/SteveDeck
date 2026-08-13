@@ -252,14 +252,12 @@ export default function AddBotDialog({
                 />
               </Field>
               <p className="text-[11px] leading-relaxed text-muted sm:col-span-2">
-                进服 2 秒后自动发送。{"{password}"}/{"{username}"} 会被替换成密码/用户名；模板里没写 {"{password}"} 时密码自动加在末尾。
-                各种离线服（/l、/login、AuthMe 双密码注册后登录等）都能配。
+                进服 2 秒后自动发送；{"{password}"}/{"{username}"} 会被替换，模板没写时密码自动加在末尾。
               </p>
             </div>
           ) : (
             <p className="mt-2.5 border-t border-border/40 pt-2.5 text-[11px] leading-relaxed text-muted">
-              用户名填<b>微软账号邮箱</b>。首次连接时控制台日志会给出一个网址和验证码——任意浏览器打开、输入、用拥有
-              Minecraft 正版的微软账号登录即可；验证一次后引擎会记住（缓存在引擎数据目录），之后重连/重启都不用再验。
+              用户名填<b>微软账号邮箱</b>。首次连接按日志里的网址 + 验证码完成验证，之后引擎会记住，无需再验。
             </p>
           )}
         </div>
@@ -270,7 +268,7 @@ export default function AddBotDialog({
           <div className="flex items-center justify-between">
             <div className="min-w-0">
               <div className="text-sm font-medium">自动重连</div>
-              <p className="text-[11px] leading-relaxed text-muted">断线后自动重连（被 ban/白名单等不可恢复断开仍会停）。关掉则掉线不重连。</p>
+              <p className="text-[11px] leading-relaxed text-muted">掉线自动重连；被 ban/白名单等不可恢复断开仍会停。</p>
             </div>
             <Switch checked={autoReconnect} onChange={setAutoReconnect} />
           </div>
@@ -302,8 +300,7 @@ export default function AddBotDialog({
             <div className="min-w-0">
               <div className="text-sm font-medium">Forge 模组服</div>
               <p className="text-[11px] leading-relaxed text-muted">
-                服务器要求 Forge/FML 客户端（如龙核 DragonCore 服，登录被「requires FML/Forge」踢出）才开。开启后自动用 FML
-                握手 + ping 探测模组连接。注意：能进服做<b>原版操作</b>（挂机/走动/聊天/普通容器），但模组渲染的 GUI（R/P 菜单）仍用不了。
+                登录被「requires FML/Forge」踢出的服才开（自动探测模组伪装 Forge 客户端）。可做原版操作，模组 GUI 用不了。
               </p>
             </div>
             <Switch checked={forge} onChange={setForge} />
@@ -312,7 +309,7 @@ export default function AddBotDialog({
             <div className="min-w-0">
               <div className="text-sm font-medium">直接移动（走不动时开）</div>
               <p className="text-[11px] leading-relaxed text-muted">
-                模组服里物理算不动、bot 走不了路时开启：改为直接发坐标包让它走（和 MCC 一个原理），不依赖物理。普通服不用开。
+                模组服 bot 走不了路时开启，改发坐标包移动；普通服不用开。
               </p>
             </div>
             <Switch checked={rawMove} onChange={setRawMove} />
