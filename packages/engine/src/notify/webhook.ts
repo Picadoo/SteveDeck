@@ -11,7 +11,7 @@ import { dataPath } from "../config/paths";
 
 const logger = require("../utils/logger");
 
-export type NotifyEventKind = "death" | "kick" | "offline" | "online" | "test";
+export type NotifyEventKind = "death" | "kick" | "offline" | "online" | "watch" | "test";
 export type NotifyPreset =
   | "generic"
   | "dingtalk"
@@ -26,7 +26,7 @@ export interface NotifyConfig {
   /** Webhook 地址（须 http/https）。钉钉/飞书/企业微信=群机器人地址；Server酱=https://sctapi.ftqq.com/<KEY>.send；Bark=https://api.day.app/<KEY> */
   url: string;
   preset: NotifyPreset;
-  events: { death: boolean; kick: boolean; offline: boolean; online: boolean };
+  events: { death: boolean; kick: boolean; offline: boolean; online: boolean; watch: boolean };
   /** 同一 bot 同类事件的最小推送间隔（秒），防死亡循环刷屏 */
   cooldownSec: number;
 }
@@ -53,7 +53,8 @@ const DEFAULTS: NotifyConfig = {
   enabled: false,
   url: "",
   preset: "generic",
-  events: { death: true, kick: true, offline: true, online: false },
+  // watch（盯人命中）默认关：活跃玩家的聊天可能很频繁，需用户显式开启（并受同一冷却约束）
+  events: { death: true, kick: true, offline: true, online: false, watch: false },
   cooldownSec: 60,
 };
 
@@ -95,6 +96,7 @@ function sanitize(obj: any): NotifyConfig {
       kick: obj?.events?.kick !== false,
       offline: obj?.events?.offline !== false,
       online: obj?.events?.online === true,
+      watch: obj?.events?.watch === true,
     },
     cooldownSec: Math.max(0, Math.min(3600, Number(obj?.cooldownSec) || DEFAULTS.cooldownSec)),
   };
@@ -105,6 +107,7 @@ const EVENT_LABEL: Record<NotifyEventKind, string> = {
   kick: "被踢出",
   offline: "掉线（已停止重连）",
   online: "已上线",
+  watch: "盯人命中",
   test: "测试通知",
 };
 

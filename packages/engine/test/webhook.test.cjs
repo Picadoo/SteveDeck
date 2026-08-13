@@ -77,8 +77,30 @@ test("publishBotEvent：冷却窗内同 bot 同类事件只发一次；关闭的
     wh.publishBotEvent({ kind: "death", botId: "b1", username: "Steve", message: "又死了" }); // 冷却内，应被吞
     wh.publishBotEvent({ kind: "death", botId: "b2", username: "Alex", message: "死亡" }); // 不同 bot，应放行
     wh.publishBotEvent({ kind: "online", botId: "b1", username: "Steve", message: "上线" }); // online 关着，应被吞
+    wh.publishBotEvent({ kind: "watch", botId: "b1", username: "Steve", message: "命中" }); // watch 默认关，应被吞
     await new Promise((r) => setTimeout(r, 50)); // fire-and-forget 的微任务落地
     assert.equal(calls.length, 2);
+  } finally {
+    global.fetch = origFetch;
+  }
+});
+
+test("watch（盯人命中）事件：默认关闭，显式开启后推送且带正确标签", async () => {
+  const calls = [];
+  const origFetch = global.fetch;
+  global.fetch = async (url, init) => {
+    calls.push({ url, init });
+    return { ok: true, status: 200 };
+  };
+  try {
+    assert.equal(wh.loadNotifyConfig().events.watch, false, "watch 必须默认关（聊天可能高频）");
+    wh.saveNotifyConfig({ events: { watch: true } });
+    wh.publishBotEvent({ kind: "watch", botId: "b3", username: "Steve", message: "Alex：出售钻石" });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(calls.length, 1);
+    const body = JSON.parse(calls[0].init.body);
+    assert.equal(body.kind, "watch");
+    assert.ok(body.title.includes("盯人命中"));
   } finally {
     global.fetch = origFetch;
   }

@@ -3,6 +3,7 @@
 // 用法：pnpm test:live（首次自动下载官方 server.jar，需要 Java 17+）
 import { createRequire } from 'node:module';
 import { rmSync } from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { ensureServerFiles, resetWorld, startServer, RUN_DIR, MC_PORT, MC_VERSION } from './vanilla.mjs';
 
@@ -150,16 +151,33 @@ function emitAck(client, ev, payload, timeout = 8000) {
     check('广告模块上报活动（轮播+倒计时）', !!ast?.ok && String(ast?.data?.activity || '').includes('轮播'), `(${ast?.data?.activity})`);
     await emitAck(client, 'module:toggle', { id, module: 'auto_chat', active: false });
 
-    const pw = await emitAck(client, 'module:toggle', {
-        id, module: 'player_watch', active: true, config: { names: ['TestSteve'] },
+    // 盯人命中 → Webhook 推手机：起本地接收器当 generic 终点，全链路真实验证
+    const hooks = [];
+    const hookSrv = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', (d) => { body += d; });
+        req.on('end', () => { try { hooks.push(JSON.parse(body)); } catch { hooks.push({ raw: body }); } res.end('ok'); });
     });
-    check('开启盯人监听', !!pw?.ok, pw?.error);
+    await new Promise((r) => hookSrv.listen(18790, '127.0.0.1', r));
+    const notifyCfg = await fetch(`${URL}/api/notify/config`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true, url: 'http://127.0.0.1:18790/hook', preset: 'generic', events: { watch: true } }),
+    }).then((r) => r.json());
+    check('通知配置保存（开启盯人命中事件）', notifyCfg?.enabled === true && notifyCfg?.events?.watch === true);
+
+    const pw = await emitAck(client, 'module:toggle', {
+        id, module: 'player_watch', active: true, config: { names: ['TestSteve'], notify: true },
+    });
+    check('开启盯人监听（含推送）', !!pw?.ok, pw?.error);
     await emitAck(client, 'bot:chat', { id, message: '盯人监听测试消息' });
-    await delay(1500);
+    await delay(2000);
     const wlog = await emitAck(client, 'module:action', { id, module: 'player_watch', action: 'log' });
     const hits = wlog?.data?.hits || [];
     check('盯人命中记录（含名字的消息入册）', !!wlog?.ok && hits.some((h) => String(h.text).includes('盯人监听测试')), `(命中 ${hits.length} 条)`);
+    check('命中推送到 Webhook（kind=watch 真实到达）', hooks.some((h) => h?.kind === 'watch' && String(h?.message || '').includes('盯人监听测试')), `(收到 ${hooks.length} 条)`);
     await emitAck(client, 'module:toggle', { id, module: 'player_watch', active: false });
+    hookSrv.close();
 
     // ===== 场景 6：断线自动重连 + 模块状态恢复（挂机产品的命根子路径） =====
     await delay(500);

@@ -79,7 +79,7 @@ export interface NotifyConfig {
   enabled: boolean;
   url: string;
   preset: "generic" | "dingtalk" | "feishu" | "wecom" | "discord" | "serverchan" | "bark";
-  events: { death: boolean; kick: boolean; offline: boolean; online: boolean };
+  events: { death: boolean; kick: boolean; offline: boolean; online: boolean; watch: boolean };
   cooldownSec: number;
 }
 

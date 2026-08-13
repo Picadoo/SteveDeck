@@ -12,6 +12,7 @@ module.exports = (botInstance) => {
     const task = (botInstance.playerWatchTask = {
         active: false,
         names: [],
+        notify: false, // 命中推送到手机（Webhook；需在设置里开启「盯人命中」事件）
         hits: [],      // { time, name, text } 环形缓冲
         count: 0,
         lastHit: null, // { name, text, at }
@@ -28,6 +29,8 @@ module.exports = (botInstance) => {
             task.lastHit = { name: hit, text: raw, at: Date.now() };
             task.hits.push({ time: new Date().toLocaleTimeString(), name: hit, text: raw.slice(0, 200) });
             if (task.hits.length > MAX_HITS) task.hits.shift();
+            // 推手机：走统一 Webhook 通道（受全局开关 + watch 事件开关 + 同 bot 60s 冷却三重约束）
+            if (task.notify) botInstance.notifyEvent('watch', `${hit}：${raw.slice(0, 120)}`);
         } catch (_e) { /* 单条解析失败不影响监听 */ }
     };
     bot.on('message', onMessage);
@@ -52,9 +55,10 @@ module.exports = (botInstance) => {
     botInstance.togglePlayerWatch = (active, config) => {
         const c = config || {};
         if (Array.isArray(c.names)) task.names = c.names.map((s) => String(s).trim()).filter(Boolean);
+        if (c.notify !== undefined) task.notify = !!c.notify;
         task.active = !!active;
         emitLog(task.active
-            ? `盯人监听已开启（${task.names.join('、') || '未配置目标'}）`
+            ? `盯人监听已开启（${task.names.join('、') || '未配置目标'}${task.notify ? '，命中推送手机' : ''}）`
             : '盯人监听已关闭');
     };
 

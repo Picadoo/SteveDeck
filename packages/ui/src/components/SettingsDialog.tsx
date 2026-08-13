@@ -301,6 +301,7 @@ const NOTIFY_EVENTS: { key: keyof NotifyConfig["events"]; label: string }[] = [
   { key: "kick", label: "被踢出" },
   { key: "offline", label: "掉线（停止重连）" },
   { key: "online", label: "上线" },
+  { key: "watch", label: "盯人命中" },
 ];
 
 function NotifySection() {

@@ -260,6 +260,13 @@ export const MODULES: ModuleDef[] = [
         placeholder: "Steve, Alex",
         hint: "消息里含名字即记录，保留最近 200 条",
       },
+      {
+        key: "notify",
+        label: "命中推送到手机",
+        type: "switch",
+        default: false,
+        hint: "需在 设置→挂机通知 配好 Webhook 并勾选「盯人命中」；同一机器人 60s 内最多推一条",
+      },
     ],
   },
 ];

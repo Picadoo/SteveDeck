@@ -105,7 +105,7 @@ export function registerModuleHandlers(_io: IOServer, socket: Socket): void {
             inst.togglePlayerWatch?.(active, config || {});
             persistSettings(id, (s) => ((s as any).playerWatch = {
               active,
-              config: { names: inst.playerWatchTask?.names || [] },
+              config: { names: inst.playerWatchTask?.names || [], notify: !!inst.playerWatchTask?.notify },
             }));
             break;
           default:
