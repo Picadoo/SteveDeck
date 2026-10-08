@@ -1,18 +1,26 @@
 import { useState, useEffect } from "react";
-import { Settings2, FileCode2, Pickaxe, MapPin } from "lucide-react";
+import { Settings2, FileCode2, Pickaxe, MapPin, ScrollText } from "lucide-react";
 import { Card, Switch, Button, Input } from "@/components/ui/primitives";
+import Modal from "@/components/ui/Modal";
 import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
-import { usePageVisible } from "@/lib/usePageVisible";
+import { usePoll } from "@/lib/usePoll";
 import { MODULES, defaultConfig, type ModuleDef } from "./moduleDefs";
+import { serverModuleDefs } from '@/adapters';
 import ModuleConfigDialog from "./ModuleConfigDialog";
 import AutoUsePanel from "./AutoUsePanel";
 import type { BotSummary } from "@mcbot/protocol";
+import { memoBotTab, eqJson } from "@/lib/memoBotTab";
 
-const STATS_MODULES = new Set(["auto_farm", "automine", "mob_hunter"]);
+// 有运行统计的模块（3.5s 轮询 `模块:stats`）：开着却看不到效果是明确的用户痛点，
+// 现在所有常驻模块都上报「当前活动」（activity 字段单独渲染为状态行）+ 关键计数。
+const STATS_MODULES = new Set([
+  "auto_farm", "automine", "mob_hunter", "combat", "fishing", "follow", "trash_cleaner",
+  "auto_chat", "player_watch",
+]);
 const AREA_MODULES = new Set(["automine", "mob_hunter"]);
 
-// 统计字段的中文标签（只展示标量字段）
+// 统计字段的中文标签（只展示标量字段；activity 不在其中——单独渲染为状态行）
 const STAT_LABELS: Record<string, string> = {
   cropTypes: "作物",
   totalHarvested: "收割",
@@ -33,10 +41,35 @@ const STAT_LABELS: Record<string, string> = {
   currentTarget: "当前目标",
   isPaused: "已暂停",
   runTime: "运行(分)",
+  attacks: "攻击次数",
+  lastTarget: "最近目标",
+  casts: "抛竿",
+  catches: "上钩",
+  reels: "收杆",
+  offTarget: "偏离火花",
+  approaches: "靠近次数",
+  avoidedMoves: "省去走位",
+  serverEscapes: "鱼逃脱（服务器机制）",
+  waterEntries: "进水次数",
+  waterEscapes: "脱水次数",
+  longRangeHints: "距离限制提示",
+  pauseCount: "暂停次数",
+  lootEvents: "掉落事件",
+  lootItems: "掉落物品数",
+  lootSummary: "掉落汇总",
+  lastLoot: "最近掉落",
+  lastReelReason: "最近收杆",
+  lastPauseReason: "最近暂停提示",
+  target: "跟随目标",
+  cleaned: "已清理(叠)",
+  sent: "已发送",
+  lastMsg: "最近消息",
+  watchHits: "命中条数",
 };
 const STAT_ORDER = Object.keys(STAT_LABELS);
 
-export default function ModulesTab({ bot }: { bot: BotSummary }) {
+function ModulesTab({ bot }: { bot: BotSummary }) {
+  const defs = serverModuleDefs(bot, MODULES);
   const moduleConfigs = useStore((s) => s.moduleConfigs);
   const setModuleConfig = useStore((s) => s.setModuleConfig);
   const pushToast = useStore((s) => s.pushToast);
@@ -76,6 +109,7 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
     const s = engineSettings;
     if (!s) return undefined;
     if (def.key === "combat") return s.combatConfig;
+    if (def.key === "fishing") return { mode: s.fishingMode || "vanilla" };
     if (def.key === "auto_farm") return typeof s.autoFarm === "object" ? s.autoFarm : undefined;
     if (def.key === "mob_hunter") return s.mobHunter?.config;
     if (def.key === "automine") return s.autoMine?.config;
@@ -89,34 +123,36 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
     ...(moduleConfigs[`${bot.id}:${def.key}`] || {}),
   });
 
-  // 实时统计轮询（仅在线 + 有激活的统计型模块时 + 页面可见时）
-  const visible = usePageVisible();
+  // 无激活的统计型模块时清空（usePoll 在此场景 enabled=false 不跑）
+  const hasActiveStatsModule = defs.some((d) => STATS_MODULES.has(d.key) && isActive(d));
   useEffect(() => {
-    const active = MODULES.filter((d) => STATS_MODULES.has(d.key) && isActive(d));
-    if (!bot.online || active.length === 0) {
-      setStats({});
-      return;
-    }
-    if (!visible) return; // 页面后台：暂停拉取（恢复可见时立即拉一次）
-    let cancelled = false;
-    const poll = async () => {
-      // 攒一次 setStats：循环里逐个 set 各隔一个 await，React 18 不会合并成一次渲染
+    if (!bot.online || !hasActiveStatsModule) setStats({});
+  }, [bot.online, hasActiveStatsModule]);
+
+  // 实时统计轮询（仅在线 + 有激活的统计型模块 + 页面可见；见 usePoll）
+  usePoll(
+    async (alive) => {
+      const active = defs.filter((d) => STATS_MODULES.has(d.key) && isActive(d));
+      // 并行拉各模块统计，攒一次 setStats（逐个 set 会隔着 await 各触发一次渲染，React 18 合并不了）
+      const results = await Promise.all(active.map((d) => cmd.moduleAction(bot.id, d.key, "stats")));
+      if (!alive()) return;
       const merged: Record<string, any> = {};
-      for (const d of active) {
-        const r = await cmd.moduleAction(bot.id, d.key, "stats");
-        if (cancelled) return;
+      active.forEach((d, i) => {
+        const r = results[i];
         if (r.ok && r.data) merged[d.key] = r.data;
-      }
+      });
       if (Object.keys(merged).length) setStats((s) => ({ ...s, ...merged }));
-    };
-    poll();
-    const t = setInterval(poll, 3500);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bot.id, bot.online, bot.modules.autofarm, bot.modules.automine, bot.modules.mobhunter, visible]);
+    },
+    3500,
+    {
+      enabled: bot.online && hasActiveStatsModule,
+      deps: [
+        bot.id, bot.modules.autofarm, bot.modules.automine, bot.modules.mobhunter,
+        bot.modules.combat, bot.modules.fishing, bot.modules.follow, bot.modules.trashcleaner,
+        bot.modules.autochat, bot.modules.playerwatch,
+      ],
+    },
+  );
 
   function onToggle(def: ModuleDef, active: boolean) {
     setOpt(def.key, active); // 立即反映，开关即时动画
@@ -134,7 +170,7 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
     setOptim((o) => {
       let changed = false;
       const n = { ...o };
-      for (const def of MODULES) {
+      for (const def of defs) {
         if (def.key in n && !!bot.modules[def.activeFlag] === n[def.key]) {
           delete n[def.key];
           changed = true;
@@ -164,7 +200,7 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      {MODULES.map((def) => {
+      {defs.map((def) => {
         const Icon = def.icon;
         const active = isActive(def);
         const st = active ? stats[def.key] : null;
@@ -183,16 +219,27 @@ export default function ModulesTab({ bot }: { bot: BotSummary }) {
               <Switch checked={checkedOf(def)} onChange={(v) => onToggle(def, v)} disabled={!bot.online} />
             </div>
 
+            {typeof st?.activity === "string" && st.activity && (
+              <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-accent/8 px-2.5 py-1.5 text-[11px] text-accent">
+                <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
+                <span className="truncate" title={st.activity}>{st.activity}</span>
+              </div>
+            )}
             {st && <StatsGrid data={st} />}
 
             {AREA_MODULES.has(def.key) && bot.online && (
               <AreaActions bot={bot} moduleKey={def.key} stats={active ? st : undefined} />
             )}
 
-            {def.fields.length > 0 && (
-              <Button size="sm" variant="ghost" className="mt-3 w-full" onClick={() => setEditing(def)}>
-                <Settings2 className="h-3.5 w-3.5" /> 配置
-              </Button>
+            {(def.fields.length > 0 || (def.key === "player_watch" && active)) && (
+              <div className="mt-3 flex gap-2">
+                {def.key === "player_watch" && bot.online && active && <WatchLogSection bot={bot} />}
+                {def.fields.length > 0 && (
+                  <Button size="sm" variant="ghost" className="flex-1" onClick={() => setEditing(def)}>
+                    <Settings2 className="h-3.5 w-3.5" /> 配置
+                  </Button>
+                )}
+              </div>
             )}
           </Card>
         );
@@ -304,6 +351,58 @@ function AreaActions({ bot, moduleKey, stats }: { bot: BotSummary; moduleKey: st
   );
 }
 
+/** 盯人监听的命中记录：按需拉取（打开弹窗才请求），新的在前 */
+function WatchLogSection({ bot }: { bot: BotSummary }) {
+  const [open, setOpen] = useState(false);
+  const [log, setLog] = useState<{ names: string[]; total: number; hits: { time: string; name: string; text: string }[] } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    const pull = () =>
+      cmd.moduleAction(bot.id, "player_watch", "log").then((r) => {
+        if (alive && r.ok && r.data) setLog(r.data as NonNullable<typeof log>);
+      });
+    pull();
+    const t = setInterval(pull, 3000); // 弹窗开着时轻量刷新
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [open, bot.id]);
+
+  return (
+    <>
+      <Button size="sm" variant="ghost" className="flex-1" onClick={() => setOpen(true)}>
+        <ScrollText className="h-3.5 w-3.5" /> 记录
+      </Button>
+      <Modal open={open} onClose={() => setOpen(false)} title="盯人监听记录" size="lg">
+        {!log ? (
+          <p className="py-6 text-center text-sm text-muted">加载中…</p>
+        ) : log.hits.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted">
+            还没有命中记录（监听：{log.names.join("、") || "未配置"}）
+          </p>
+        ) : (
+          <div className="max-h-[55vh] space-y-1 overflow-y-auto font-mono text-xs">
+            <p className="mb-2 font-sans text-[11px] text-muted">
+              监听 {log.names.join("、")} · 累计 {log.total} 条（保留最近 200 条，新的在前）
+            </p>
+            {log.hits.map((h, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 快照列表整体重建，无行内状态
+              <div key={i} className="rounded bg-surface-2/50 px-2 py-1">
+                <span className="mr-2 select-none text-muted">{h.time}</span>
+                <span className="mr-2 rounded bg-accent/15 px-1 text-accent">{h.name}</span>
+                <span className="break-all">{h.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+    </>
+  );
+}
+
 /** 行为设置：允许破坏方块寻路 / 复活后自动指令（从交互页移来；属持久行为配置，归「托管」） */
 function BehaviorCard({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
@@ -368,7 +467,7 @@ function BehaviorCard({ bot }: { bot: BotSummary }) {
         <div className="min-w-0">
           <div className="text-sm font-medium">允许破坏方块寻路</div>
           <p className="text-[11px] leading-relaxed text-muted">
-            默认关闭（无破坏模式）。多数服务器地图受保护，开启后寻路会尝试挖/搭方块，反而更容易卡路径。
+            多数服地图受保护，开启反而容易卡路径；自建/创造服再开。
           </p>
         </div>
         <Switch checked={!!behavior?.allowDig} onChange={toggleDig} disabled={disabled} />
@@ -376,8 +475,8 @@ function BehaviorCard({ bot }: { bot: BotSummary }) {
       <div className="mt-2 border-t border-border/40 pt-2.5">
         <div className="text-sm font-medium">复活后自动指令</div>
         <p className="mb-1.5 text-[11px] leading-relaxed text-muted">
-          死亡后自动复活（内置）。若服务器死亡会回主城，可填 <code className="rounded bg-surface-2 px-1">/back</code>、
-          <code className="rounded bg-surface-2 px-1">/spawn</code> 等返回原处；留空则不执行。
+          会被传回主城的服可填 <code className="rounded bg-surface-2 px-1">/back</code> 或
+          <code className="rounded bg-surface-2 px-1">/spawn</code>；留空不执行（复活本身是自动的）。
         </p>
         <div className="flex gap-1.5">
           <Input
@@ -395,8 +494,8 @@ function BehaviorCard({ bot }: { bot: BotSummary }) {
         <div className="min-w-0">
           <div className="text-sm font-medium">死亡后返回原位</div>
           <p className="text-[11px] leading-relaxed text-muted">
-            重生后（先跑上面的复活指令）自动寻路走回死亡点。原版类服可用；模组服寻路可能失效，建议改用复活指令/脚本。
-            复杂返回（如先选副本）可在脚本里用 <code className="rounded bg-surface-2 px-1">{"{deathX} {deathY} {deathZ}"}</code> 配合 respawn 触发器。
+            重生后自动寻路回死亡点（原版类服可用）。复杂返回改用脚本：respawn 触发器 +
+            <code className="rounded bg-surface-2 px-1">{"{deathX} {deathY} {deathZ}"}</code>。
           </p>
         </div>
         <Switch checked={!!behavior?.returnOnDeath} onChange={toggleReturn} disabled={disabled} />
@@ -423,3 +522,6 @@ function StatsGrid({ data }: { data: Record<string, any> }) {
     </div>
   );
 }
+
+// 字段白名单 memo：modules 是对象（每次推送新引用），按值比较——开关状态没变就不重渲
+export default memoBotTab(ModulesTab, ["id", "online", ["modules", eqJson]]);

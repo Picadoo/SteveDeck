@@ -1,7 +1,8 @@
-import { Server as IOServer, Socket } from "socket.io";
-import { ClientCommands, CommandAck, BotSettings } from "@mcbot/protocol";
+import type { Server as IOServer, Socket } from "socket.io";
+import { ClientCommands, type CommandAck, type BotSettings } from "@mcbot/protocol";
 import { botManager } from "../botManager";
-import { Ack, ok, fail } from "./ack";
+import { type Ack, ok, fail } from "./ack";
+import type { BotInstance } from "../types/botInstance";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { isChatBlocked } = require("../utils/chatSafety"); // 命令安全过滤(API-1)：存储前即时拦截
 
@@ -35,7 +36,7 @@ function sanitizeCombatConfig(prev: any, config: any): any {
 }
 
 /** 注册全部功能模块的命令（开关 / 配置 / 动作）。 */
-export function registerModuleHandlers(io: IOServer, socket: Socket): void {
+export function registerModuleHandlers(_io: IOServer, socket: Socket): void {
   socket.on(
     ClientCommands.MODULE_TOGGLE,
     (
@@ -51,9 +52,12 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
             persistSettings(id, (s) => (s.combat = active));
             break;
           case "fishing":
-            if (typeof inst.setFishing === "function") inst.setFishing(active);
+            if (typeof inst.setFishing === "function") inst.setFishing(active, config || {});
             else inst.fishingActive = active;
-            persistSettings(id, (s) => (s.fishing = active));
+            persistSettings(id, (s) => {
+              s.fishing = inst.fishingActive;
+              s.fishingMode = inst.config.settings?.fishingMode || "vanilla";
+            });
             break;
           case "automine":
             inst.toggleAutoMine?.(active, config || {});
@@ -75,7 +79,7 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
             persistSettings(id, (s) => ((s as any).follow = { active, config: config || {} }));
             break;
           case "trash_cleaner": {
-            const items = (config && config.items) || config || [];
+            const items = (config?.items) || config || [];
             inst.toggleTrashCleaner?.(active, items);
             // 存 {active, items}：之前只存了布尔值，重连后丢失黑名单
             persistSettings(id, (s) => ((s as any).trash_cleaner = { active, items }));
@@ -85,8 +89,27 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
             inst.toggleAutoUse?.(active, config || {});
             persistSettings(
               id,
-              (s) => ((s as any).autoUse = { active, rules: inst.autoUseTask?.rules || (config && config.rules) || [] }),
+              (s) => ((s as any).autoUse = { active, rules: inst.autoUseTask?.rules || (config?.rules) || [] }),
             );
+            break;
+          case "auto_chat":
+            inst.toggleAutoChat?.(active, config || {});
+            // 存引擎收敛后的任务态（间隔下限夹取后的值），重连恢复用同一份
+            persistSettings(id, (s) => ((s as any).autoChat = {
+              active,
+              config: {
+                messages: inst.autoChatTask?.messages || [],
+                intervalSec: inst.autoChatTask?.intervalSec || 60,
+                random: !!inst.autoChatTask?.random,
+              },
+            }));
+            break;
+          case "player_watch":
+            inst.togglePlayerWatch?.(active, config || {});
+            persistSettings(id, (s) => ((s as any).playerWatch = {
+              active,
+              config: { names: inst.playerWatchTask?.names || [], notify: !!inst.playerWatchTask?.notify },
+            }));
             break;
           default:
             return ack?.(fail(`未知模块 ${module}`));
@@ -138,7 +161,7 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
       const inst = botManager.getInstance(id);
       if (!inst) return ack?.(fail("机器人不存在"));
       try {
-        ack?.(await dispatchAction(io, inst, id, module, action, args));
+        ack?.(await dispatchAction(inst, id, module, action, args));
       } catch (e: any) {
         ack?.(fail(String(e?.message ?? e)));
       }
@@ -147,8 +170,7 @@ export function registerModuleHandlers(io: IOServer, socket: Socket): void {
 }
 
 function dispatchAction(
-  io: IOServer,
-  inst: any,
+  inst: BotInstance,
   id: string,
   module: string,
   action: string,
@@ -177,7 +199,8 @@ function dispatchAction(
       // 录制：按点中槽位的物品名录成 find_and_click_slot（趁界面还开着、槽位有物品）
       inst.recorder?.note?.("window_click", { slot: Number(args.slot), button: Number(args.button ?? 0) });
       return inst
-        .clickWindowSlot(Number(args.slot), Number(args.button ?? 0), Number(args.mode ?? 0))
+        .clickWindowSlot(Number(args.slot), Number(args.button ?? 0), Number(args.mode ?? 0),
+          args.windowId === undefined ? undefined : Number(args.windowId))
         .then((w: any) => ok(w))
         .catch((e: any) => fail(String(e?.message ?? e)));
     case "window:close":
@@ -262,7 +285,7 @@ function dispatchAction(
       // 模块未挂载（旧版 lite 假人/模块挂载失败）时给友好提示，而不是 TypeError 炸 handler
       if (typeof inst.startViewer !== "function")
         return fail("该机器人未加载视角模块（重启机器人后重试）");
-      return ok(inst.startViewer(!!args.firstPerson));
+      return ok(inst.startViewer(!!args.firstPerson, args.viewDistance));
     case "viewer:stop":
       return ok({ stopped: inst.stopViewer?.() ?? false });
     case "auto_farm:scan":
@@ -272,6 +295,62 @@ function dispatchAction(
       return ok(inst.getFarmStats?.() ?? null);
     case "automine:stats":
       return ok(inst.getMineStats?.() ?? null);
+    // 轻量模块的运行统计（模块页 3.5s 轮询展示「在干什么」）
+    case "combat:stats":
+      return ok(inst.getCombatStats?.() ?? null);
+    case "fishing:pondScan":
+      return ok(inst.scanFishingPond?.());
+    case "fishing:pondLock":
+      return typeof inst.lockFishingPond === 'function' ? ok(inst.lockFishingPond()) : fail('当前适配未提供鱼池活动区锁定');
+    case "connection:route":
+      return ok((inst as any)._connectionProxy ? ((inst as any)._proxyStatus || { type: 'socks5', connected: false }) : { type: 'direct' });
+    // 龙核心底层接口：配置是静态数据，服务器业务映射在 profile 中隔离。
+    case "dragoncore:inspect":
+      return ok(require('../modules/dragoncore/runtime').getDragonCore(inst).inspect());
+    case "dragoncore:config":
+      return ok(require('../modules/dragoncore/runtime').getDragonCore(inst).config(args.name));
+    case "dragoncore:configure": {
+      const profile = require('../modules/dragoncore/profiles').configureProfile(inst.config, args);
+      persistSettings(id, s => { (s as any).dragonCore = profile; });
+      return ok(require('../modules/dragoncore/runtime').getDragonCore(inst).inspect());
+    }
+    case "dragoncore:key":
+      return ok(require('../modules/mod_menu_key').pressDragonKey(inst, args.key));
+    case "dragoncore:waitGui":
+      return require('../modules/dragoncore/runtime').getDragonCore(inst).waitForGui({
+        name: args.name, afterRevision: args.afterRevision, timeoutMs: args.timeoutMs,
+      }).then(ok);
+    case "dragoncore:open":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, 'dragoncore', args.key).then(ok);
+    case "dragoncore:click":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, 'dragoncore', 'T', {
+        token: args.token, buttonId: args.buttonId, slotKey: args.slotKey, mouse: args.mouse,
+      }).then(ok);
+    case "dragoncore:refresh":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, 'dragoncore', 'T', { token: args.token, refresh: true }).then(ok);
+    case "modkey:press":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, args.provider || 'vexview', args.key || 'G').then(ok);
+    case "modkey:click":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, 'dragoncore', 'T', { token: args.token, buttonId: args.buttonId, slotKey: args.slotKey, mouse: args.mouse }).then(ok);
+    case "modkey:refresh":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, 'dragoncore', 'T', { token: args.token, refresh: true }).then(ok);
+    case "fishing:stats":
+      return ok(inst.getFishingStats?.() ?? null);
+    case "particle:stats":
+      return ok(inst.getParticleObservation?.() ?? null);
+    case "follow:stats":
+      return ok(inst.getFollowStats?.() ?? null);
+    case "trash_cleaner:stats":
+      return ok(inst.getTrashStats?.() ?? null);
+    case "auto_use:stats":
+      return ok(inst.getAutoUseStats?.() ?? null);
+    case "auto_chat:stats":
+      return ok(inst.getAutoChatStats?.() ?? null);
+    case "player_watch:stats":
+      return ok(inst.getPlayerWatchStats?.() ?? null);
+    // 盯人命中记录（模块页「查看记录」按需拉取，不进状态推送）
+    case "player_watch:log":
+      return ok(inst.getPlayerWatchLog?.() ?? { names: [], total: 0, hits: [] });
     case "automine:sel1": {
       const res = inst.setMineAreaSel1?.();
       return res?.success ? ok(res) : fail(res?.error || "设置失败");
@@ -433,8 +512,20 @@ function dispatchAction(
       const act = String(args.action || "");
       try {
         if (act === "attack") {
-          b.swingArm?.("right"); // 左键挥手（攻击动画/命中判定由服务器处理）
+          const target = b.entityAtCursor?.(3);
+          if (target) b.attack(target); // swingArm 只有动画，攻击还需要 use_entity 包
+          else b.swingArm?.("right");
         } else if (act === "use") {
+          const target = b.entityAtCursor?.(3);
+          if (target) {
+            return Promise.resolve(b.activateEntity(target))
+              .then(() => ok()).catch((e: any) => fail(String(e?.message ?? e)));
+          }
+          const block = b.blockAtCursor?.(4.5);
+          if (block) {
+            return Promise.resolve(b.activateBlock(block))
+              .then(() => ok()).catch((e: any) => fail(String(e?.message ?? e)));
+          }
           b.activateItem?.(); // 右键使用手持物
           setTimeout(() => { try { b.deactivateItem?.(); } catch { /* ignore */ } }, 120);
         } else if (act === "swap") {
@@ -448,8 +539,8 @@ function dispatchAction(
         } else {
           return fail("未知动作");
         }
-      } catch {
-        /* ignore */
+      } catch (e: any) {
+        return fail(String(e?.message ?? e));
       }
       return ok();
     }
@@ -488,6 +579,8 @@ function dispatchAction(
     // ===== 通用消息监听统计 =====
     case "monitor:get":
       return ok(inst.getMonitor?.() ?? { rules: [], stats: {} });
+    case "monitor:refreshValuation":
+      return typeof (inst as any).refreshFishValuation === "function" ? ok((inst as any).refreshFishValuation()) : fail("估值模块尚未就绪");
     case "monitor:setRules":
       return ok(inst.setMonitorRules?.(args.rules || []) ?? { rules: [], stats: {} });
     case "monitor:reset":
@@ -596,18 +689,18 @@ function dispatchAction(
   }
 }
 
-function ensureSchedules(inst: any): void {
+function ensureSchedules(inst: BotInstance): void {
   inst.config.settings = inst.config.settings || {};
   if (!Array.isArray(inst.config.settings.schedules)) inst.config.settings.schedules = [];
 }
 
-function persistLocations(id: string, inst: any): void {
+function persistLocations(id: string, inst: BotInstance): void {
   persistSettings(id, (s) => {
     s.savedLocations = inst.savedLocations;
   });
 }
 
-function persistHunterArea(id: string, inst: any): void {
+function persistHunterArea(id: string, inst: BotInstance): void {
   persistSettings(id, (s) => {
     const cur = (s.mobHunter && (s.mobHunter as any).config) || {};
     s.mobHunter = {

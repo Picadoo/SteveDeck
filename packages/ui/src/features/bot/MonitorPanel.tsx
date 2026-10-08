@@ -9,6 +9,7 @@ import { fmtBig } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { MONITOR_PRESETS, instantiatePreset, blankRule } from "./monitorPresets";
 import type { MonitorRule, MonitorStat, MonitorKeyStat } from "@mcbot/protocol";
+import { hasServerFishingYield, ServerFishingYield, ServerFishingStock } from '@/adapters';
 
 const AGG: { key: MonitorRule["agg"]; label: string; hint: string }[] = [
   { key: "sum", label: "累加", hint: "总收入/总量" },
@@ -74,23 +75,45 @@ function keyRows(rule: MonitorRule, st?: MonitorStat): [string, MonitorKeyStat][
   return Object.entries(st.byKey).sort((a, b) => num(b[1]) - num(a[1]));
 }
 
-export default function MonitorPanel({ botId }: { botId: string }) {
+export default function MonitorPanel({ botId, fishing = false }: { botId: string; fishing?: boolean }) {
+  const bot = useStore((s) => s.bots.find((b) => b.id === botId));
   const stats = useStore((s) => s.monitorStats[botId]) ?? {};
+  const setMonitorStats = useStore((s) => s.setMonitorStats);
   const pushToast = useStore((s) => s.pushToast);
   const [rules, setRules] = useState<MonitorRule[]>([]);
+  // 规则未加载成功前禁止任何保存：save() 是整表替换，「加载失败/超时 + 空表基础上编辑」
+  // 会把引擎侧已有规则整体覆盖丢失（切 bot 后旧列表残留同理）
+  const [rulesLoaded, setRulesLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const [manage, setManage] = useState(false);
   const [editing, setEditing] = useState<MonitorRule | null>(null);
   const [showPresets, setShowPresets] = useState(false);
+  const [showAllItems, setShowAllItems] = useState(false);
+  const [incomeView, setIncomeView] = useState<"fishing" | "purchase" | "opening" | "other" | "history">("fishing");
+  const [valuationBusy, setValuationBusy] = useState(false);
 
   useEffect(() => {
+    setRules([]);
+    setRulesLoaded(false);
+    setShowAllItems(false);
+    setIncomeView("fishing");
+    let stale = false;
     (async () => {
       const r = await cmd.monitor.get(botId);
-      if (r.ok && r.data) setRules(r.data.rules || []);
+      if (stale) return; // bot 已切换：丢弃过期响应，避免 A 的规则挂在 B 名下
+      if (r.ok && r.data) {
+        setRules(r.data.rules || []);
+        setMonitorStats(botId, r.data.stats || {});
+        setRulesLoaded(true);
+      } else {
+        pushToast(`监听规则加载失败：${r.error || "请求超时"}（编辑已禁用，切回该页重试）`, "error");
+      }
     })();
-  }, [botId]);
+    return () => { stale = true; };
+  }, [botId, pushToast, setMonitorStats]);
 
   async function save(next: MonitorRule[]) {
+    if (!rulesLoaded) { pushToast("规则尚未加载成功，禁止保存（防止覆盖引擎侧已有规则）", "error"); return; }
     setRules(next);
     const r = await cmd.monitor.setRules(botId, next);
     if (!r.ok) pushToast(r.error || "保存失败", "error");
@@ -118,15 +141,42 @@ export default function MonitorPanel({ botId }: { botId: string }) {
   const resetDialog = useConfirmClick(resetStats);
 
   const enabled = rules.filter((r) => r.enabled);
+  const lootRule = fishing ? enabled.find((r) => stats[r.id]?.fishingIncome || stats[r.id]?.fishingValuation) : undefined;
+  const loot = lootRule ? stats[lootRule.id] : undefined;
+  const income = loot?.fishingIncome;
+  const valuation = loot?.fishingValuation;
+  const customYield = !!loot?.fishingYield && hasServerFishingYield(bot);
+  const refreshValuation = async () => {
+    setValuationBusy(true);
+    try {
+      const r = await cmd.moduleAction<{ requested: boolean }>(botId, "monitor", "refreshValuation");
+      pushToast(r.ok ? (r.data?.requested ? "正在读取鱼库，完成后自动更新估值" : "后台任务运行中，请稍后刷新") : r.error || "请求失败", r.ok ? "info" : "error");
+    } finally { setValuationBusy(false); }
+  };
+  const incomeBucket = incomeView === "history" ? income?.history : income?.totals[incomeView];
+  const lootRows: [string, MonitorKeyStat][] = incomeBucket
+    ? Object.entries(incomeBucket.byName).sort((a, b) => b[1] - a[1]).map(([name, total]) => [name, { total, count: total, last: total, max: total }])
+    : lootRule ? keyRows(lootRule, loot) : [];
+  const fishKinds = income ? Object.keys(income.totals.fishing.byName).length : lootRows.length;
+  const hintCount = stats["fishing-80-grid-hint"]?.count ?? 0;
 
   return (
     <div className="mb-2 shrink-0 rounded-lg border border-border bg-surface-2/30">
       {/* 折叠头：紧凑统计条 + 配置入口 */}
       <div className="flex items-center gap-2 px-2.5 py-1.5">
-        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
+        <button type="button" onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
           <Radio className="h-3.5 w-3.5 shrink-0 text-accent" />
-          <span className="shrink-0 font-medium">监听统计</span>
-          {!open && (
+          <span className="shrink-0 font-medium">{fishing ? "钓鱼收获" : "监听统计"}</span>
+          {lootRule ? (
+            <span className="flex min-w-0 flex-wrap gap-x-2 text-muted">
+              <span><b className="text-fg">{fmtBig(income?.totals.fishing.total ?? loot?.total ?? 0)}</b> 件</span>
+              <span>{fishKinds}{!income && fishKinds >= 30 ? "+" : ""} 种</span>
+              <span>{(income?.recentPerMin ?? loot?.perMin ?? 0).toFixed(1)}/分{income && " · 近10分钟"}</span>
+              {customYield && <ServerFishingYield bot={bot} report={loot?.fishingYield} compact />}
+              {valuation && <span className="text-accent" title={`${valuation.totalValue.toLocaleString('zh-CN')} 游戏币`}>库存估值 {fmtBig(valuation.totalValue)}</span>}
+              {hintCount > 0 && <span className="text-warning">距离限制提示 {hintCount} 次</span>}
+            </span>
+          ) : !open && (
             <span className="flex min-w-0 items-center gap-2 overflow-hidden text-muted">
               {enabled.length === 0 ? (
                 <span className="text-muted/70">未配置</span>
@@ -142,7 +192,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
           <ChevronDown className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-180")} />
         </button>
         {enabled.length > 0 && (
-          <button
+          <button type="button"
             onClick={resetHeader.onClick}
             className={cn(
               "shrink-0 rounded p-1 transition-colors",
@@ -153,7 +203,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
             {resetHeader.arming ? <span className="px-0.5 text-[10px] font-medium">确认?</span> : <RotateCcw className="h-3.5 w-3.5" />}
           </button>
         )}
-        <button
+        <button type="button"
           onClick={() => setManage(true)}
           className="shrink-0 rounded p-1 text-muted hover:bg-surface hover:text-fg"
           title="配置监听规则"
@@ -165,8 +215,54 @@ export default function MonitorPanel({ botId }: { botId: string }) {
       {/* 展开：完整统计卡（含分类键细分） */}
       {open && (
         <div className="space-y-1.5 border-t border-border px-2.5 py-2">
-          {rules.length === 0 ? (
-            <button onClick={() => setManage(true)} className="w-full py-3 text-center text-xs text-muted hover:text-fg">
+          {lootRule ? (
+            <div>
+              {income && <div className="mb-2 rounded-md bg-surface-2/50 px-2 py-1.5 text-xs">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span>鱼获仓库 <b className="text-accent">{valuation ? fmtBig(valuation.warehouseValue) : '待读取'}</b></span>
+                  <span>鱼篓 <b className="text-accent">{valuation ? fmtBig(valuation.basketValue) : '待读取'}</b></span>
+                  <span>合计 <b>{valuation ? fmtBig(valuation.totalValue) : '—'}</b> 游戏币</span>
+                  <button type="button" disabled={valuationBusy} onClick={refreshValuation} className="ml-auto text-[11px] text-accent disabled:opacity-50">{valuationBusy ? '请求中…' : '刷新估值'}</button>
+                </div>
+                <div className="mt-1 text-[10px] text-muted">{valuation?.policyLabel || '估值规则由服务器适配提供'}{valuation
+                  ? ` · ${new Date(valuation.checkedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}${valuation.canEstimate ? ' 快照＋新增鱼获估算' : ' 库存快照'}${valuation.unpricedNames.length ? ` · 未定价 ${valuation.unpricedNames.length} 种` : ''}${valuation.error ? ` · ${valuation.error}` : ''}`
+                  : ' · 等待程序读取真实库存'}</div>
+                <ServerFishingStock bot={bot} report={valuation} />
+                {valuation && <details className="mt-1">
+                  <summary className="cursor-pointer text-[11px] text-accent">查看库存估值明细</summary>
+                  <div className="mt-1 overflow-x-auto"><table className="w-full text-right text-[11px] tabular-nums">
+                    <thead className="text-muted"><tr><th className="text-left font-normal">鱼种</th><th className="font-normal">仓库数量</th><th className="font-normal">鱼篓数量</th><th className="font-normal">单价</th><th className="font-normal">估值</th></tr></thead>
+                    <tbody>{valuation.items.map(item => <tr key={item.name}><td className="text-left">{item.name}</td><td>{item.warehouseCount.toLocaleString('zh-CN')}</td><td>{item.basketCount.toLocaleString('zh-CN')}</td><td>{item.unit?.toLocaleString('zh-CN') ?? '未定价'}</td><td>{item.value?.toLocaleString('zh-CN') ?? '—'}</td></tr>)}</tbody>
+                    <tfoot><tr><td className="text-left" colSpan={4}>合计</td><td className="font-semibold text-accent">{valuation.totalValue.toLocaleString('zh-CN')}</td></tr></tfoot>
+                  </table></div>
+                </details>}
+              </div>}
+              {income && <div className="mb-2 flex flex-wrap gap-1">
+                {([['fishing', '鱼获'], ['purchase', '采购/合成'], ['opening', '开箱'], ['other', '其他'], ['history', '旧入账']] as const).map(([key, label]) => (
+                  <button key={key} type="button" onClick={() => { setIncomeView(key); setShowAllItems(false); }}
+                    className={cn("rounded px-2 py-1 text-[11px]", incomeView === key ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface")}>{label} {fmtBig(key === 'history' ? income.history.total : income.totals[key].total)}</button>
+                ))}
+              </div>}
+              {customYield && incomeView === 'fishing' ? <ServerFishingYield bot={bot} report={loot?.fishingYield} />
+                : lootRows.length === 0 ? <div className="py-1 text-xs text-muted">等待系统掉落回执</div> : (
+                <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2 text-xs">
+                  {lootRows.slice(0, showAllItems ? lootRows.length : 8).map(([name, stat]) => (
+                    <div key={name} className="flex items-baseline justify-between gap-2">
+                      <span className="min-w-0 break-words text-muted">{name}</span>
+                      <span className="shrink-0 font-semibold tabular-nums">×{keyValue(lootRule, stat)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!(customYield && incomeView === 'fishing') && lootRows.length > 8 && <button type="button" onClick={() => setShowAllItems((v) => !v)} className="mt-1 text-[11px] text-accent">
+                {showAllItems ? "收起" : `展开其他 ${lootRows.length - 8} 种`}
+              </button>}
+              <div className="mt-1 text-[10px] text-muted">{income
+                ? `分类自 ${new Date(income.startedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} 起 · 近10分钟鱼获 ${income.recentItems} 件${income.windowMinutes < 10 ? '（不足10分钟按实际时长）' : ''} · 鱼逃脱 ${income.serverEscapes} 次（服务器机制）${incomeView === 'history' ? ' · 旧记录来源未分类，完整保留' : ''}`
+                : '按系统掉落累计 · 速率为累计平均 · 不按背包变化计数'}</div>
+            </div>
+          ) : rules.length === 0 ? (
+            <button type="button" onClick={() => setManage(true)} className="w-full py-3 text-center text-xs text-muted hover:text-fg">
               还没有监听规则，点此配置 →
             </button>
           ) : (
@@ -233,7 +329,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
           <div className="space-y-1.5">
             {rules.map((rule) => (
               <div key={rule.id} className={cn("flex items-center gap-2 rounded-lg bg-surface-2/50 px-2.5 py-2", !rule.enabled && "opacity-50")}>
-                <button onClick={() => toggle(rule.id)} className={cn("shrink-0", rule.enabled ? "text-success" : "text-muted")} title={rule.enabled ? "停用" : "启用"}>
+                <button type="button" onClick={() => toggle(rule.id)} className={cn("shrink-0", rule.enabled ? "text-success" : "text-muted")} title={rule.enabled ? "停用" : "启用"}>
                   <Power className="h-4 w-4" />
                 </button>
                 <div className="min-w-0 flex-1">
@@ -244,10 +340,10 @@ export default function MonitorPanel({ botId }: { botId: string }) {
                   </div>
                   <div className="truncate font-mono text-[10px] text-muted/70">/{rule.pattern}/</div>
                 </div>
-                <button onClick={() => setEditing(rule)} className="shrink-0 rounded p-1 text-muted hover:text-fg" title="编辑">
+                <button type="button" onClick={() => setEditing(rule)} className="shrink-0 rounded p-1 text-muted hover:text-fg" title="编辑">
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
-                <button onClick={() => del(rule.id)} className="shrink-0 rounded p-1 text-muted hover:text-danger" title="删除">
+                <button type="button" onClick={() => del(rule.id)} className="shrink-0 rounded p-1 text-muted hover:text-danger" title="删除">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -261,7 +357,7 @@ export default function MonitorPanel({ botId }: { botId: string }) {
       <Modal open={showPresets} onClose={() => setShowPresets(false)} title="选择预设">
         <div className="space-y-2">
           {MONITOR_PRESETS.map((p) => (
-            <button
+            <button type="button"
               key={p.name}
               onClick={() => applyPreset(p)}
               className="w-full rounded-lg border border-border bg-surface-2/50 p-3 text-left transition-colors hover:border-accent hover:bg-accent/10"
@@ -359,10 +455,11 @@ function RuleFromMessage({
           <div className="mt-1.5 flex flex-wrap items-center gap-x-0.5 gap-y-1 rounded bg-surface-2/50 p-1.5 text-xs">
             {toks.map((t, i) =>
               t.type === "sep" ? (
+                // biome-ignore lint/suspicious/noArrayIndexKey: token 身份就是下标（选中态 keyIdx/valueIdx 也按下标存）
                 <span key={i} className="whitespace-pre text-muted">{t.text}</span>
               ) : (
-                <button
-                  key={i}
+                // biome-ignore lint/suspicious/noArrayIndexKey: token 身份就是下标（选中态 keyIdx/valueIdx 也按下标存）
+                <button key={i}
                   type="button"
                   onClick={() =>
                     t.type === "num" ? setValueIdx((v) => (v === i ? -1 : i)) : setKeyIdx((k) => (k === i ? -1 : i))
@@ -474,7 +571,7 @@ function RuleEditor({
         <Field label="聚合方式">
           <div className="flex flex-wrap gap-1">
             {AGG.map((a) => (
-              <button
+              <button type="button"
                 key={a.key}
                 onClick={() => set({ agg: a.key })}
                 title={a.hint}
@@ -518,9 +615,10 @@ function NumIn({ value, min, onChange }: { value: number; min: number; onChange:
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <label className="mb-1 block text-xs font-medium text-muted">{label}</label>
+    // biome-ignore lint/a11y/noLabelWithoutControl: children 即控件，包裹式关联在运行时成立（点标题可聚焦控件）
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }

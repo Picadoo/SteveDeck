@@ -5,6 +5,16 @@
 apps/*/src-tauri/target
 apps/*/src-tauri/gen
 data
-*.log
+.test-data*
+**/*.log
+.env
+.env.*
 .git
 .superpowers
+
+runtime-data
+**/proxies.json
+
+**/.env
+**/.env.*
+**/deploy-targets.local.json

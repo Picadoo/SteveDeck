@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Sparkles, RefreshCw, Copy, Loader2, ChevronDown, Settings2, Wand2, Play, Save } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Sparkles, RefreshCw, Loader2, ChevronDown, Settings2, Wand2, Play, Save } from "lucide-react";
 import { Card, Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { copyText } from "@/lib/clipboard";
@@ -7,6 +7,7 @@ import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
 import { SCRIPT_SPEC, compactObservation } from "@mcbot/protocol";
 import type { BotSummary, BotScript, Observation } from "@mcbot/protocol";
+import { memoBotTab } from "@/lib/memoBotTab";
 
 // AI 直连走引擎 HTTP（key 存引擎侧不进浏览器；socket ack 8s 超时太短，生成要 20-60s）
 function authedFetch(pathname: string, init?: RequestInit): Promise<Response> {
@@ -45,7 +46,7 @@ function buildPrompt(obs: Observation, goal: string): string {
 // 切 tab 时 AiTab 会 unmount→remount，用模块级 Map 保留用户写到一半的目标文本
 const goalCache = new Map<string, string>();
 
-export default function AiTab({ bot }: { bot: BotSummary }) {
+function AiTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [obs, setObs] = useState<Observation | null>(null);
   const [loading, setLoading] = useState(false);
@@ -63,6 +64,15 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
   // Agent 闭环模式
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentLog, setAgentLog] = useState<string[]>([]);
+  // SSE 流的取消把手：卸载/切 bot 时 abort——否则流在后台继续读几分钟，对已卸载组件
+  // setState，且结果脚本会落到当时选中的另一个 bot 名下
+  const agentAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => {
+      agentAbortRef.current?.abort();
+      agentAbortRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -136,12 +146,16 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
     setAgentRunning(true);
     setAgentLog([]);
     setGenScript(null);
+    const ctrl = new AbortController();
+    agentAbortRef.current?.abort();
+    agentAbortRef.current = ctrl;
     try {
       const { url, token } = useStore.getState().conn;
       const resp = await fetch(`${url.replace(/\/+$/, "")}/api/ai/agent/${bot.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ goal, maxRounds: 3, waitSec: 15 }),
+        signal: ctrl.signal,
       });
       if (!resp.ok || !resp.body) {
         pushToast("Agent 启动失败", "error");
@@ -167,7 +181,7 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
             } else if (ev.type === "result") {
               setAgentLog((l) => [...l, `--- 完成（${ev.rounds} 轮）：${ev.evaluation}`]);
               if (ev.script) setGenScript(ev.script);
-              if (ev.warnings?.length) ev.warnings.forEach((w: string) => pushToast(w, "info"));
+              if (ev.warnings?.length) ev.warnings.forEach((w: string) => { pushToast(w, "info"); });
               pushToast(`Agent 完成：${ev.evaluation}`, "success");
             } else if (ev.type === "error") {
               setAgentLog((l) => [...l, `错误：${ev.message}`]);
@@ -177,8 +191,10 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
         }
       }
     } catch (e: any) {
-      pushToast(`Agent 请求失败：${e?.message || "网络错误"}`, "error");
+      // 主动取消（卸载/切 bot）不是错误，不弹提示
+      if (e?.name !== "AbortError") pushToast(`Agent 请求失败：${e?.message || "网络错误"}`, "error");
     } finally {
+      if (agentAbortRef.current === ctrl) agentAbortRef.current = null;
       setAgentRunning(false);
     }
   }
@@ -220,7 +236,7 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
   }, [bot.id]);
 
   async function copy(text: string, label: string) {
-    if (await copyText(text)) pushToast(label + "已复制", "success");
+    if (await copyText(text)) pushToast(`${label}已复制`, "success");
     else pushToast("复制失败", "error");
   }
 
@@ -292,9 +308,9 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
                   )}
                   {obs.self.effects && obs.self.effects.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
-                      {obs.self.effects.map((e, i) => (
+                      {obs.self.effects.map((e) => (
                         <span
-                          key={i}
+                          key={e.name}
                           className={cn(
                             "rounded px-1.5 py-0.5 text-[10px]",
                             e.bad ? "bg-danger/15 text-danger" : "bg-success/15 text-success",
@@ -351,7 +367,7 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
           <Card className="p-4">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold">AI 脚本生成</h3>
-              <button
+              <button type="button"
                 onClick={() => setCfgOpen((v) => !v)}
                 className={cn(
                   "flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors",
@@ -359,7 +375,7 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
                 )}
                 title="配置 AI 接口（DeepSeek / 任意 OpenAI 兼容）"
               >
-                <Settings2 className="h-3.5 w-3.5" /> {aiCfg?.hasKey ? "已连接 " + (aiCfg?.model || "") : "API 设置"}
+                <Settings2 className="h-3.5 w-3.5" /> {aiCfg?.hasKey ? `已连接 ${aiCfg?.model || ""}` : "API 设置"}
               </button>
             </div>
 
@@ -412,6 +428,7 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
                 <div className="mb-1 text-[11px] font-medium text-muted">Agent 日志</div>
                 <div className="max-h-36 overflow-y-auto font-mono text-[11px] leading-relaxed text-fg">
                   {agentLog.map((l, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: 追加式日志纯展示，行文本可重复无自然 key
                     <div key={i} className={l.startsWith("错误") ? "text-danger" : l.startsWith("---") ? "text-success font-medium" : ""}>{l}</div>
                   ))}
                 </div>
@@ -422,7 +439,7 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
               <div className="mt-3 rounded-lg border border-accent/40 bg-accent/5 p-3">
                 <div className="mb-1.5 flex items-center justify-between">
                   <span className="text-sm font-medium">「{genScript.name}」 · {genScript.steps.length} 步 · 触发 {genScript.trigger?.type ?? "manual"}</span>
-                  <button onClick={() => setGenScript(null)} className="text-[11px] text-muted hover:text-fg">丢弃</button>
+                  <button type="button" onClick={() => setGenScript(null)} className="text-[11px] text-muted hover:text-fg">丢弃</button>
                 </div>
                 <pre className="mb-2 max-h-44 overflow-auto rounded bg-surface-2/50 p-2 font-mono text-[11px] leading-relaxed">
                   {JSON.stringify(genScript, null, 2)}
@@ -446,7 +463,7 @@ export default function AiTab({ bot }: { bot: BotSummary }) {
 
           {/* 可折叠的完整 JSON */}
           <Card className="p-3">
-            <button
+            <button type="button"
               onClick={() => setJsonExpanded(!jsonExpanded)}
               className="flex w-full items-center justify-between text-sm font-semibold transition-colors hover:text-accent"
             >
@@ -477,3 +494,6 @@ function Row({ k, v }: { k: string; v: string }) {
     </div>
   );
 }
+
+// 字段白名单 memo：AI 生成/Agent 过程全是本地 state，bot 只用 id/online
+export default memoBotTab(AiTab, ["id", "online"]);

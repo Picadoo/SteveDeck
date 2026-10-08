@@ -3,17 +3,25 @@ const { closestName } = require('../utils/closestName');
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
 
-    const emitLog = (msg) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('log', {
-            user: bot.username, ownerId: botInstance.config.ownerId,
-            msg, time: new Date().toLocaleTimeString()
-        });
-    };
+    const emitLog = (msg) => botInstance.uiLog(msg);
 
     botInstance.trashCleanerTask = {
         active: false,
         trashItems: [], // 垃圾黑名单，例如 ['cobblestone', 'dirt', 'gravel']
         timer: null
+    };
+
+    // 运行统计：模块页展示扫描节奏与已清理数量（此前只有丢弃时的日志，闲时像没在工作）
+    const stats = { cleanedStacks: 0, lastCleanAt: 0, lastItem: null };
+    botInstance.getTrashStats = () => {
+        const t = botInstance.trashCleanerTask;
+        const recent = Date.now() - stats.lastCleanAt < 12000;
+        return {
+            activity: recent
+                ? `丢弃 ${stats.lastItem}`
+                : `监视中（黑名单 ${t.trashItems.length} 项）`,
+            cleaned: stats.cleanedStacks,
+        };
     };
 
     // 执行清理的函数
@@ -35,6 +43,9 @@ module.exports = (botInstance) => {
                     emitLog(`自动清理: 丢弃 ${item.name} x${item.count}`);
 
                     await bot.tossStack(item);
+                    stats.cleanedStacks++;
+                    stats.lastCleanAt = Date.now();
+                    stats.lastItem = `${item.name} x${item.count}`;
                     // 稍微等待一下，防止丢弃动作太快导致封号或出错
                     await new Promise(resolve => setTimeout(resolve, 500));
                 } catch (err) {
@@ -64,7 +75,7 @@ module.exports = (botInstance) => {
                         }
                     }
                 }
-            } catch (e) { /* 校验失败不挡功能 */ }
+            } catch (_e) { /* 校验失败不挡功能 */ }
             emitLog("自动清理开启：将定期清理指定垃圾");
             // 每 10 秒扫描一次背包
             if (botInstance.trashCleanerTask.timer) {

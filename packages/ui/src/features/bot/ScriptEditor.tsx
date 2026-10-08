@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { X, ArrowUp, ArrowDown, Trash2, Code2, Blocks, Plus } from "lucide-react";
 import { Button, Input, Switch } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
@@ -142,14 +143,23 @@ export default function ScriptEditor({
   const requestCloseRef = useRef(requestClose);
   requestCloseRef.current = requestClose;
 
-  // 自建弹窗容器（没用共享 Modal）：补 Esc 关闭，与其他弹窗行为一致（同样走丢稿确认）
+  // 自建弹窗容器（因标题栏有积木/JSON 切换，不套共享 Modal）：补 Esc 关闭 + 锁滚动 + 打开还焦，
+  // 与共享 Modal 行为对齐（关闭同样走丢稿确认）。容器经 createPortal 挂到 body（见 return），
+  // 免疫祖先 transform 截断——这是它此前唯一缺的一块。
   useEffect(() => {
     if (!open) return;
+    const prevFocused = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") requestCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      if (prevFocused && document.contains(prevFocused)) prevFocused.focus();
+    };
   }, [open]);
 
   useEffect(() => {
@@ -186,7 +196,7 @@ export default function ScriptEditor({
       try {
         parsed = JSON.parse(json);
       } catch (e: any) {
-        return setErr("JSON 解析失败：" + e.message); // 语法错误：停在 JSON 模式，不丢内容
+        return setErr(`JSON 解析失败：${e.message}`); // 语法错误：停在 JSON 模式，不丢内容
       }
       // UIFEAT-8：合法 JSON 但不是合规脚本 → 明确报错并停留，绝不静默回退默认 steps:[]。
       if (!isValidScriptShape(parsed)) {
@@ -202,7 +212,7 @@ export default function ScriptEditor({
       try {
         parsed = JSON.parse(json);
       } catch (e: any) {
-        return setErr("JSON 解析失败：" + e.message);
+        return setErr(`JSON 解析失败：${e.message}`);
       }
       // UIFEAT-8：保存前做同一套形状校验，不把畸形脚本下发给引擎。
       if (!isValidScriptShape(parsed)) {
@@ -218,20 +228,21 @@ export default function ScriptEditor({
 
   const triggerDef = TRIGGER_TYPES.find((t) => t.type === s.trigger.type);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  // Portal 到 body：与共享 Modal 同理，免疫祖先 transform（移动端抽屉动画）导致的 fixed 定位截断
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="脚本编辑器">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={requestClose} aria-hidden />
       <div className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
           <h2 className="text-sm font-semibold">脚本编辑器</h2>
           <div className="flex items-center gap-1">
-            <button onClick={() => switchMode("visual")} className={cn("rounded-md px-2.5 py-1 text-xs", mode === "visual" ? "bg-surface-2 text-fg" : "text-muted")}>
+            <button type="button" onClick={() => switchMode("visual")} className={cn("rounded-md px-2.5 py-1 text-xs", mode === "visual" ? "bg-surface-2 text-fg" : "text-muted")}>
               <Blocks className="mr-1 inline h-3.5 w-3.5" />积木
             </button>
-            <button onClick={() => switchMode("json")} className={cn("rounded-md px-2.5 py-1 text-xs", mode === "json" ? "bg-surface-2 text-fg" : "text-muted")}>
+            <button type="button" onClick={() => switchMode("json")} className={cn("rounded-md px-2.5 py-1 text-xs", mode === "json" ? "bg-surface-2 text-fg" : "text-muted")}>
               <Code2 className="mr-1 inline h-3.5 w-3.5" />JSON
             </button>
-            <button onClick={requestClose} aria-label="关闭" className="ml-1 text-muted hover:text-fg"><X className="h-4 w-4" /></button>
+            <button type="button" onClick={requestClose} aria-label="关闭" className="ml-1 text-muted hover:text-fg"><X className="h-4 w-4" /></button>
           </div>
         </div>
 
@@ -310,7 +321,8 @@ export default function ScriptEditor({
       <datalist id="mc-items">{items.map((n) => <option key={n} value={n} />)}</datalist>
       <datalist id="mc-entities">{entities.map((n) => <option key={n} value={n} />)}</datalist>
       <datalist id="mc-players">{players.map((n) => <option key={n} value={n} />)}</datalist>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -323,7 +335,7 @@ function StepList({ steps, onChange, depth }: { steps: any[]; onChange: (s: any[
       step[f.k] =
         f.type === "number" ? 0 : f.type === "bool" ? false : f.type === "select" ? f.options?.[0]?.value ?? "" : "";
     });
-    def?.containers?.forEach((c) => (step[c.key] = []));
+    def?.containers?.forEach((c) => { step[c.key] = []; });
     if (atIndex == null) {
       onChange([...steps, step]);
     } else {
@@ -433,6 +445,7 @@ function StepCard({
           {def.fields.length > 0 && (
             <div className="grid grid-cols-2 gap-2">
               {def.fields.map((f: StepFieldDef) => (
+                // biome-ignore lint/a11y/noLabelWithoutControl: 控件在三元分支里（Switch/Input），运行时包裹关联成立
                 <label key={f.k} className="block">
                   <span className="mb-1 block text-[10px] text-muted">{f.label}</span>
                   {f.type === "bool" ? (
@@ -465,7 +478,14 @@ function StepCard({
                       type={f.type === "number" ? "number" : "text"}
                       list={listIdFor(f.k)}
                       value={String(step[f.k] ?? "")}
-                      onChange={(e) => onField(f.k, f.type === "number" ? Number(e.target.value) : e.target.value)}
+                      onChange={(e) => {
+                        // 数字字段：键入途中的 ""/"-"/"1." 先按原样暂存——立即 Number() 会把
+                        // 「-」变 0 顶掉输入，负坐标（X/Z 常为负）在积木模式根本打不出来
+                        if (f.type !== "number") { onField(f.k, e.target.value); return; }
+                        const raw = e.target.value;
+                        const n = Number(raw);
+                        onField(f.k, raw !== "" && Number.isFinite(n) && String(n) === raw ? n : raw);
+                      }}
                     />
                   )}
                 </label>
@@ -492,7 +512,7 @@ function StepCard({
 
 function IconBtn({ onClick, disabled, title, children }: { onClick: () => void; disabled?: boolean; title?: string; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} disabled={disabled} title={title} className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-30">
+    <button type="button" onClick={onClick} disabled={disabled} title={title} className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-30">
       {children}
     </button>
   );

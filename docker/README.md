@@ -23,6 +23,19 @@ docker logs stevedeck-engine
 
 机器人配置、令牌、脚本都存放在数据卷 `/data`，容器重建不丢。
 
+## 从旧版升级（root → 非 root）
+
+镜像现以非 root 用户（uid 1000）运行。**从旧版（root 运行）升级的已有数据卷**归 root 所有，
+新容器会因写不了 `/data` 起不来，升级时执行一次属主修正即可：
+
+```bash
+docker compose -f docker/docker-compose.yml down
+docker run --rm -v mcbot-data:/data alpine chown -R 1000:1000 /data
+docker compose -f docker/docker-compose.yml up -d
+```
+
+全新部署无需此步骤。
+
 ## 安全建议（公网暴露）
 
 - 不要用默认端口直接裸暴露；建议放在反向代理（Caddy/Nginx）后启用 TLS（`wss://`）。

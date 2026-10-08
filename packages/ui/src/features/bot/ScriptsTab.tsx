@@ -10,8 +10,10 @@ import CustomJsPanel from "./CustomJsPanel";
 import { TRIGGER_TYPES } from "./stepDefs";
 import { SCRIPT_TEMPLATES } from "./scriptTemplates";
 import type { BotSummary, ScriptSummary, BotScript } from "@mcbot/protocol";
+import { memoBotTab, eqJson } from "@/lib/memoBotTab";
+import { usePoll } from "@/lib/usePoll";
 
-export default function ScriptsTab({ bot }: { bot: BotSummary }) {
+function ScriptsTab({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [mode, setMode] = useState<"visual" | "js">("visual");
   const [list, setList] = useState<ScriptSummary[]>([]);
@@ -34,15 +36,15 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
       .then((r) => { if (alive && r.ok && r.data) setRec({ active: !!r.data.active, count: r.data.count || 0 }); });
     return () => { alive = false; };
   }, [bot.id, bot.online]);
-  // 录制中：每 1.5s 刷新步数
-  useEffect(() => {
-    if (!rec?.active) return;
-    const t = setInterval(async () => {
+  // 录制中：每 1.5s 刷新步数。页面切后台自动暂停（录制常态是切去别的 tab 操作，别在后台白打请求；见 usePoll）
+  usePoll(
+    async (alive) => {
       const r = await cmd.moduleAction<{ active: boolean; count: number }>(bot.id, "recording", "status");
-      if (r.ok && r.data) setRec({ active: !!r.data.active, count: r.data.count || 0 });
-    }, 1500);
-    return () => clearInterval(t);
-  }, [rec?.active, bot.id]);
+      if (alive() && r.ok && r.data) setRec({ active: !!r.data.active, count: r.data.count || 0 });
+    },
+    1500,
+    { enabled: !!rec?.active, deps: [rec?.active, bot.id] },
+  );
 
   async function startRec() {
     const r = await cmd.moduleAction(bot.id, "recording", "start");
@@ -56,7 +58,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
     const steps = (Array.isArray(r.data?.steps) ? r.data!.steps : []) as BotScript["steps"];
     if (!steps.length) { pushToast("没录到任何操作", "info"); return; }
     const draft = {
-      name: "录制 " + new Date().toLocaleTimeString().slice(0, 5),
+      name: `录制 ${new Date().toLocaleTimeString().slice(0, 5)}`,
       steps,
       trigger: { type: "manual" },
       server: bot.host,
@@ -122,7 +124,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
     () => [...new Set(list.map((s) => s.category).filter((c): c is string => !!c && !!c.trim()))],
     [list],
   );
-  const grouped = shown.some((s) => s.category && s.category.trim());
+  const grouped = shown.some((s) => s.category?.trim());
   const groups = useMemo(() => {
     const m = new Map<string, ScriptSummary[]>();
     for (const sc of shown) {
@@ -256,7 +258,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
       )}
 
       <div className="flex gap-1 rounded-lg bg-surface-2 p-1 text-sm">
-        <button
+        <button type="button"
           onClick={() => setMode("visual")}
           className={cn(
             "flex-1 rounded-md px-3 py-1.5 transition-colors",
@@ -265,7 +267,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
         >
           积木脚本
         </button>
-        <button
+        <button type="button"
           onClick={() => setMode("js")}
           className={cn(
             "flex-1 rounded-md px-3 py-1.5 transition-colors",
@@ -283,7 +285,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-[11px]">
               {([["本服", false], ["全部", true]] as const).map(([lbl, v]) => (
-                <button
+                <button type="button"
                   key={lbl}
                   onClick={() => setShowAll(v)}
                   className={cn(
@@ -315,7 +317,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
           <ScrollText className="mb-2 h-8 w-8 opacity-40" />
           <p className="text-sm">{list.length > 0 ? "本服务器没有脚本" : "还没有脚本，点击「新建脚本」"}</p>
           {!showAll && list.length > shown.length && (
-            <button onClick={() => setShowAll(true)} className="mt-1 text-xs text-accent">
+            <button type="button" onClick={() => setShowAll(true)} className="mt-1 text-xs text-accent">
               查看全部 {list.length} 个 →
             </button>
           )}
@@ -326,7 +328,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
             const isCol = collapsed.has(cat);
             return (
               <div key={cat}>
-                <button
+                <button type="button"
                   onClick={() => toggleCat(cat)}
                   className="flex w-full items-center gap-1.5 px-1 py-1 text-xs font-semibold text-muted hover:text-fg"
                 >
@@ -358,7 +360,7 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
             <div className="space-y-2">
               <p className="text-xs text-muted">选一个常见场景，进编辑器把关键词/地点名改成你服务器的，保存即可用。</p>
               {SCRIPT_TEMPLATES.map((t) => (
-                <button
+                <button type="button"
                   key={t.key}
                   onClick={() => {
                     setTplOpen(false);
@@ -398,3 +400,6 @@ export default function ScriptsTab({ bot }: { bot: BotSummary }) {
     </div>
   );
 }
+
+// 字段白名单 memo：脚本运行态走 scriptRuntime 独立订阅；bot 只关心这几个字段
+export default memoBotTab(ScriptsTab, ["id", "online", "host", ["modules", eqJson]]);

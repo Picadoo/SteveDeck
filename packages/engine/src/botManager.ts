@@ -1,10 +1,10 @@
 import { randomUUID } from "crypto";
-import { Server as IOServer } from "socket.io";
+import type { Server as IOServer } from "socket.io";
 import {
-  BotConfig,
-  BotConfigInput,
-  BotSummary,
-  DataBundle,
+  type BotConfig,
+  type BotConfigInput,
+  type BotSummary,
+  type DataBundle,
   ServerEvents,
 } from "@mcbot/protocol";
 import {
@@ -15,9 +15,13 @@ import {
   loadCustomScripts as loadCustomScriptsFile,
   saveCustomScripts as saveCustomScriptsFile,
 } from "./storage";
+import { maxHealthOf } from "./utils/botStats";
 
-// 复用的核心逻辑（CommonJS JS 模块）
-const BotInstance = require("./BotInstance");
+import type { BotInstance, BotInstanceCtor } from "./types/botInstance";
+
+// 复用的核心逻辑（CommonJS JS 模块）。类型契约见 types/botInstance.ts——
+// 方法/字段名强校验（拼错编译期报错），签名从宽（逐步收紧）。
+const BotInstanceClass = require("./BotInstance") as BotInstanceCtor;
 const logger = require("./utils/logger");
 
 // 透传事件白名单 = UI（packages/ui/src/lib/engine.ts）实际监听的模块专属事件。
@@ -65,6 +69,7 @@ function validateBotInput(input: Partial<BotConfigInput> | undefined): string | 
 // 键集合 = BotSettings 接口里引擎各处实际消费的字段（含历史遗留 scripts/trash_cleaner）。
 // 校验策略：基本类型挡明显类型混淆；复杂结构（数组/对象）只校验「是数组/是对象」，元素形状交由各模块自身防御。
 const SETTINGS_SANITIZERS: Record<string, (v: unknown) => unknown | undefined> = {
+  autoStart: (v) => (typeof v === "boolean" ? v : undefined),
   // —— 连接 / 重连 ——
   autoReconnect: (v) => (typeof v === "boolean" ? v : undefined),
   reconnectDelay: (v) => (typeof v === "number" && Number.isFinite(v) ? v : undefined),
@@ -86,6 +91,9 @@ const SETTINGS_SANITIZERS: Record<string, (v: unknown) => unknown | undefined> =
   combat: (v) => (typeof v === "boolean" ? v : undefined),
   combatConfig: (v) => (v && typeof v === "object" ? v : undefined),
   fishing: (v) => (typeof v === "boolean" ? v : undefined),
+  fishingMode: (v) => (typeof v === 'string' && /^[a-z0-9_-]{1,64}$/.test(v) ? v : undefined),
+  fishingAutoStartPaused: (v) => (typeof v === "boolean" ? v : undefined),
+  particleObserve: (v) => (typeof v === "boolean" ? v : undefined),
   autoFarm: (v) => (v && typeof v === "object" ? v : undefined),
   autoMine: (v) => (v && typeof v === "object" ? v : undefined),
   mobHunter: (v) => (v && typeof v === "object" ? v : undefined),
@@ -125,8 +133,7 @@ interface EmitChain {
 
 class BotManager {
   private io!: IOServer;
-  private broadcaster!: EmitChain;
-  private bots = new Map<string, any>(); // id -> BotInstance
+  private bots = new Map<string, BotInstance>(); // id -> BotInstance
   private configs: BotConfig[] = [];
   private recentChat = new Map<string, string[]>(); // id -> 服务器聊天
   private recentOps = new Map<string, string[]>(); // id -> 机器人操作日志
@@ -154,7 +161,6 @@ class BotManager {
 
   init(io: IOServer): void {
     this.io = io;
-    this.broadcaster = this.makeBroadcaster();
     this.configs = loadBots();
     logger.info(`[BotManager] 已加载 ${this.configs.length} 个机器人配置`);
   }
@@ -213,6 +219,7 @@ class BotManager {
             text: payload?.msg,
             level: isActionBar ? "actionbar" : isChat ? "chat" : "info",
             segments: payload?.segments, // 可点击/可悬浮聊天片段（有则前端渲染按钮/悬浮）
+            kind: payload?.kind, // 结构化事件标记（death/kick）：UI 通知按它识别，不再匹配文案
           },
         },
       };
@@ -228,7 +235,7 @@ class BotManager {
   getConfigs(): BotConfig[] {
     return this.configs;
   }
-  getInstance(id: string): any | undefined {
+  getInstance(id: string): BotInstance | undefined {
     return this.bots.get(id);
   }
   private findByUsername(username?: string): BotConfig | undefined {
@@ -244,37 +251,24 @@ class BotManager {
     return this.configs.map((c) => this.buildSummary(c));
   }
 
-  /** 读取最大生命属性（RPG 服常把它调高到 >20）。取不到则回退 20。 */
-  private maxHealthOf(bot: any): number {
-    try {
-      const a = bot?.entity?.attributes;
-      if (a) {
-        const e =
-          a["minecraft:generic.max_health"] || a["generic.maxHealth"] || a["generic.max_health"];
-        const v = e?.value;
-        if (typeof v === "number" && v > 0) return Math.round(v);
-      }
-    } catch {
-      /* ignore */
-    }
-    return 20;
-  }
-
   buildSummary(cfg: BotConfig): BotSummary {
     const inst = this.bots.get(cfg.id);
     const bot = inst?.bot;
-    const online = !!(bot && bot.entity);
+    // 显式带上 inst：TS 靠这个别名条件把后文的 inst 收窄为非空（bot 存在必然 inst 存在）
+    // biome-ignore lint/complexity/useOptionalChain: 换成 bot?.entity 会断掉 TS 的别名收窄链（inst 变 possibly undefined）
+    const online = !!(inst && bot && bot.entity);
     return {
       id: cfg.id,
       username: cfg.username,
       host: cfg.host,
+      serverAdapter: require('./adapters').getServerAdapter(cfg)?.summary?.(cfg),
       // 在线时报真实协商版本（auto 模式下 cfg.version 只是 "auto"，贴图地址等要用真版本）
       version: (online && bot.version) || (cfg.version !== "auto" ? cfg.version : undefined),
       note: cfg.note ?? null,
       uptime: online ? Math.floor((Date.now() - (inst.spawnedAt || Date.now())) / 1000) : null,
       online,
       health: online ? Math.round(bot.health) : null,
-      maxHealth: online ? this.maxHealthOf(bot) : null,
+      maxHealth: online ? maxHealthOf(bot) : null,
       food: online ? Math.round(bot.food) : null,
       level: online ? (bot.experience ? bot.experience.level : 0) : null,
       ping: online && typeof bot.player?.ping === "number" ? bot.player.ping : null,
@@ -287,15 +281,17 @@ class BotManager {
         : null,
       modules: inst
         ? {
-            combat: !!(inst.combatConfig && inst.combatConfig.enabled),
+            combat: !!(inst.combatConfig?.enabled),
             fishing: !!inst.fishingActive,
-            automine: !!(inst.autoMineTask && inst.autoMineTask.active),
-            autofarm: !!(inst.farmTask && inst.farmTask.active),
-            mobhunter: !!(inst.mobHunterTask && inst.mobHunterTask.active),
-            follow: !!(inst.followTask && inst.followTask.active),
-            trashcleaner: !!(inst.trashCleanerTask && inst.trashCleanerTask.active),
+            automine: !!(inst.autoMineTask?.active),
+            autofarm: !!(inst.farmTask?.active),
+            mobhunter: !!(inst.mobHunterTask?.active),
+            follow: !!(inst.followTask?.active),
+            trashcleaner: !!(inst.trashCleanerTask?.active),
+            autochat: !!(inst.autoChatTask?.active),
+            playerwatch: !!(inst.playerWatchTask?.active),
             script:
-              (inst._runningScript && inst._runningScript.name) ||
+              (inst._runningScript?.name) ||
               (inst._customJs && `JS:${inst._customJs.name}`) ||
               null,
           }
@@ -306,10 +302,10 @@ class BotManager {
         ? inst.reconnectAttempts > 0 && !online && !inst.isExplicitlyQuitting && !inst._fatalReason
         : false,
       lite: !!cfg.settings?.lite,
-      fatalReason: (inst && inst._fatalReason) || null,
+      fatalReason: (inst?._fatalReason) || null,
       // 瘦身：summary 只带地点元信息（列表展示用），完整 steps 在编辑/录制时经 ack 单独获取——
       // 移动中每 2s 一次的 BOT_STATUS 若携带录制好的到达脚本（可达数 KB/地点）纯属重复广播。
-      savedLocations: (((inst && inst.savedLocations) || cfg.settings?.savedLocations || []) as any[]).map(
+      savedLocations: (((inst?.savedLocations) || cfg.settings?.savedLocations || []) as any[]).map(
         (l: any) => ({
           id: l.id,
           name: l.name,
@@ -365,12 +361,33 @@ class BotManager {
   /** 合并导入：按 用户名@host 去重加 bot、按名字加脚本，不删现有（无损）。返回各类新增数。 */
   importData(bundle: DataBundle): { bots: number; scripts: number; customScripts: number } {
     let bots = 0;
+    // 导入上限：一次最多新增 200 只（批量假人场景够用）。此前无上限，一个恶意/损坏的
+    // bundle 能一次触发上万个 createBot 把引擎打挂（scheduler/脚本步数都有上限，唯独这里漏了）
+    const MAX_IMPORT_BOTS = 200;
     if (Array.isArray(bundle.bots)) {
       for (const b of bundle.bots) {
-        if (!b || !b.username || !b.host) continue;
+        if (bots >= MAX_IMPORT_BOTS) {
+          logger.warn(`[BotManager] 导入已达单次上限 ${MAX_IMPORT_BOTS} 只，其余忽略`);
+          break;
+        }
+        if (!b?.username || !b.host) continue;
         if (this.configs.some((c) => c.username === b.username && c.host === b.host)) continue; // 已存在则跳过
         if (validateBotInput(b)) continue; // 非法配置(端口/长度)跳过
-        const cfg: BotConfig = { ...b, id: randomUUID() }; // 新 id，避免与现有冲突
+        // 按白名单字段重建（与 addBot 同口径，API-7）：原样 spread 会把 bundle 里的任意顶层键
+        // 和未消毒的 settings 整对象灌进引擎状态和 bots.json——导入是唯一旁路，损坏/恶意的
+        // 备份文件可借此夹带任意键。settings 同样过 sanitizeSettingsPatch。
+        const cfg: BotConfig = {
+          id: randomUUID(), // 新 id，避免与现有冲突
+          username: String(b.username),
+          host: String(b.host),
+          port: Number(b.port) || 25565,
+          version: typeof b.version === "string" && b.version.trim() ? b.version.trim() : "auto",
+          auth: b.auth === "microsoft" ? "microsoft" : "offline",
+          loginPassword: typeof b.loginPassword === "string" ? b.loginPassword : undefined,
+          loginCommand: typeof b.loginCommand === "string" && b.loginCommand.trim() ? b.loginCommand.trim() : undefined,
+          note: typeof b.note === "string" ? b.note : undefined,
+          settings: { combat: false, fishing: false, reconnectDelay: 5, schedules: [], ...sanitizeSettingsPatch(b.settings) },
+        };
         this.configs.push(cfg);
         this.spawn(cfg);
         bots++;
@@ -387,7 +404,7 @@ class BotManager {
         }
       }
       this.saveScripts(lib);
-      this.eachInstance((inst) => inst.preloadScripts && inst.preloadScripts(lib));
+      this.eachInstance((inst) => inst.preloadScripts?.(lib));
     }
     let customScripts = 0;
     if (bundle.customScripts && typeof bundle.customScripts === "object") {
@@ -417,7 +434,7 @@ class BotManager {
     saveCustomScriptsFile(scripts);
   }
   /** 遍历所有在线实例（用于同步脚本库等）。 */
-  eachInstance(fn: (inst: any) => void): void {
+  eachInstance(fn: (inst: BotInstance) => void): void {
     for (const inst of this.bots.values()) {
       try {
         fn(inst);
@@ -555,6 +572,10 @@ class BotManager {
   reconnect(id: string): void {
     const inst = this.bots.get(id);
     if (inst?.reconnect) inst.reconnect();
+    else {
+      const cfg = this.configs.find(c => c.id === id);
+      if (cfg) this.spawn(cfg);
+    }
   }
 
   stop(id: string): void {
@@ -565,7 +586,7 @@ class BotManager {
   private spawn(cfg: BotConfig): void {
     if (this.bots.has(cfg.id)) return;
     try {
-      const inst = new BotInstance(
+      const inst = new BotInstanceClass(
         this.toInstanceConfig(cfg),
         this.makeBroadcaster(cfg.id),
         () => this.persist(),
@@ -582,11 +603,15 @@ class BotManager {
   startAll(): void {
     const perHostCount: Record<string, number> = {};
     for (const cfg of this.configs) {
+      if (cfg.settings?.autoStart === false) continue;
       const n = perHostCount[cfg.host] ?? 0;
       perHostCount[cfg.host] = n + 1;
       const delay = n * 1500;
       setTimeout(() => {
-        if (!this.bots.has(cfg.id)) this.spawn(cfg);
+        // 存在性复查：错峰窗口内（多 bot 时可达数十秒）用户删掉的 bot，configs 已无此项，
+        // 但闭包捕获的 cfg 仍在——不复查就会用已删除的配置复活一个 UI 看不到、停不掉的幽灵实例。
+        const stillExists = this.configs.some((c) => c.id === cfg.id);
+        if (stillExists && !this.bots.has(cfg.id)) this.spawn(cfg);
       }, delay);
     }
   }

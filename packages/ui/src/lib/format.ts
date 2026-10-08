@@ -25,7 +25,7 @@ export function healthBar(pct: number | null): string {
 
 /** 大数 → 中文单位（1500000→150万 · 1.62e10→162亿 · 1.2e12→1.2万亿）。小于 1万原样显示。 */
 export function fmtBig(n: number | null | undefined): string {
-  if (n == null || !isFinite(n)) return "—";
+  if (n == null || !Number.isFinite(n)) return "—";
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
   const unit = (v: number, u: string) => {

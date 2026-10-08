@@ -123,13 +123,13 @@ export default function CustomJsPanel({ bot }: { bot: BotSummary }) {
               key={s.name}
               className="group flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1 text-xs"
             >
-              <button onClick={() => load(s.name)} className="flex items-center gap-1 hover:text-accent">
+              <button type="button" onClick={() => load(s.name)} className="flex items-center gap-1 hover:text-accent">
                 <FileCode2 className="h-3 w-3" /> {s.name}
               </button>
-              <button onClick={() => togglePin(s.name, !s.pinned)} title={s.pinned ? "取消置顶" : "置顶到模块页一键开关"}>
+              <button type="button" onClick={() => togglePin(s.name, !s.pinned)} title={s.pinned ? "取消置顶" : "置顶到模块页一键开关"}>
                 <Pin className={cn("h-3 w-3", s.pinned ? "fill-accent text-accent" : "text-muted opacity-50 hover:opacity-100")} />
               </button>
-              <button onClick={() => requestDel(s.name)} title={confirmDel === s.name ? "再点一次确认删除" : "删除"}>
+              <button type="button" onClick={() => requestDel(s.name)} title={confirmDel === s.name ? "再点一次确认删除" : "删除"}>
                 {confirmDel === s.name ? (
                   <span className="text-[10px] font-medium text-danger">确认?</span>
                 ) : (

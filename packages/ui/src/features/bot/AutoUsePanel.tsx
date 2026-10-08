@@ -4,6 +4,7 @@ import { Card, Switch, Button, Badge, Input } from "@/components/ui/primitives";
 import Modal from "@/components/ui/Modal";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
+import { usePoll } from "@/lib/usePoll";
 import { cn } from "@/lib/cn";
 import type { BotSummary, AutoUseRule } from "@mcbot/protocol";
 
@@ -35,7 +36,7 @@ function newId(): string {
   } catch {
     /* ignore */
   }
-  return "r" + Math.random().toString(36).slice(2, 10);
+  return `r${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function blankRule(): AutoUseRule {
@@ -71,6 +72,9 @@ function ruleSummary(r: AutoUseRule): string {
 export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [rules, setRules] = useState<AutoUseRule[]>([]);
+  // 与 MonitorPanel 同款防线：加载失败时不把「失败」当「没有规则」——之后的整表保存
+  // 会把引擎侧已有规则清空覆盖
+  const [rulesLoaded, setRulesLoaded] = useState(false);
   const [active, setActive] = useState(false);
   const [optimActive, setOptimActive] = useState<boolean | null>(null);
   const [manage, setManage] = useState(false);
@@ -81,14 +85,22 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
   function load(alive?: () => boolean) {
     return cmd.getBotConfig(bot.id).then((r) => {
       if (alive && !alive()) return;
-      const au = r.ok && r.data ? (r.data.settings as any)?.autoUse : null;
+      if (!r.ok || !r.data) {
+        setRulesLoaded(false);
+        pushToast(`自动使用规则加载失败：${r.error || "请求超时"}（编辑已禁用）`, "error");
+        return;
+      }
+      const au = (r.data.settings as any)?.autoUse ?? null;
       setRules(Array.isArray(au?.rules) ? au.rules : []);
       setActive(!!au?.active);
       setOptimActive(null);
+      setRulesLoaded(true);
     });
   }
   useEffect(() => {
     let alive = true;
+    setRules([]);
+    setRulesLoaded(false);
     load(() => alive);
     return () => {
       alive = false;
@@ -110,6 +122,7 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
   }
 
   async function saveRules(next: AutoUseRule[]) {
+    if (!rulesLoaded) { pushToast("规则尚未加载成功，禁止保存（防止覆盖引擎侧已有规则）", "error"); return; }
     setRules(next);
     const r = await cmd.configModule(bot.id, "auto_use", { rules: next });
     if (!r.ok) pushToast(r.error || "保存失败", "error");
@@ -125,6 +138,21 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
 
   const enabledCount = rules.filter((r) => r.enabled).length;
 
+  // 运行反馈：开着时 3.5s 轮询「当前活动 + 使用次数」（与模块页统计同通道，修「开了看不出效果」）
+  const [runStats, setRunStats] = useState<{ activity?: string; uses?: number } | null>(null);
+  useEffect(() => {
+    if (!checked || !bot.online) setRunStats(null);
+  }, [checked, bot.online]);
+  usePoll(
+    async (alive) => {
+      const r = await cmd.moduleAction(bot.id, "auto_use", "stats");
+      if (!alive()) return;
+      if (r.ok && r.data) setRunStats(r.data as { activity?: string; uses?: number });
+    },
+    3500,
+    { enabled: bot.online && checked, deps: [bot.id, checked] },
+  );
+
   return (
     <Card className="p-4">
       <div className="flex items-start justify-between">
@@ -139,6 +167,16 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
         </div>
         <Switch checked={checked} onChange={toggle} disabled={!bot.online} />
       </div>
+
+      {checked && runStats?.activity && (
+        <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-accent/8 px-2.5 py-1.5 text-[11px] text-accent">
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
+          <span className="truncate" title={runStats.activity}>{runStats.activity}</span>
+          {typeof runStats.uses === "number" && runStats.uses > 0 && (
+            <span className="ml-auto shrink-0 text-muted">已使用 {runStats.uses} 次</span>
+          )}
+        </div>
+      )}
 
       <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-surface-2/50 px-2.5 py-2">
         <span className="text-[11px] text-muted">
@@ -175,7 +213,7 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
                   !rule.enabled && "opacity-50",
                 )}
               >
-                <button
+                <button type="button"
                   onClick={() => toggleRule(rule.id)}
                   className={cn("shrink-0", rule.enabled ? "text-success" : "text-muted")}
                   title={rule.enabled ? "停用" : "启用"}
@@ -188,14 +226,14 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
                     {rule.cooldownSec ? <Badge tone="neutral">CD {rule.cooldownSec}s</Badge> : null}
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setEditing(rule)}
                   className="shrink-0 rounded p-1 text-muted hover:text-fg"
                   title="编辑"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
-                <button
+                <button type="button"
                   onClick={() => del(rule.id)}
                   className="shrink-0 rounded p-1 text-muted hover:text-danger"
                   title="删除"
@@ -252,7 +290,7 @@ function RuleEditor({
   const t = draft.trigger;
   const m = draft.match;
   const valid =
-    (t.type === "effect_missing" ? !!(t.effect && t.effect.trim()) : true) &&
+    (t.type === "effect_missing" ? !!(t.effect?.trim()) : true) &&
     (m.by === "category" || String(m.value).toString().length > 0 || m.by === "slot");
 
   return (
@@ -404,9 +442,10 @@ function NumIn({
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <label className="mb-1 block text-xs font-medium text-muted">{label}</label>
+    // biome-ignore lint/a11y/noLabelWithoutControl: children 即控件，包裹式关联在运行时成立（点标题可聚焦控件）
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }

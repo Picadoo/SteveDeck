@@ -15,7 +15,7 @@ export default function UpdateBadge() {
 
   if (state.phase === "ready") {
     return (
-      <button
+      <button type="button"
         onClick={() => installAndRestart()}
         title={`新版本 v${state.version} 已就绪，点击安装并重启`}
         className="flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-medium text-success transition-colors hover:bg-success/25"

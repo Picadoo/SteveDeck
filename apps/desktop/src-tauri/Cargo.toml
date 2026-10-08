@@ -1,6 +1,6 @@
 [package]
 name = "mc-bot-player"
-version = "0.1.2"
+version = "0.1.3"
 description = "SteveDeck 桌面客户端（自带引擎，双击即用；亦可手动连远程引擎）"
 authors = ["Picadoo"]
 edition = "2021"

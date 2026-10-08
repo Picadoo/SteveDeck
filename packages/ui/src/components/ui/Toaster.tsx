@@ -32,7 +32,7 @@ export default function Toaster() {
           {(t.count ?? 1) > 1 && (
             <span className="shrink-0 rounded-full bg-surface-2 px-1.5 text-[10px] font-medium text-muted">×{t.count}</span>
           )}
-          <button onClick={() => dismiss(t.id)} className="ml-1 text-muted transition-colors hover:text-fg">
+          <button type="button" onClick={() => dismiss(t.id)} className="ml-1 text-muted transition-colors hover:text-fg">
             <X className="h-3.5 w-3.5" />
           </button>
         </div>

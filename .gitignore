@@ -17,7 +17,8 @@ apps/mobile/src-tauri/gen/
 
 # 运行时数据（令牌、机器人配置、脚本）
 data/
-.test-data/
+.test-data*/
+tools/live-smoke/.run/
 *.log
 
 # 本地预览/调试配置
@@ -45,6 +46,11 @@ coverage/
 # 部署目标（个人服务器 IP/密钥路径，不入库）
 docker/deploy-targets.local.json
 .codegraph/
+
+# 私有服务器扩展、挂机脚本、个人部署配置与运行记录不随框架发布
+packages/*/src/adapters/local/
+docker/*.local.*
+outputs/
 
 # 开发过程文档（设计 spec / 审查 / 交接 / 状态报告）——本地保留，不公开
 docs/2026-*.md

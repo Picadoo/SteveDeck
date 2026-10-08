@@ -1,0 +1,8 @@
+#!/bin/sh
+# 提交前快速把关：Biome lint 全仓 <1s（error 才拦，存量 warning 不挡）。
+# 临时跳过本次检查：git commit -n
+if ! pnpm lint; then
+  echo "" >&2
+  echo "✖ Biome lint 未通过：修复后再提交（临时跳过：git commit -n）" >&2
+  exit 1
+fi

@@ -17,40 +17,11 @@ module.exports = (botInstance) => {
     };
     const task = botInstance.followTask;
 
-    const emitLog = (msg) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('log', {
-            user: bot.username, ownerId: botInstance.config.ownerId,
-            msg, time: new Date().toLocaleTimeString()
-        });
-    };
-    const stripCodes = (s) => String(s == null ? '' : s).replace(/§./g, '');
-
-    // 实体显示名：metadata 名牌（字符串/JSON 组件）→ customName/displayName/类型名
-    const displayNameOf = (e) => {
-        if (!e) return '';
-        try {
-            const cn = e.metadata && e.metadata[2];
-            if (typeof cn === 'string' && cn) return stripCodes(cn).trim();
-            if (cn && typeof cn === 'object') {
-                const flat = (cn.text || '') +
-                    (Array.isArray(cn.extra) ? cn.extra.map(x => (typeof x === 'string' ? x : (x && x.text) || '')).join('') : '');
-                if (flat) return stripCodes(flat).trim();
-            }
-        } catch (err) { /* ignore */ }
-        return stripCodes(e.customName || e.displayName || e.name || '').trim();
-    };
-    const isArmorStand = (e) => e && /armor.?stand/i.test(String(e.name || e.kind || ''));
-
-    // 全息名牌联想（与追怪同思路）：名字挂在头顶隐形盔甲架上时，按名牌匹配本体
-    const hologramNameFor = (entity, stands) => {
-        for (const h of stands) {
-            const dx = h.pos.x - entity.position.x;
-            const dz = h.pos.z - entity.position.z;
-            const dy = h.pos.y - entity.position.y;
-            if (dx * dx + dz * dz <= 1.6 * 1.6 && dy > -0.5 && dy < 3.2) return h.name;
-        }
-        return null;
-    };
+    const emitLog = (msg) => botInstance.uiLog(msg);
+    // 洗码/名牌解析/全息联想：共享实现见 utils/entityName.js（与追怪同一套）。
+    // 相比旧本地版是纯升级：展平支持 1.20.3+ NBT {value} 形态与任意嵌套。
+    const { stripMcCodes: stripCodes, entityDisplayName, isArmorStand, hologramNameFor } = require('../utils/entityName');
+    const displayNameOf = (e) => entityDisplayName(e, '');
 
     const findTarget = () => {
         if (!bot.entity) return null;
@@ -61,7 +32,7 @@ module.exports = (botInstance) => {
         if (mode === 'nearest_player' || mode === 'player') {
             let best = null, bestD = Infinity;
             for (const e of Object.values(bot.entities)) {
-                if (!e || !e.position || e.type !== 'player') continue;
+                if (!e?.position || e.type !== 'player') continue;
                 if (e.username === bot.username) continue;
                 if (mode === 'player') {
                     const uname = stripCodes(e.username || '').toLowerCase();
@@ -78,13 +49,13 @@ module.exports = (botInstance) => {
             // 先收集全息名牌
             const stands = [];
             for (const e of Object.values(bot.entities)) {
-                if (!e || !e.position || !isArmorStand(e)) continue;
+                if (!e?.position || !isArmorStand(e)) continue;
                 const nm = displayNameOf(e);
                 if (nm && !/armor.?stand/i.test(nm)) stands.push({ pos: e.position, name: nm });
             }
             let best = null, bestD = Infinity;
             for (const e of Object.values(bot.entities)) {
-                if (!e || !e.position || e === bot.entity) continue;
+                if (!e?.position || e === bot.entity) continue;
                 if (isArmorStand(e)) continue;
                 if (['object', 'orb', 'other'].includes(e.type)) continue;
                 const own = displayNameOf(e).toLowerCase();
@@ -102,14 +73,29 @@ module.exports = (botInstance) => {
         return null;
     };
 
+    // 运行统计：模块页展示当前跟随对象与实时距离（此前只有开关，跟丢了也看不出来）
+    botInstance.getFollowStats = () => {
+        const modeText = task.config.mode === 'player' ? `玩家 ${task.config.target}`
+            : task.config.mode === 'keyword' ? `关键词 ${task.config.target}` : '最近的玩家';
+        if (task.targetId != null) {
+            const ent = bot.entities[task.targetId];
+            const d = ent?.position && bot.entity ? bot.entity.position.distanceTo(ent.position) : null;
+            return {
+                activity: `跟随 ${task.targetName}${d != null ? `（${d.toFixed(1)} 格）` : ''}`,
+                target: task.targetName,
+            };
+        }
+        return { activity: `未找到目标（${modeText}），待命中…`, target: '—' };
+    };
+
     let lostSince = 0;
     let lastLostLogAt = 0;
     const tick = () => {
         if (!task.active || !bot.entity) return;
         try {
             const ent = task.targetId != null ? bot.entities[task.targetId] : null;
-            const fresh = (ent && ent.position) ? (task.config.mode === 'nearest_player' ? findTarget() : ent) : findTarget();
-            if (fresh && fresh.position) {
+            const fresh = (ent?.position) ? (task.config.mode === 'nearest_player' ? findTarget() : ent) : findTarget();
+            if (fresh?.position) {
                 lostSince = 0;
                 if (fresh.id !== task.targetId) {
                     task.targetId = fresh.id;
@@ -121,16 +107,16 @@ module.exports = (botInstance) => {
             } else {
                 if (task.targetId != null) {
                     task.targetId = null;
-                    try { bot.pathfinder.setGoal(null); } catch (e) { /* ignore */ }
+                    try { bot.pathfinder.setGoal(null); } catch (_e) { /* ignore */ }
                 }
                 if (!lostSince) lostSince = Date.now();
                 // 丢失提示限流：每 15s 一条，避免刷日志
                 if (Date.now() - lastLostLogAt > 15000) {
                     lastLostLogAt = Date.now();
-                    emitLog(`跟随：未找到目标（${task.config.mode === 'player' ? '玩家 ' + task.config.target : task.config.mode === 'keyword' ? '关键词 ' + task.config.target : '附近无玩家'}），待命中…`);
+                    emitLog(`跟随：未找到目标（${task.config.mode === 'player' ? `玩家 ${task.config.target}` : task.config.mode === 'keyword' ? `关键词 ${task.config.target}` : '附近无玩家'}），待命中…`);
                 }
             }
-        } catch (e) { /* 单拍异常不终止跟随 */ }
+        } catch (_e) { /* 单拍异常不终止跟随 */ }
     };
 
     botInstance.toggleFollow = (active, config) => {
@@ -146,17 +132,23 @@ module.exports = (botInstance) => {
             task.active = true;
             task.targetId = null;
             task.targetName = null;
-            if (task.timer) clearInterval(task.timer);
+            if (task.timer) {
+                clearInterval(task.timer);
+                // 同步从实例 timers 数组移除旧句柄（MODA-2 同款）：只 clear 不 splice 的话，
+                // 脚本/自动化频繁切换跟随目标的长跑场景下数组无界堆积
+                const i = botInstance.timers.indexOf(task.timer);
+                if (i >= 0) botInstance.timers.splice(i, 1);
+            }
             task.timer = setInterval(tick, 800);
             botInstance.timers.push(task.timer);
-            emitLog(`跟随已开启（${task.config.mode === 'player' ? '玩家: ' + task.config.target : task.config.mode === 'keyword' ? '关键词: ' + task.config.target : '最近的玩家'}，距离 ${task.config.distance}）`);
+            emitLog(`跟随已开启（${task.config.mode === 'player' ? `玩家: ${task.config.target}` : task.config.mode === 'keyword' ? `关键词: ${task.config.target}` : '最近的玩家'}，距离 ${task.config.distance}）`);
             tick();
         } else {
             task.active = false;
             task.targetId = null;
             task.targetName = null;
             if (task.timer) { clearInterval(task.timer); task.timer = null; }
-            try { bot.pathfinder.setGoal(null); } catch (e) { /* ignore */ }
+            try { bot.pathfinder.setGoal(null); } catch (_e) { /* ignore */ }
             emitLog('跟随已停止');
         }
     };

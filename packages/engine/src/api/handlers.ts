@@ -1,7 +1,7 @@
-import { Server as IOServer, Socket } from "socket.io";
-import { ClientCommands, ServerEvents, BotConfigInput, BotConfigResponse } from "@mcbot/protocol";
+import type { Server as IOServer, Socket } from "socket.io";
+import { ClientCommands, ServerEvents, type BotConfigInput, type BotConfigResponse } from "@mcbot/protocol";
 import { botManager } from "../botManager";
-import { Ack, ok, fail } from "./ack";
+import { type Ack, ok, fail } from "./ack";
 import { registerModuleHandlers } from "./moduleHandlers";
 import { registerScriptHandlers } from "./scriptHandlers";
 import { buildObservation } from "../ai/observe";
@@ -23,7 +23,7 @@ export function registerHandlers(io: IOServer, socket: Socket): void {
   // force=true 绕过去重；广播面向全部客户端，老客户端收到等同幂等刷新（仅连接时一次）。
   for (const cfg of botManager.getConfigs()) {
     try {
-      (botManager.getInstance(cfg.id) as any)?.syncInventory?.(true);
+      botManager.getInstance(cfg.id)?.syncInventory?.(true);
     } catch { /* ignore */ }
   }
 

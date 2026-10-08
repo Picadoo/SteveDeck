@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { LogOut, Copy } from "lucide-react";
+import { LogOut, Copy, BellRing } from "lucide-react";
 import Modal from "@/components/ui/Modal";
-import { Button } from "@/components/ui/primitives";
+import { Button, Switch } from "@/components/ui/primitives";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/cn";
 import { copyText } from "@/lib/clipboard";
@@ -16,6 +16,10 @@ import {
   restartApp,
   parseConnectionString,
   normalizeUrl,
+  fetchNotifyConfig,
+  saveNotifyConfig,
+  testNotify,
+  type NotifyConfig,
 } from "@/lib/engine";
 
 interface ConnInfo {
@@ -47,7 +51,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
     });
     if (isTauri()) {
       getEngineConfig().then((c) => {
-        if (alive) setBuiltinEngine(!c || c.mode !== "remote");
+        if (alive) setBuiltinEngine(c?.mode !== "remote");
       });
     }
     return () => {
@@ -67,7 +71,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
       <div className="space-y-5">
         <Section title="当前引擎">
           <Row k="地址" v={conn.url.replace(/^https?:\/\//, "") || "—"} />
-          <Row k="版本" v={conn.engine?.version ? "v" + conn.engine.version : "—"} />
+          <Row k="版本" v={conn.engine?.version ? `v${conn.engine.version}` : "—"} />
           <Row
             k="状态"
             v={
@@ -118,6 +122,8 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
           )}
         </Section>
 
+        <NotifySection />
+
         <BackupSection />
 
         <Section title="其它">
@@ -134,7 +140,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
             </div>
             <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-xs">
               {(["lite", "full"] as const).map((m) => (
-                <button
+                <button type="button"
                   key={m}
                   onClick={() => setInvMode(m)}
                   className={cn(
@@ -227,7 +233,7 @@ function EngineSourceSection() {
         </div>
         <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-xs">
           {(["builtin", "remote"] as const).map((m) => (
-            <button
+            <button type="button"
               key={m}
               onClick={() => {
                 setMode(m);
@@ -275,6 +281,162 @@ function EngineSourceSection() {
           保存
         </Button>
       </div>
+    </Section>
+  );
+}
+
+// 挂机通知推送：引擎侧 Webhook——死亡/被踢/掉线时推到手机。配置存引擎数据目录（多端共享），
+// 这里只是编辑器；「测试」用已保存的配置发真实请求，成败即时反馈。
+const NOTIFY_PRESETS: { value: NotifyConfig["preset"]; label: string; placeholder: string }[] = [
+  { value: "serverchan", label: "Server酱", placeholder: "https://sctapi.ftqq.com/<SendKey>.send" },
+  { value: "dingtalk", label: "钉钉群机器人", placeholder: "https://oapi.dingtalk.com/robot/send?access_token=…" },
+  { value: "feishu", label: "飞书群机器人", placeholder: "https://open.feishu.cn/open-apis/bot/v2/hook/…" },
+  { value: "wecom", label: "企业微信群机器人", placeholder: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…" },
+  { value: "bark", label: "Bark（iOS）", placeholder: "https://api.day.app/<你的Key>" },
+  { value: "discord", label: "Discord Webhook", placeholder: "https://discord.com/api/webhooks/…" },
+  { value: "generic", label: "通用 JSON POST", placeholder: "https://你的接收端/webhook" },
+];
+const NOTIFY_EVENTS: { key: keyof NotifyConfig["events"]; label: string }[] = [
+  { key: "death", label: "死亡" },
+  { key: "kick", label: "被踢出" },
+  { key: "offline", label: "掉线（停止重连）" },
+  { key: "online", label: "上线" },
+  { key: "watch", label: "盯人命中" },
+];
+
+function NotifySection() {
+  const pushToast = useStore((s) => s.pushToast);
+  const [cfg, setCfg] = useState<NotifyConfig | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "unsupported">("loading");
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState<null | "save" | "test">(null);
+
+  useEffect(() => {
+    let alive = true; // UICORE-5：卸载后不 setState
+    fetchNotifyConfig().then((c) => {
+      if (!alive) return;
+      if (c) {
+        setCfg(c);
+        setState("ready");
+      } else {
+        setState("unsupported"); // 老引擎无此接口
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  function patch(p: Partial<NotifyConfig>) {
+    setCfg((c) => (c ? { ...c, ...p, events: { ...c.events, ...(p.events ?? {}) } } : c));
+    setDirty(true);
+  }
+
+  async function save() {
+    if (!cfg) return;
+    if (cfg.enabled && !/^https?:\/\//i.test(cfg.url.trim())) {
+      pushToast("Webhook 地址需以 http:// 或 https:// 开头", "error");
+      return;
+    }
+    setBusy("save");
+    const saved = await saveNotifyConfig(cfg);
+    setBusy(null);
+    if (saved) {
+      setCfg(saved);
+      setDirty(false);
+      pushToast("通知配置已保存", "success");
+    } else {
+      pushToast("保存失败（引擎不可达或版本过旧）", "error");
+    }
+  }
+
+  async function test() {
+    setBusy("test");
+    const r = await testNotify();
+    setBusy(null);
+    if (r.ok) pushToast("测试通知已发出，请查看手机/群", "success");
+    else pushToast(`测试失败：${r.error}`, "error");
+  }
+
+  if (state === "unsupported") return null; // 老引擎：不渲染半残区块，升级引擎后自然出现
+
+  const preset = NOTIFY_PRESETS.find((p) => p.value === cfg?.preset) ?? NOTIFY_PRESETS[0];
+  return (
+    <Section title="挂机通知推送">
+      <div className="flex items-center justify-between">
+        <div className="pr-3">
+          <div className="flex items-center gap-1.5 text-sm">
+            <BellRing className="h-3.5 w-3.5 text-muted" /> 出事推送到手机
+          </div>
+          <div className="text-[11px] text-muted">死亡 / 被踢 / 掉线时经 Webhook 推送（人不在电脑前也能知道）</div>
+        </div>
+        {state === "ready" && cfg && (
+          <Switch checked={cfg.enabled} onChange={(v) => patch({ enabled: v })} />
+        )}
+      </div>
+      {state === "loading" && <p className="text-xs text-muted">加载配置…</p>}
+      {state === "ready" && cfg && cfg.enabled && (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <select
+              value={cfg.preset}
+              onChange={(e) => patch({ preset: e.target.value as NotifyConfig["preset"] })}
+              className="h-9 shrink-0 rounded-lg border border-border bg-surface px-2 text-sm text-fg"
+            >
+              {NOTIFY_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <input
+              value={cfg.url}
+              onChange={(e) => patch({ url: e.target.value })}
+              placeholder={preset.placeholder}
+              className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 text-sm text-fg"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            {NOTIFY_EVENTS.map((ev) => (
+              <label key={ev.key} className="flex cursor-pointer items-center gap-1.5 text-xs">
+                <input
+                  type="checkbox"
+                  checked={cfg.events[ev.key]}
+                  onChange={(e) => patch({ events: { ...cfg.events, [ev.key]: e.target.checked } })}
+                  className="h-3.5 w-3.5"
+                />
+                {ev.label}
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] leading-relaxed text-muted">
+            同一机器人的同类事件 {cfg.cooldownSec}s 内只推一次（防死亡循环刷屏）。钉钉机器人若设了
+            「自定义关键词」，把关键词配成 SteveDeck 即可。
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={busy !== null || dirty || !cfg.url}
+              title={dirty ? "先保存再测试" : "用已保存的配置发一条测试消息"}
+              onClick={test}
+            >
+              {busy === "test" ? "发送中…" : "测试"}
+            </Button>
+            <Button size="sm" disabled={busy !== null || !dirty} onClick={save}>
+              {busy === "save" ? "保存中…" : "保存"}
+            </Button>
+          </div>
+        </div>
+      )}
+      {/* 关着也允许保存（把「开→关」落盘） */}
+      {state === "ready" && cfg && !cfg.enabled && dirty && (
+        <div className="flex justify-end">
+          <Button size="sm" disabled={busy !== null} onClick={save}>
+            {busy === "save" ? "保存中…" : "保存"}
+          </Button>
+        </div>
+      )}
     </Section>
   );
 }

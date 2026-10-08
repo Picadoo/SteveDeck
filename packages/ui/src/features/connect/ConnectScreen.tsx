@@ -43,28 +43,28 @@ export default function ConnectScreen() {
         </div>
 
         <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
+          <label className="block">
+            <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
               <Server className="h-3.5 w-3.5" /> 引擎地址 / 连接串
-            </label>
+            </span>
             <Input
               value={addr}
               onChange={(e) => setAddr(e.target.value)}
               placeholder="192.168.1.10:8723 或 mcbot://..."
               autoFocus
             />
-          </div>
-          <div>
-            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
+          </label>
+          <label className="block">
+            <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
               <KeyRound className="h-3.5 w-3.5" /> 访问令牌
-            </label>
+            </span>
             <Input
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="粘贴连接串时可留空"
             />
-          </div>
+          </label>
 
           {conn.status === "error" && conn.error && (
             <div className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">

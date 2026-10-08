@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { dataPath } from "./config/paths";
-import { BotConfig } from "@mcbot/protocol";
+import type { BotConfig } from "@mcbot/protocol";
 
 /**
  * 读 JSON，区分「文件不存在」与「文件损坏」：
@@ -19,7 +19,9 @@ function readJson<T>(file: string, fallback: T): T {
   }
   if (!text.trim()) return fallback;
   try {
-    return JSON.parse(text) as T;
+    // 剥 UTF-8 BOM：Windows 记事本编辑过的文件带 U+FEFF，JSON.parse 不容忍——
+    // 不剥会把整个文件误判损坏归档、以空数据运行（下次保存即覆盖为空）。
+    return JSON.parse(text.replace(/^\uFEFF/, "")) as T;
   } catch (e) {
     const corrupt = `${file}.corrupt-${Date.now()}`;
     try {
@@ -38,12 +40,12 @@ function readJson<T>(file: string, fallback: T): T {
  * 否则会用损坏内容把上一份好备份覆盖掉。这样即便主文件被写空/写坏，.bak 仍保留上一份好数据。
  */
 function writeJsonAtomic(file: string, data: unknown): void {
-  const tmp = file + ".tmp";
+  const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   try {
     if (fs.existsSync(file)) {
       JSON.parse(fs.readFileSync(file, "utf8")); // 解析通过才认为是好数据，值得备份
-      fs.copyFileSync(file, file + ".bak");
+      fs.copyFileSync(file, `${file}.bak`);
     }
   } catch {
     /* 现有文件损坏/不可读 → 跳过备份，保留既有好 .bak */

@@ -201,6 +201,25 @@ export const STEP_TYPES: StepTypeDef[] = [
     advanced: true,
   },
   { do: "close_gui", label: "关闭界面", fields: [] },
+  { do: "mod_key", label: "打开模组菜单", fields: [
+    { k: "key", label: "绑定按键（如 T / G）", type: "text" },
+    { k: "provider", label: "界面协议", type: "select", options: [
+      { value: "dragoncore", label: "龙核心" }, { value: "vexview", label: "VexView" },
+    ] },
+  ] },
+  { do: "mod_click", label: "点击模组按钮或槽位", fields: [
+    { k: "label", label: "按钮名称（精确匹配）", type: "text" },
+    { k: "slotKey", label: "槽位标识（可选，填后优先使用）", type: "text" },
+    { k: "mouse", label: "点击方式", type: "select", options: BTN_OPTS },
+  ] },
+  { do: "mod_refresh", label: "刷新模组槽位", fields: [] },
+  { do: "dragoncore_key", label: "龙核心：仅发送按键", advanced: true, fields: [
+    { k: "key", label: "绑定按键", type: "text" },
+  ] },
+  { do: "dragoncore_wait_gui", label: "龙核心：等待新界面", advanced: true, fields: [
+    { k: "name", label: "界面配置名（不含 Gui/ 和 .yml）", type: "text" },
+    { k: "timeout", label: "超时秒数（0 使用默认4秒）", type: "number" },
+  ] },
   // ===== 等待 / 变量 / 地点 =====
   {
     do: "wait_chat",

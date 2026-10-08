@@ -1,4 +1,4 @@
-import { CommandAck } from "@mcbot/protocol";
+import type { CommandAck } from "@mcbot/protocol";
 
 export type Ack = (res: CommandAck) => void;
 

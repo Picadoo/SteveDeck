@@ -1,5 +1,8 @@
 module.exports = (botInstance) => {
     const bot = botInstance.bot;
+    const { entityDisplayName, isArmorStand } = require('../utils/entityName');
+    const healthOf = e => e.health ?? (bot.version === '1.12.2' ? e.metadata?.[7] ?? e.metadata?.[6] : undefined);
+    const combatPolicy = () => require('../adapters').getServerAdapter(botInstance.config)?.combatPolicy?.(botInstance);
     
     // 确保默认配置完整
     botInstance.combatConfig = { 
@@ -12,10 +15,33 @@ module.exports = (botInstance) => {
         ...botInstance.combatConfig 
     };
 
-    const attackInterval = setInterval(() => {
-        if (!bot || !bot.entity || !botInstance.combatConfig.enabled) return;
-        if (botInstance.isBodyBusy && botInstance.isBodyBusy()) return; // 用东西时让位一拍(auto_use)
+    // 运行统计：模块页展示「在干什么」——开着却看不到效果是用户明确反馈过的痛点
+    const stats = { attacks: 0, lastTarget: null, lastAttackAt: 0, startedAt: Date.now(), lastBatch: [] };
+    botInstance.getCombatStats = () => {
+        const cfg = botInstance.combatConfig;
+        const recent = Date.now() - stats.lastAttackAt < 3000;
+        const policy = combatPolicy();
+        return {
+            activity: policy && !policy.ready() ? policy.waitingActivity : recent
+                ? `攻击 ${stats.lastTarget || '目标'}`
+                : `警戒中（${cfg.range} 格内无${cfg.attackPlayers && cfg.attackMobs ? '目标' : cfg.attackPlayers ? '玩家' : '怪物'}）`,
+            attacks: stats.attacks,
+            lastTarget: stats.lastTarget || '—',
+            targetsPerCycle: recent ? stats.lastBatch.length : 0,
+            lastTargets: [...stats.lastBatch.reduce((m,t)=>m.set(t.name,(m.get(t.name)||0)+1),new Map())].map(([name,count])=>`${name} ×${count}`).join('、') || '—',
+            targetEntityIds: stats.lastBatch.map(t=>t.id),
+        };
+    };
 
+    let attacking = false;
+    const attackInterval = setInterval(async () => {
+        if (attacking) return;
+        if (!bot?.entity || !botInstance.combatConfig.enabled) return;
+        const policy = combatPolicy();
+        if (policy && !policy.ready()) return;
+        if (botInstance.isBodyBusy?.()) return; // 用东西时让位一拍(auto_use)
+        attacking = true;
+        try {
         const cfg = botInstance.combatConfig;
         const p = bot.entity.position;
         const rangeSq = cfg.range * cfg.range;  // 用平方距离比较，省去每个实体的开方运算
@@ -25,7 +51,9 @@ module.exports = (botInstance) => {
         const candidates = [];
         for (const id in entities) {
             const e = entities[id];
-            if (!e || !e.position || e === bot.entity) continue;
+            if (!e?.position || e === bot.entity || isArmorStand(e)) continue;
+            if (policy && !policy.accepts(e)) continue;
+            if (typeof healthOf(e) === 'number' && healthOf(e) <= 0) continue;
 
             const isPlayer = e.type === 'player';
             // 兼容不同版本的实体类型标识
@@ -44,17 +72,25 @@ module.exports = (botInstance) => {
         candidates.sort((a, b) => a.dSq - b.dSq);
 
         const max = cfg.maxTargets;
+        const batch = [];
         for (let i = 0; i < candidates.length && i < max; i++) {
             const t = candidates[i].e;
             try {
                 if (t.position && entities[t.id]) {
-                    bot.lookAt(t.position.offset(0, (t.height || 1.8) / 2, 0), true);
+                    await bot.lookAt(t.position.offset(0, (t.height || 1.8) / 2, 0), true);
+                    if (!bot.entity || !botInstance.combatConfig.enabled || (policy && !policy.ready()) || !entities[t.id] || healthOf(t) <= 0 || bot.entity.position.distanceTo(t.position)>cfg.range) continue;
                     bot.attack(t);
+                    stats.attacks++;
+                    stats.lastTarget = entityDisplayName(t, String(t.id));
+                    stats.lastAttackAt = Date.now();
+                    batch.push({id:t.id,name:stats.lastTarget});
                 }
-            } catch (err) {
+            } catch (_err) {
                 // 实体在攻击瞬间消失，忽略
             }
         }
+        stats.lastBatch = batch;
+        } finally { attacking = false; }
     }, 400);
 
     // 保存定时器ID
@@ -70,7 +106,7 @@ module.exports = (botInstance) => {
             if (packet.entityId !== bot.entity.id) return;
             bot.entity.velocity.x = 0;
             bot.entity.velocity.z = 0;
-        } catch (err) {
+        } catch (_err) {
             // 忽略
         }
     };

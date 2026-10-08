@@ -1,6 +1,6 @@
 // modules/automine.js — v2：合法挖矿(legit-mine) + 强拟人状态机
 // 设计见 docs/superpowers/specs/2026-05-30-automine-v2-design.md
-const { goals, Movements } = require('mineflayer-pathfinder');
+const { goals } = require('mineflayer-pathfinder');
 const H = require('./mining/humanizer');
 const gotoWithTimeout = require('../utils/gotoWithTimeout');
 const { closestName } = require('../utils/closestName');
@@ -48,9 +48,7 @@ module.exports = (botInstance) => {
     const BLACKLIST_MS = 180000; // 拉黑 3 分钟：环境会变（别人挖通了/自己挖出新通道），到期自动解禁
     const posKey = (p) => `${p.x},${p.y},${p.z}`;
 
-    const emitLog = (msg) => botInstance.io.to(botInstance._room).to('admin').emit('log', {
-        user: bot.username, ownerId: botInstance.config.ownerId, msg, time: new Date().toLocaleTimeString(),
-    });
+    const emitLog = (msg) => botInstance.uiLog(msg); // 统一走 BotInstance.uiLog（此前 9 个模块各拷一份 emit）
 
     const schedule = (ms) => {
         if (task._tickTimer) clearTimeout(task._tickTimer);
@@ -64,7 +62,7 @@ module.exports = (botInstance) => {
 
     async function tick() {
         if (!task.active || !bot.entity) return;
-        if (botInstance.isBodyBusy && botInstance.isBodyBusy()) return; // 用东西时让位一拍(auto_use)
+        if (botInstance.isBodyBusy?.()) return; // 用东西时让位一拍(auto_use)
         switch (task.state) {
             case 'SCAN': return doScan();
             case 'APPROACH': return doApproach();
@@ -96,11 +94,11 @@ module.exports = (botInstance) => {
             }
         }
         return task.config.targets
-            .map(name => mc.blocksByName[name] && mc.blocksByName[name].id)
+            .map(name => mc.blocksByName[name]?.id)
             .filter(id => id !== undefined && id !== null);
     }
 
-    function distSqTo(p) {
+    function _distSqTo(p) {
         const e = bot.entity.position;
         const dx = e.x - p.x, dy = e.y - p.y, dz = e.z - p.z;
         return dx * dx + dy * dy + dz * dz;
@@ -163,7 +161,7 @@ module.exports = (botInstance) => {
                     await bot.tossStack(item);
                     dropped = true;
                     await new Promise(r => setTimeout(r, H.actionInterval(task.config.humanize, 400)));
-                } catch (e) { /* 单次丢弃失败忽略 */ }
+                } catch (_e) { /* 单次丢弃失败忽略 */ }
             }
         }
         return dropped;
@@ -196,7 +194,7 @@ module.exports = (botInstance) => {
             if (e.x < a.x1 - 4 || e.x > a.x2 + 4 || e.z < a.z1 - 4 || e.z > a.z2 + 4) {
                 emitLog('在挖矿区域外，返回区域中心');
                 const cx = (a.x1 + a.x2) / 2, cy = (a.y1 + a.y2) / 2, cz = (a.z1 + a.z2) / 2;
-                try { await gotoWithTimeout(bot, new goals.GoalNear(cx, cy, cz, 3), 30000); } catch (e2) { /* 走不回去下轮再试 */ }
+                try { await gotoWithTimeout(bot, new goals.GoalNear(cx, cy, cz, 3), 30000); } catch (_e2) { /* 走不回去下轮再试 */ }
                 return schedule(500);
             }
         }
@@ -241,7 +239,7 @@ module.exports = (botInstance) => {
             task.approachFails = 0; // 成功到达，清零熔断计数
             setState('MINE');
             return schedule(H.aimDelay(task.config.humanize)); // 瞄准延迟
-        } catch (e) {
+        } catch (_e) {
             // 寻路失败熔断：连续够不到目标（隔墙/卡住）时不死循环，转 ADVANCE 换区域重扫
             task._blacklist.set(posKey(pos), Date.now() + BLACKLIST_MS); // 这块先拉黑，重扫不再入队
             task.approachFails++;
@@ -275,7 +273,7 @@ module.exports = (botInstance) => {
 
         // 装最佳工具；无合适工具则跳过告警（不空手硬挖）
         let tool = null;
-        try { tool = bot.pathfinder.bestHarvestTool(block); if (tool) await bot.equip(tool, 'hand'); } catch (e) {}
+        try { tool = bot.pathfinder.bestHarvestTool(block); if (tool) await bot.equip(tool, 'hand'); } catch (_e) {}
         const canDig = typeof bot.canDigBlock === 'function' ? bot.canDigBlock(block) : true;
         if (!tool && !canDig) { emitLog(`无合适工具，跳过 ${block.name}`); return nextFromQueueOrScan(); }
 
@@ -305,7 +303,7 @@ module.exports = (botInstance) => {
                 }
                 if (veinStart && added > 0) emitLog(`矿脉跟随: 发现相邻 ${added} 块 ${name}，连挖`);
             }
-        } catch (e) { /* 挖掘失败跳过 */ }
+        } catch (_e) { /* 挖掘失败跳过 */ }
 
         if (H.shouldPause(task.config.humanize)) {
             await new Promise(r => setTimeout(r, H.pauseDuration(task.config.humanize)));
@@ -321,7 +319,7 @@ module.exports = (botInstance) => {
             task.advanceFails = 0;
             setState('SCAN');
             return schedule(H.actionInterval(task.config.humanize, 400));
-        } catch (e) {
+        } catch (_e) {
             task.advanceFails++;
             if (task.advanceFails >= (task.config.advance.maxFails || 5)) {
                 emitLog(`连续 ${task.advanceFails} 次无法推进，停机`);
@@ -344,12 +342,12 @@ module.exports = (botInstance) => {
 
         // 2) 仍满 → 回收脚本
         const sname = task.config.onFull.fallbackScript;
-        const hasScript = sname && botInstance._scripts && botInstance._scripts[sname];
+        const hasScript = sname && botInstance._scripts?.[sname];
         if (hasScript && typeof botInstance.startScript === 'function') {
             if (botInstance._runningScript) { await waitScriptDone((task.config.onFull.scriptTimeout || 120) * 1000); }
             emitLog(`调用回收脚本: ${sname}`);
             task.waitingScript = true;
-            try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (e) {}
+            try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (_e) {}
             botInstance.startScript(sname);
             const res = await waitScriptDone((task.config.onFull.scriptTimeout || 120) * 1000);
             task.waitingScript = false;
@@ -396,11 +394,11 @@ module.exports = (botInstance) => {
                     // 搭方块脱困（Baritone 式垫脚）：背包有这些方块时，pathfinder 可搭柱/搭桥——挖到坑底也上得来
                     const mc = getMcData();
                     m.scafoldingBlocks = ['cobblestone', 'dirt', 'netherrack', 'cobbled_deepslate', 'stone']
-                        .map(n => mc.itemsByName[n] && mc.itemsByName[n].id).filter(id => id != null);
+                        .map(n => mc.itemsByName[n]?.id).filter(id => id != null);
                     m.allow1by1towers = true;
                 }
-                if (bot.pathfinder && bot.pathfinder.setMovements) bot.pathfinder.setMovements(m);
-            } catch (e) {}
+                if (bot.pathfinder?.setMovements) bot.pathfinder.setMovements(m);
+            } catch (_e) {}
 
             botInstance.config.settings = botInstance.config.settings || {};
             botInstance.config.settings.autoMine = { active: true, config: task.config };
@@ -420,8 +418,8 @@ module.exports = (botInstance) => {
         task.active = false;
         setState('IDLE');
         if (task._tickTimer) { clearTimeout(task._tickTimer); task._tickTimer = null; }
-        try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (e) {}
-        if (botInstance.config.settings && botInstance.config.settings.autoMine) {
+        try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (_e) {}
+        if (botInstance.config.settings?.autoMine) {
             botInstance.config.settings.autoMine.active = false;
             if (typeof botInstance.saveConfig === 'function') botInstance.saveConfig();
         }
@@ -430,7 +428,12 @@ module.exports = (botInstance) => {
     botInstance.getMineStats = () => {
         const s = task.stats;
         const runTime = s.startTime ? (Date.now() - s.startTime) / 60000 : 0;
+        // 当前活动：近 20s 挖过 = 正在产出；否则在找方块（含区域内已挖空的情况，让用户看出「不动」的原因）
+        const sinceMine = s.lastMine ? Date.now() - s.lastMine : Infinity;
         const out = {
+            activity: sinceMine < 20000
+                ? `挖掘中（累计 ${s.total}）`
+                : (sinceMine === Infinity ? '寻找可挖方块中…' : `${Math.floor(sinceMine / 1000)}s 未挖到——附近可能已挖空/够不着`),
             minedByType: s.minedByType, total: s.total,
             runTime: Math.floor(runTime), rate: (s.total / Math.max(runTime, 1)).toFixed(2),
             lastMine: s.lastMine ? new Date(s.lastMine).toLocaleTimeString() : '从未', fullEvents: s.fullEvents,
@@ -484,7 +487,7 @@ module.exports = (botInstance) => {
     botInstance.cleanupHooks.push(() => {
         task.active = false; task.state = 'IDLE'; task.waitingScript = false;
         if (task._tickTimer) { clearTimeout(task._tickTimer); task._tickTimer = null; }
-        try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (e) {}
+        try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (_e) {}
     });
 
     // 测试钩子：仅在测试环境暴露内部

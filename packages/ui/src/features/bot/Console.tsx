@@ -7,19 +7,36 @@ import { cn } from "@/lib/cn";
 import McText from "@/components/McText";
 import MonitorPanel from "./MonitorPanel";
 import { mcPlain } from "@/lib/format";
+import { serverFishingLogs } from '@/adapters';
 import type { LogLine, ChatSegment } from "@mcbot/protocol";
 
 // 模块级稳定空数组：避免 zustand v5 选择器返回新引用导致无限重渲染
 const EMPTY_LOGS: LogLine[] = [];
+type LogView = "all" | "chat" | "op" | "fishing";
+
+function savedView(botId: string): LogView | undefined {
+  try {
+    const value = localStorage.getItem(`mcbot.logView.${botId}`);
+    if (value === "all" || value === "chat" || value === "op" || value === "fishing") return value;
+  } catch { /* 浏览器禁用存储时仍可筛选 */ }
+}
 
 function Console({ botId }: { botId: string }) {
   const logs = useStore((s) => s.logs[botId]) ?? EMPTY_LOGS;
+  const bot = useStore((s) => s.bots.find((b) => b.id === botId));
   const clearLog = useStore((s) => s.clearLog);
   const pushToast = useStore((s) => s.pushToast);
   const clickableChat = useStore((s) => s.clickableChat);
   const setClickableChat = useStore((s) => s.setClickableChat);
   const [filter, setFilter] = useState("");
-  const [level, setLevel] = useState<"all" | "chat" | "op">("all");
+  const [fishingDetail, setFishingDetail] = useState(false);
+  const [views, setViews] = useState<Record<string, LogView>>({});
+  const defaultFishing = bot?.serverAdapter?.defaultLogFilter === 'fishing';
+  const level = views[botId] ?? savedView(botId) ?? (defaultFishing ? "fishing" : "all");
+  const setLevel = (value: LogView) => {
+    setViews((prev) => ({ ...prev, [botId]: value }));
+    try { localStorage.setItem(`mcbot.logView.${botId}`, value); } catch { /* ignore */ }
+  };
   const [autoScroll, setAutoScroll] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -33,16 +50,20 @@ function Console({ botId }: { botId: string }) {
     const excl = terms.filter((t) => t.startsWith("-") && t.length > 1).map((t) => t.slice(1));
     // actionbar 与聊天同归「消息」类（一起显示），「操作」里排除它俩
     const isMsg = (lv?: string) => lv === "chat" || lv === "actionbar";
-    const byLevel = logs.filter(
+    const scoped = level === "fishing"
+      ? serverFishingLogs(bot, logs, fishingDetail)
+      : logs;
+    const byLevel = scoped.filter(
       (l) => !(level === "chat" && !isMsg(l.level)) && !(level === "op" && isMsg(l.level)),
     );
     const shown = byLevel.filter((l) => {
       if (!terms.length) return true;
-      const t = mcPlain(l.text).toLowerCase();
+      // 首选 appendLog 缓存的 plain（入库时洗好），老日志行（热重载残留）现场兜底
+      const t = (l.plain ?? mcPlain(l.text)).toLowerCase();
       return incl.every((w) => t.includes(w)) && !excl.some((w) => t.includes(w));
     });
     return { byLevel, shown };
-  }, [logs, level, terms]);
+  }, [logs, level, terms, bot?.username, fishingDetail]);
 
   useEffect(() => {
     if (!autoScroll) return;
@@ -51,30 +72,31 @@ function Console({ botId }: { botId: string }) {
   }, [shown, autoScroll]);
 
   async function copy() {
-    const ok = await copyText(logs.map((l) => `${l.time ?? ""} ${mcPlain(l.text)}`).join("\n"));
+    const ok = await copyText(shown.map((l) => `${l.time ?? ""} ${mcPlain(l.text)}`).join("\n"));
     pushToast(ok ? "日志已复制" : "复制失败", ok ? "success" : "error");
   }
 
   return (
     <div className="flex h-full flex-col">
       {/* 监听统计：紧凑面板，齿轮进配置弹窗（并入日志页，不再单独成栏） */}
-      <MonitorPanel botId={botId} />
-      <div className="mb-2 flex shrink-0 items-center gap-2">
+      <MonitorPanel botId={botId} fishing={!!defaultFishing} />
+      <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2">
         <div className="flex shrink-0 overflow-hidden rounded-lg border border-border text-[11px]">
-          {(["all", "chat", "op"] as const).map((v) => (
-            <button
+          {(["all", "chat", "op", "fishing"] as const).map((v) => (
+            <button type="button"
               key={v}
               onClick={() => setLevel(v)}
+              aria-pressed={level === v}
               className={cn(
                 "px-2 py-1 transition-colors",
                 level === v ? "bg-accent/15 text-accent" : "text-muted hover:text-fg",
               )}
             >
-              {v === "all" ? "全部" : v === "chat" ? "消息" : "操作"}
+              {v === "all" ? "全部" : v === "chat" ? "消息" : v === "fishing" ? "钓鱼" : "操作"}
             </button>
           ))}
         </div>
-        <div className="relative flex-1">
+        <div className="relative min-w-40 flex-1">
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -87,7 +109,7 @@ function Console({ botId }: { botId: string }) {
                 <span className="font-mono text-[10px] text-muted">
                   {shown.length}/{byLevel.length}
                 </span>
-                <button
+                <button type="button"
                   onClick={() => setFilter("")}
                   className="rounded p-0.5 text-muted transition-colors hover:bg-surface-2 hover:text-fg"
                   title="清除过滤"
@@ -108,13 +130,22 @@ function Console({ botId }: { botId: string }) {
         <ToolBtn active={autoScroll} title="自动滚动" onClick={() => setAutoScroll((a) => !a)}>
           <ArrowDownToLine className="h-3.5 w-3.5" />
         </ToolBtn>
-        <ToolBtn title="复制全部" onClick={copy}>
+        <ToolBtn title="复制当前筛选结果" onClick={copy}>
           <Copy className="h-3.5 w-3.5" />
         </ToolBtn>
         <ToolBtn title="清空" onClick={() => clearLog(botId)}>
           <Trash2 className="h-3.5 w-3.5" />
         </ToolBtn>
       </div>
+      {level === "fishing" && (
+        <div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted">
+          <span>{fishingDetail ? "钓鱼详细过程" : "收获与异常 · 重复异常合并"} · 全部可看原始日志</span>
+          <label className="flex shrink-0 cursor-pointer items-center gap-1">
+            <input type="checkbox" checked={fishingDetail} onChange={(e) => setFishingDetail(e.target.checked)} className="accent-accent" />
+            详细过程
+          </label>
+        </div>
+      )}
       <div
         ref={ref}
         className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-surface-2/40 p-3 font-mono text-xs leading-relaxed"
@@ -154,6 +185,9 @@ const LogRow = memo(function LogRow({
 }) {
   return (
     <div
+      // content-visibility:auto —— 滚出视口的日志行跳过渲染/布局（500 行长列表的持续开销大头）。
+      // contain-intrinsic-size 给未渲染行一个占位高度，避免滚动条跳动。
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 20px" } as React.CSSProperties}
       className={cn(
         "whitespace-pre-wrap break-words",
         line.level === "error" && "text-danger",
@@ -192,10 +226,16 @@ function SegmentLine({ segments, botId }: { segments: ChatSegment[]; botId: stri
       if (await copyText(c.value)) pushToast(`已复制命令：${c.value}（粘贴到聊天框发送）`, "info");
       else pushToast(c.value, "info");
     } else if (c.action === "open_url") {
-      try {
-        window.open(c.value, "_blank", "noopener");
-      } catch {
-        /* ignore */
+      // 协议白名单：URL 来自服务器下发的聊天 JSON，恶意/被黑的服可塞 file:、自定义协议
+      // （ms-msdt 之类），桌面 WebView2 里点击即触发外部协议调用。非 http(s) 改为复制。
+      if (/^https?:\/\//i.test(c.value)) {
+        try {
+          window.open(c.value, "_blank", "noopener");
+        } catch {
+          /* ignore */
+        }
+      } else if (await copyText(c.value)) {
+        pushToast(`链接协议不受信任，已复制而非打开：${c.value.slice(0, 60)}`, "info");
       }
     } else if (c.action === "copy_to_clipboard") {
       if (await copyText(c.value)) pushToast("已复制", "success");
@@ -217,8 +257,8 @@ function SegmentLine({ segments, botId }: { segments: ChatSegment[]; botId: stri
         const body = <McText text={s.text} />;
         if (s.click) {
           return (
-            <button
-              key={i}
+            // biome-ignore lint/suspicious/noArrayIndexKey: 聊天分段无状态且随消息行整体重建，下标即身份
+            <button key={i}
               type="button"
               onClick={() => fire(s)}
               title={s.hover || `点击：${s.click.value}`}
@@ -233,8 +273,8 @@ function SegmentLine({ segments, botId }: { segments: ChatSegment[]; botId: stri
           );
         }
         return (
-          <span
-            key={i}
+          // biome-ignore lint/suspicious/noArrayIndexKey: 聊天分段无状态且随消息行整体重建，下标即身份
+          <span key={i}
             title={s.hover || undefined}
             className={s.hover ? "cursor-help underline decoration-dotted decoration-muted underline-offset-2" : undefined}
             style={baseStyle}
@@ -262,7 +302,7 @@ function ToolBtn({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       title={title}
       className={cn(

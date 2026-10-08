@@ -3,13 +3,19 @@
 const FATAL_PATTERNS = [
     'banned', 'you are banned', 'ban for', '封禁', '封号', '已被封', '永久封',
     'blacklist', '黑名单',
-    'whitelist', 'white-list', 'white list', '白名单',
     'outdated', 'incompatible', 'unsupported client', 'unsupported version',
     '版本不', '版本过', '版本错', '不支持的版本',
     // 需要 Forge/FML 客户端（模组服）——原版/无头客户端连不上，重连无意义；停下并明确告知。
     // 只匹配明确的拒绝语，不用裸 'forge'/'fml'（否则服务器名/欢迎语含 "forge" 会被误判致命、永不重连）。
     'mods that require', 'forgemodloader', 'require fml', 'require forge',
     'fml/forge to be installed', 'to be installed on the client',
+];
+
+// 「维护型」踢出：服务器维护重启时临时开白名单是最常见的挂机中断场景——维护结束后应该自己回来。
+// 原先把 whitelist 归为永久致命，维护一结束 bot 也永不重连、必须人工点，与无人值守目标直接冲突。
+// 现在降级为「超长间隔低频重试」（不消耗重试次数、不打扰性通知刷屏）。
+const MAINTENANCE_PATTERNS = [
+    'whitelist', 'white-list', 'white list', '白名单',
 ];
 
 function extractText(reason) {
@@ -22,10 +28,10 @@ function extractText(reason) {
         }
         let out = reason.text || '';
         if (Array.isArray(reason.extra)) {
-            out += reason.extra.map(e => (typeof e === 'string' ? e : (e && e.text) || '')).join('');
+            out += reason.extra.map(e => (typeof e === 'string' ? e : (e?.text) || '')).join('');
         }
         return out || JSON.stringify(reason);
-    } catch (e) { return ''; }
+    } catch (_e) { return ''; }
 }
 
 function isFatalKick(reason) {
@@ -34,4 +40,11 @@ function isFatalKick(reason) {
     return FATAL_PATTERNS.some(p => text.includes(p));
 }
 
-module.exports = { isFatalKick, extractText, FATAL_PATTERNS };
+/** 维护型踢出（白名单类）：不停止重连，改为超长间隔低频重试。 */
+function isMaintenanceKick(reason) {
+    const text = extractText(reason).toLowerCase().replace(/§./gi, '');
+    if (!text) return false;
+    return MAINTENANCE_PATTERNS.some(p => text.includes(p));
+}
+
+module.exports = { isFatalKick, isMaintenanceKick, extractText, FATAL_PATTERNS, MAINTENANCE_PATTERNS };

@@ -2,7 +2,7 @@
    不依赖真实 MC 服务器（机器人会保持离线，验证的是管理/API/鉴权层）。 */
 const path = require("path");
 const os = require("os");
-process.env.MCBOT_DATA_DIR = path.join(os.tmpdir(), "mcbot-test-" + Date.now());
+process.env.MCBOT_DATA_DIR = path.join(os.tmpdir(), `mcbot-test-${Date.now()}`);
 
 const { io } = require("socket.io-client");
 const { PROTOCOL_VERSION } = require("@mcbot/protocol");
@@ -54,7 +54,7 @@ function emitAck(client, ev, payload) {
     username: "TestBot", host: "127.0.0.1", port: 25565, version: "1.20.1",
   });
   check("bot:add 返回 ok + id", !!addRes && addRes.ok === true && !!addRes.data && !!addRes.data.id);
-  const id = addRes && addRes.data && addRes.data.id;
+  const id = addRes?.data?.id;
   await delay(500);
   check("快照含新机器人(离线)", !!got.snapshot && got.snapshot.bots.some((b) => b.username === "TestBot" && b.online === false));
 
@@ -80,20 +80,46 @@ function emitAck(client, ev, payload) {
 
   // 8. /health
   try {
-    const h = await fetch(URL + "/health").then((r) => r.json());
-    check("/health 返回 ok", h.status === "ok" && h.version === "0.1.0");
-  } catch (e) {
+    const h = await fetch(`${URL}/health`).then((r) => r.json());
+    // 版本号从 package.json 动态读取，测试只验证「有值」——别硬编码具体版本，升版不该炸测试
+    check("/health 返回 ok", h.status === "ok" && typeof h.version === "string" && h.version.length > 0);
+  } catch (_e) {
     check("/health 返回 ok", false);
   }
 
   // 9. /api/bots 需令牌
   try {
-    const unauth = await fetch(URL + "/api/bots");
+    const unauth = await fetch(`${URL}/api/bots`);
     check("/api/bots 无令牌返回 401", unauth.status === 401);
-    const authed = await fetch(URL + "/api/bots", { headers: { Authorization: "Bearer " + TOKEN } });
+    const authed = await fetch(`${URL}/api/bots`, { headers: { Authorization: `Bearer ${TOKEN}` } });
     check("/api/bots 带令牌返回 200", authed.status === 200);
-  } catch (e) {
+  } catch (_e) {
     check("/api/bots 鉴权", false);
+  }
+
+  // 10. 贴图图标：版本就近回退（1.16.5 无同名贴图目录 → 302 到 1.16.4 的真实贴图路径）。
+  //     解析规则细节在 icons.test.cjs 单测；这里验证 HTTP 层真实行为。
+  try {
+    const icon = await fetch(`${URL}/textures/1.16.5/_icon/wheat_seeds.png`, { redirect: "manual" });
+    const loc = String(icon.headers.get("location") || "");
+    check("图标版本就近回退 302", icon.status === 302 && loc.includes("/textures/1.16.4/"));
+  } catch (_e) {
+    check("图标版本就近回退 302", false);
+  }
+
+  // 11. 挂机通知配置 API（读默认值 → 保存 → 读回；发送逻辑在 webhook.test.cjs 单测）
+  try {
+    const auth = { Authorization: `Bearer ${TOKEN}` };
+    const nc = await fetch(`${URL}/api/notify/config`, { headers: auth }).then((r) => r.json());
+    check("通知配置默认关闭", !!nc && nc.enabled === false && nc.preset === "generic");
+    const saved = await fetch(`${URL}/api/notify/config`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true, url: "https://example.com/hook", preset: "dingtalk" }),
+    }).then((r) => r.json());
+    check("通知配置可保存并回读", !!saved && saved.enabled === true && saved.preset === "dingtalk" && saved.url === "https://example.com/hook");
+  } catch (_e) {
+    check("通知配置 API", false);
   }
 
   client.close();

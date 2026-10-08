@@ -4,21 +4,12 @@
 const { goals, Movements } = require("mineflayer-pathfinder");
 const vec3 = require("vec3");
 
-const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 
 module.exports = (botInstance) => {
   const bot = botInstance.bot;
 
-  const emitLog = (msg) =>
-    botInstance.io
-      .to(botInstance._room)
-      .to("admin")
-      .emit("log", {
-        user: bot.username,
-        ownerId: botInstance.config.ownerId,
-        msg: `[JS] ${msg}`,
-        time: new Date().toLocaleTimeString(),
-      });
+  const emitLog = (msg) => botInstance.uiLog(`[JS] ${msg}`);
 
   let state = null; // { name, cancelled, _timers, _listeners }
 
@@ -26,10 +17,10 @@ module.exports = (botInstance) => {
   function disposeRun(st) {
     if (!st) return;
     for (const t of st._timers || []) {
-      try { clearInterval(t); clearTimeout(t); } catch (e) { /* ignore */ }
+      try { clearInterval(t); clearTimeout(t); } catch (_e) { /* ignore */ }
     }
     for (const pair of st._listeners || []) {
-      try { bot.removeListener(pair[0], pair[1]); } catch (e) { /* ignore */ }
+      try { bot.removeListener(pair[0], pair[1]); } catch (_e) { /* ignore */ }
     }
     st._timers = [];
     st._listeners = [];
@@ -51,7 +42,9 @@ module.exports = (botInstance) => {
       pos: () => (bot.entity ? bot.entity.position.clone() : null),
       health: () => ({ health: bot.health, food: bot.food }),
       observe: () => require("../ai/observe").buildObservation(botInstance.config.id),
-      goto: (x, y, z, range = 1) =>
+      // 可选第 5 参 timeoutMs（默认 60s，上限 10min）：目标不可达时 goal_reached 永不触发，
+      // 没有超时 await api.goto() 会永久挂起、监听器泄漏（MODB-1 修复：监听/定时器都登记进本次运行，停脚本必回收）
+      goto: (x, y, z, range = 1, timeoutMs = 60000) =>
         new Promise((resolve) => {
           try {
             // 复用实例的「无破坏模式」策略（受保护地图不挖不搭）；老实例回退默认
@@ -61,12 +54,21 @@ module.exports = (botInstance) => {
                 : new Movements(bot, botInstance.getMcData());
             bot.pathfinder.setMovements(mv);
             bot.pathfinder.setGoal(new goals.GoalNear(x, y, z, range));
-            const done = () => {
-              bot.removeListener("goal_reached", done);
-              resolve(true);
+            let timer = null;
+            const done = (ok) => {
+              if (timer) { clearTimeout(timer); timer = null; }
+              bot.removeListener("goal_reached", onReached);
+              resolve(ok);
             };
-            bot.once("goal_reached", done);
-          } catch (e) {
+            const onReached = () => done(true);
+            bot.once("goal_reached", onReached);
+            st._listeners.push(["goal_reached", onReached]); // 登记：脚本停止时 disposeRun 能解绑
+            timer = setTimeout(() => {
+              try { bot.pathfinder.setGoal(null); } catch (_e) { /* ignore */ }
+              done(false); // 超时视为走不到：停掉寻路目标，别让 bot 无限撞墙
+            }, Math.max(1000, Math.min(Number(timeoutMs) || 60000, 600000)));
+            st._timers.push(timer);
+          } catch (_e) {
             resolve(false);
           }
         }),
@@ -138,7 +140,7 @@ module.exports = (botInstance) => {
       .then(() => {
         if (!st.cancelled) emitLog(`「${st.name}」结束`);
       })
-      .catch((e) => emitLog(`错误: ${e && e.message ? e.message : e}`))
+      .catch((e) => emitLog(`错误: ${e?.message ? e.message : e}`))
       .finally(() => {
         if (state === st) {
           state = null;

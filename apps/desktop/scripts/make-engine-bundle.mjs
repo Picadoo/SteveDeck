@@ -47,7 +47,7 @@ const pkgDir = (name) => {
   if (fs.existsSync(path.join(flat, "package.json"))) return flat;
   const pnpmDir = path.join(out, "node_modules", ".pnpm");
   if (fs.existsSync(pnpmDir)) {
-    const hit = fs.readdirSync(pnpmDir).find((n) => n.startsWith(name + "@"));
+    const hit = fs.readdirSync(pnpmDir).find((n) => n.startsWith(`${name}@`));
     if (hit) {
       const p = path.join(pnpmDir, hit, "node_modules", name);
       if (fs.existsSync(p)) return p;
@@ -65,7 +65,7 @@ const countTopLinks = () => {
 
 // 1. deploy（hoisted：扁平、无符号链接的生产依赖）
 //    先 deploy 到临时目录、全部成功后再替换正式目录：deploy 失败时旧好包不会被毁（既无新包也无旧包的窘境）。
-const tmpOut = out + ".tmp";
+const tmpOut = `${out}.tmp`;
 log("清理临时目录");
 fs.rmSync(tmpOut, { recursive: true, force: true });
 const deployCmd = `pnpm -C "${root}" --filter=@mcbot/engine deploy --prod --legacy --config.node-linker=hoisted "${tmpOut}"`;
@@ -118,7 +118,7 @@ if (variant === "slim") {
     // pnpm 布局下的 .pnpm 实体（若存在）
     if (fs.existsSync(pnpmDir)) {
       for (const name of fs.readdirSync(pnpmDir)) {
-        if (heavy.some((x) => name.startsWith(x + "@"))) {
+        if (heavy.some((x) => name.startsWith(`${x}@`))) {
           fs.rmSync(path.join(pnpmDir, name), { recursive: true, force: true });
         }
       }
@@ -131,8 +131,11 @@ if (variant === "slim") {
 //      但每个 bot 只用自己版本。只保留常用版本，体积可从 ~248MB 砍到 ~75-120MB。
 //      （worker.js 61MB 是浏览器端渲染器代码，必须保留。）可用 ENGINE_VIEWER_VERSIONS 覆盖保留集。
 if (variant === "full") {
+  // 默认保留集含 1.19/1.21.4：1.19+/1.21+ 是当下主流服务器版本，缺了它们视角直接黑屏。
+  // 被裁版本不再是硬故障——viewer 补丁里有「就近版本 302 回退」，会用最接近的已有材质渲染
+  // （新方块可能缺贴图，但世界可看）。要完整效果就把目标版本加进 ENGINE_VIEWER_VERSIONS 重新打包。
   const keep = new Set(
-    (process.env.ENGINE_VIEWER_VERSIONS || "1.8.8,1.12.2,1.16.4,1.18.1,1.20.1")
+    (process.env.ENGINE_VIEWER_VERSIONS || "1.8.8,1.12.2,1.16.4,1.18.1,1.19,1.20.1,1.21.4")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),

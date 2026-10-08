@@ -16,7 +16,8 @@ export type BotId = string;
 /** 机器人正版/离线登录方式 */
 export type McAuth = "offline" | "microsoft";
 
-/** 已支持的功能模块标识 */
+/** 可开关的功能模块标识（与引擎 MODULE_TOGGLE 处理器的 case 集合一一对应；
+ *  scheduler 不在此列——它走 MODULE_ACTION 的 scheduler:add/remove/list，没有开关语义） */
 export type ModuleName =
   | "combat"
   | "fishing"
@@ -24,7 +25,10 @@ export type ModuleName =
   | "auto_farm"
   | "mob_hunter"
   | "trash_cleaner"
-  | "scheduler";
+  | "follow"
+  | "auto_use"
+  | "auto_chat"
+  | "player_watch";
 
 /** 创建机器人时的输入 */
 export interface BotConfigInput {
@@ -74,6 +78,8 @@ export type BotConfigResponse = Pick<
 
 /** 机器人运行设置（各模块开关与参数、定时任务、地点等） */
 export interface BotSettings {
+  /** 是否随引擎启动；默认开启，可设 false 保持手动启动。 */
+  autoStart?: boolean;
   /** 是否自动重连（默认 true）。关闭后断线不再自动重连。 */
   autoReconnect?: boolean;
   /** 基础重连间隔(秒)，默认 5；之后 ×1.5 指数退避到上限 ×10。 */
@@ -108,6 +114,10 @@ export interface BotSettings {
   combat?: boolean;
   combatConfig?: CombatConfig;
   fishing?: boolean;
+  fishingMode?: string;
+  /** 手动暂停钓鱼时，重连不恢复服务器定制自动钓鱼。 */
+  fishingAutoStartPaused?: boolean;
+  particleObserve?: boolean;
   autoMine?: { active: boolean; config?: Record<string, unknown> };
   autoFarm?: Record<string, unknown>;
   mobHunter?: { active: boolean; config?: Record<string, unknown> };
@@ -183,6 +193,58 @@ export interface MonitorStat {
   perMin: number;
   /** 按分类键(keyGroup)细分（如各物品名各自的数量）；无 keyGroup 时不含 */
   byKey?: Record<string, MonitorKeyStat>;
+  /** 服务器扩展按收竿/菜单上下文分类；旧入账留在 history，不参与近期速率。 */
+  fishingIncome?: {
+    startedAt: number;
+    totals: Record<"fishing" | "purchase" | "opening" | "other", { total: number; byName: Record<string, number> }>;
+    history: { total: number; byName: Record<string, number> };
+    recentItems: number;
+    windowMinutes: number;
+    recentPerMin: number;
+    serverEscapes: number;
+  };
+  fishingValuation?: {
+    policyLabel?: string;
+    consumables?: { checkedAt?: number; status: string; items?: { name: string; count: number }[]; error?: string | null } | null;
+    warehouseValue: number;
+    basketValue: number;
+    totalValue: number;
+    newCatchValue: number;
+    checkedAt: number;
+    canEstimate: boolean;
+    items: { name: string; warehouseCount: number; basketCount: number; unit: number | null; value: number | null }[];
+    unpricedNames: string[];
+    status: string;
+    error: string | null;
+  } | null;
+  /** 服务器扩展提供价格及重点物品，通用协议不定义具体鱼种。 */
+  fishingYield?: {
+    startedAt: number;
+    elapsedMinutes: number;
+    priceCheckedAt: number | null;
+    totalValue: number;
+    ordinaryValue: number;
+    priorityValue: number;
+    valuePerMinute: number;
+    valuePerHour: number;
+    recentValue: number;
+    recentValuePerHour: number;
+    recentWindowMinutes: number;
+    recentPending: boolean;
+    priority: FishingYieldItem[];
+    items: FishingYieldItem[];
+    unpricedNames: string[];
+  } | null;
+}
+
+export interface FishingYieldItem {
+  name: string;
+  count: number;
+  unit: number | null;
+  value: number | null;
+  countPerHour: number;
+  valuePerHour: number | null;
+  priority: boolean;
 }
 
 export interface SavedLocation {
@@ -231,6 +293,8 @@ export interface ModuleFlags {
   mobhunter?: boolean;
   follow?: boolean;
   trashcleaner?: boolean;
+  autochat?: boolean;
+  playerwatch?: boolean;
   script?: string | null;
 }
 
@@ -280,6 +344,8 @@ export interface WindowState {
 
 /** 列表/看板用的精简状态 */
 export interface BotSummary {
+  /** 可选服务器扩展能力；由引擎已注册的独立适配包提供。 */
+  serverAdapter?: { id: string; menu?: boolean; defaultLogFilter?: string };
   id: BotId;
   username: string;
   host: string;
@@ -332,10 +398,15 @@ export interface LogLine {
   time: string;
   text: string;
   level?: "info" | "warn" | "error" | "chat" | "actionbar";
+  /** 结构化事件标记：death=死亡、kick=被踢。UI 桌面通知按它识别（引擎改日志文案不再弄哑通知）。 */
+  kind?: "death" | "kick";
   /** 服务器聊天的可点击/可悬浮片段；有则前端渲染成可点按钮/悬浮提示 */
   segments?: ChatSegment[];
   /** 前端本地渲染序号（appendLog 时赋值，引擎不发送）：滑动窗口下稳定且唯一的 React key */
   seq?: number;
+  /** 前端本地缓存的洗码纯文本（appendLog 时赋值，引擎不发送）：日志过滤每输入一字符要扫全部行，
+   *  不缓存的话 500 行 × 每行重跑正则洗 § 色码是控制台最热的重复计算 */
+  plain?: string;
 }
 
 export interface ConnectionInfo {
@@ -393,11 +464,18 @@ export interface ServerToClientPayloads {
   [ServerEvents.BOT_STATUS]: { bot: BotStatus };
   [ServerEvents.BOT_DELETED]: { id: BotId };
   [ServerEvents.BOT_LOG]: { id: BotId; line: LogLine };
-  [ServerEvents.INVENTORY]: { user: string; items: InventoryItem[] };
-  [ServerEvents.WINDOW_OPEN]: { user: string; window: WindowState };
-  [ServerEvents.WINDOW_CLOSE]: { user: string };
-  [ServerEvents.WINDOW_UPDATE]: { user: string; window: WindowState };
+  // _bid：引擎广播层为透传事件注入的 bot ID 路由字段。user（用户名）在「同名 bot 挂不同
+  // 服务器」时会撞名，客户端应优先按 _bid 区分——只按 user 分发会把两个 bot 的数据串台。
+  [ServerEvents.INVENTORY]: { user: string; items: InventoryItem[]; _bid?: BotId };
+  [ServerEvents.WINDOW_OPEN]: { user: string; window: WindowState; _bid?: BotId };
+  [ServerEvents.WINDOW_CLOSE]: { user: string; _bid?: BotId };
+  [ServerEvents.WINDOW_UPDATE]: { user: string; window: WindowState; _bid?: BotId };
   [ServerEvents.BOT_ERROR]: { id: BotId; error: string };
+  [ServerEvents.SCRIPT_STATUS]: { user: string; name: string; status: "running" | "stopped" | "rejected"; detail?: string; _bid?: BotId };
+  [ServerEvents.SCRIPT_PROGRESS]: { user: string; path: (string | number)[]; action: string; loopIter?: number; _bid?: BotId };
+  [ServerEvents.SCRIPT_ERROR]: { user: string; path: string | (string | number)[]; action: string; message: string; _bid?: BotId };
+  [ServerEvents.SCRIPT_VARS]: { user: string; vars: Record<string, unknown>; _bid?: BotId };
+  [ServerEvents.MONITOR_STATS]: { user: string; stats: Record<string, unknown>; _bid?: BotId };
 }
 
 // ==================== 客户端 → 服务端 命令 ====================
@@ -446,7 +524,9 @@ export interface ClientToServerPayloads {
   [ClientCommands.BOT_GOTO]: { id: BotId; x: number; y: number; z: number };
   [ClientCommands.BOT_UPDATE]: { id: BotId; patch: Partial<BotConfigInput> };
   [ClientCommands.BOT_CONFIG]: { id: BotId };
-  [ClientCommands.MODULE_TOGGLE]: { id: BotId; module: ModuleName; active: boolean };
+  // config：开启模块时随带的配置（引擎与 UI 实际都在收发，此前协议漏声明——严格按协议
+  // 实现的客户端会带不了配置）
+  [ClientCommands.MODULE_TOGGLE]: { id: BotId; module: ModuleName; active: boolean; config?: Record<string, unknown> };
   [ClientCommands.MODULE_CONFIG]: { id: BotId; module: ModuleName; config: Record<string, unknown> };
   [ClientCommands.MODULE_ACTION]: { id: BotId; module: string; action: string; args?: Record<string, unknown> };
   [ClientCommands.SCRIPT_SAVE]: { script: BotScript };
@@ -471,6 +551,25 @@ export interface CommandAck<T = unknown> {
 }
 
 // ==================== 脚本（可视化脚本引擎） ====================
+
+/** 仅描述被动接收的数据；enabled 不表示界面已成功打开。 */
+export interface DragonCoreInspection {
+  protocol: string;
+  version: string;
+  connected: boolean;
+  profile: string | null;
+  enabled: boolean;
+  revision: number;
+  currentGui: string | null;
+  lastGui: { name: string; action: string; at: number; revision: number } | null;
+  keys: string[];
+  configuredKeys: string[];
+  configs: { name: string; bytes: number; at: number }[];
+  slotKeys: string[];
+  errors: number;
+  historicalErrors?: number;
+  lastError?: string;
+}
 
 export interface ScriptStep {
   do: string;
@@ -532,6 +631,7 @@ export const SCRIPT_DO_TYPES = [
   "attack", "interact",
   // GUI 菜单
   "wait_gui_item", "find_and_click_slot", "click_slot", "close_gui",
+  "mod_key", "mod_click", "mod_refresh", "dragoncore_key", "dragoncore_wait_gui",
   // 等待
   "wait_chat", "wait_until", "wait_spawn",
   // 变量
@@ -549,6 +649,7 @@ export const SCRIPT_SPEC = `脚本格式：
 物品：equip(item) equip_best_weapon equip_best_tool(block) drop(item,count) drop_all(keep=保留关键词) deposit(item,location?=先去该保存地点再就近存箱) use_item swap_hands craft(item,count，自动找工作台) dig(block,distance，挖最近的该方块) place(item,x,y,z，在坐标放置方块)
 战斗/交互：attack(entity,count,interval) interact(target，右键实体/NPC)
 GUI菜单：wait_gui_item(item,timeout) find_and_click_slot(item,button=0左1右,matchLore) click_slot(slot,button) close_gui
+模组菜单：mod_key(key,provider=dragoncore/vexview，打开并读取菜单) mod_click(label=精确按钮名，或slotKey=已读取槽位标识,mouse=0左1右) mod_refresh(更新槽位快照) dragoncore_key(key，仅发送已绑定按键) dragoncore_wait_gui(name=界面配置名,timeout=秒，等待上一步按键后的新开界面回包)。仅在已配置龙核心适配的服务器使用；发送和点击不等于兑换/装备成功，不自动重试物品操作。
 等待：wait_chat(pattern,timeout,save_to=存变量名) wait_until(cond,timeout) wait_spawn
 变量：set_var(name,value，特殊值 $health/$food/$x/$y/$z/=数学式) math_var(name,op=+,-,*,/,%,value)
 控制：if(cond,then=[步骤],else=[步骤]) repeat(times,steps=[步骤]) while(cond,steps=[步骤]) break_if(cond) run_script(name)

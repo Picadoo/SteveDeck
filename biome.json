@@ -1,0 +1,53 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "packages/*/src/**/*.{ts,tsx,js,cjs,mjs}",
+      "apps/*/scripts/**/*.mjs",
+      "scripts/**/*.mjs",
+      "packages/engine/test/**/*.cjs"
+    ]
+  },
+  "formatter": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noAssignInExpressions": "off",
+        "noConfusingVoidType": "off",
+        "noControlCharactersInRegex": "off",
+        "noArrayIndexKey": "warn"
+      },
+      "style": {
+        "noParameterAssign": "off",
+        "noNonNullAssertion": "off",
+        "useNodejsImportProtocol": "off",
+        "useConst": "warn",
+        "useTemplate": "warn"
+      },
+      "complexity": {
+        "noForEach": "off",
+        "useLiteralKeys": "off",
+        "noUselessEscapeInRegex": "off"
+      },
+      "correctness": {
+        "noUnusedVariables": "warn",
+        "useExhaustiveDependencies": "off"
+      },
+      "a11y": {
+        "noLabelWithoutControl": {
+          "level": "warn",
+          "options": { "inputComponents": ["Input", "Switch"] }
+        },
+        "noStaticElementInteractions": "warn",
+        "useKeyWithClickEvents": "warn",
+        "useButtonType": "warn",
+        "noSvgWithoutTitle": "off"
+      }
+    }
+  },
+  "javascript": { "globals": ["process", "Buffer", "__dirname", "require", "module"] }
+}

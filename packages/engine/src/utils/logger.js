@@ -10,7 +10,9 @@ const LOG_LEVELS = {
 
 class Logger {
     constructor() {
-        this.level = LOG_LEVELS[process.env.LOG_LEVEL || 'INFO'];
+        // 大小写不敏感 + 非法值回落 INFO：原实现 LOG_LEVEL=info（小写）得到 undefined，
+        // 所有级别比较全为 false——连 ERROR 都静默不输出，Docker 场景全盲且无提示。
+        this.level = LOG_LEVELS[(process.env.LOG_LEVEL || 'INFO').toUpperCase()] ?? LOG_LEVELS.INFO;
         // 日志目录可经 MCBOT_DATA_DIR 配置（Docker/桌面打包时数据目录与代码目录分离）；
         // 不配则保持旧行为（相对本文件的 ../logs，打包后落在 dist/logs）
         this.logDir = process.env.MCBOT_DATA_DIR
@@ -32,9 +34,9 @@ class Logger {
         const formatted = `[${timestamp}] [${level}] ${message}`;
 
         if (args.length > 0) {
-            return formatted + ' ' + args.map(arg =>
+            return `${formatted} ${args.map(arg =>
                 typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-            ).join(' ');
+            ).join(' ')}`;
         }
 
         return formatted;
@@ -44,14 +46,14 @@ class Logger {
         const date = new Date().toISOString().split('T')[0];
         const logFile = path.join(this.logDir, `${date}.log`);
 
-        fs.appendFile(logFile, formattedMessage + '\n', (err) => {
+        fs.appendFile(logFile, `${formattedMessage}\n`, (err) => {
             if (err) console.error('日志写入失败:', err);
         });
 
         // 错误单独记录
         if (level === 'ERROR') {
             const errorFile = path.join(this.logDir, `${date}-error.log`);
-            fs.appendFile(errorFile, formattedMessage + '\n', () => {});
+            fs.appendFile(errorFile, `${formattedMessage}\n`, () => {});
         }
     }
 

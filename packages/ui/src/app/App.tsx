@@ -9,6 +9,7 @@ import TopBar from "@/components/TopBar";
 import BotPanel from "@/features/bot/BotPanel";
 import TitleBar from "@/components/TitleBar";
 import Toaster from "@/components/ui/Toaster";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { startUpdateWatcher } from "@/lib/updater";
 
 const NAV_KEY = "mcbot.nav";
@@ -128,7 +129,10 @@ export default function App() {
               </div>
             )}
             <main className="min-h-0 flex-1 overflow-hidden">
-              <BotPanel />
+              {/* 面板级边界：GuiWindow/聊天栏等渲染服务器任意数据，崩了不连累侧栏和顶栏 */}
+              <ErrorBoundary label="机器人面板">
+                <BotPanel />
+              </ErrorBoundary>
             </main>
           </div>
         </div>

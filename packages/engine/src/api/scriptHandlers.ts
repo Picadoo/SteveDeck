@@ -1,7 +1,7 @@
-import { Socket } from "socket.io";
+import type { Socket } from "socket.io";
 import { ClientCommands } from "@mcbot/protocol";
 import { botManager } from "../botManager";
-import { Ack, ok, fail } from "./ack";
+import { type Ack, ok, fail } from "./ack";
 
 /** 脚本库为全局（单主人）。运行/停止作用于指定机器人实例。 */
 export function registerScriptHandlers(socket: Socket): void {
@@ -41,7 +41,7 @@ export function registerScriptHandlers(socket: Socket): void {
     const lib = botManager.loadScripts();
     lib[script.name] = script;
     botManager.saveScripts(lib);
-    botManager.eachInstance((inst) => inst.preloadScripts && inst.preloadScripts(lib));
+    botManager.eachInstance((inst) => inst.preloadScripts?.(lib));
     ack?.(ok());
   });
 
@@ -58,7 +58,7 @@ export function registerScriptHandlers(socket: Socket): void {
 
   socket.on(ClientCommands.SCRIPT_START, ({ id, name }: { id: string; name: string }, ack?: Ack) => {
     const inst = botManager.getInstance(id);
-    if (!inst || !inst.startScript) return ack?.(fail("机器人需在线才能运行脚本"));
+    if (!inst?.startScript) return ack?.(fail("机器人需在线才能运行脚本"));
     const lib = botManager.loadScripts();
     if (!lib[name]) return ack?.(fail(`脚本不存在: ${name}`));
     try {

@@ -7,34 +7,18 @@
 // 规则持久化在 settings.monitorRules（跨重启）；统计为本次引擎会话累计，跨「重连」保留、引擎重启或手动重置才清。
 
 const { validatePattern } = require("../utils/safePattern");
+const { parseNum, stripColor } = require("../utils/monitorParse"); // 纯解析逻辑（中文单位数字/洗色码），见该文件
 const { ServerEvents } = require("@mcbot/protocol"); // 事件名统一走协议常量，杜绝两端字符串漂移
-
-const UNITS = { 千: 1e3, 万: 1e4, 亿: 1e8, 兆: 1e12, 万亿: 1e12, 京: 1e16 };
-
-/** 解析带中文单位/逗号的数字："162.41亿"→1.6241e10  "50.31兆"→5.031e13  "1,500,000"→1500000 */
-function parseNum(str) {
-  if (str == null) return null;
-  const s = String(str).replace(/,/g, "").trim();
-  const m = s.match(/(-?\d+(?:\.\d+)?)\s*(万亿|京|千|万|亿|兆)?/);
-  if (!m) return null;
-  let v = parseFloat(m[1]);
-  if (isNaN(v)) return null;
-  if (m[2] && UNITS[m[2]]) v *= UNITS[m[2]];
-  return v;
-}
-
-function stripColor(s) {
-  return String(s == null ? "" : s).replace(/§./gi, "");
-}
 
 module.exports = (botInstance) => {
   const bot = botInstance.bot;
-
-  // 跨重连保留统计：BotInstance 对象在重连时复用，仅在已存在时不重置（引擎重启/手动 reset 才清）
+  let dirty = false;
+  const extension = require('../adapters').getServerAdapter(botInstance.config)?.createMonitor?.(botInstance, { pushStats: () => pushStats() });
   botInstance._monitorStats = botInstance._monitorStats || {};
+  const saveStats = () => extension?.save?.();
 
   const loadRules = () => {
-    const r = botInstance.config.settings && botInstance.config.settings.monitorRules;
+    const r = botInstance.config.settings?.monitorRules;
     return Array.isArray(r) ? r : [];
   };
   botInstance._monitorRules = loadRules();
@@ -47,7 +31,7 @@ module.exports = (botInstance) => {
       if (validatePattern(rule.pattern).ok) {
         try {
           re = new RegExp(rule.pattern, "g"); // 全局：一条消息里多个匹配(爆多种材料)都能逐个抓
-        } catch (e) {
+        } catch (_e) {
           re = null;
         }
       }
@@ -77,17 +61,17 @@ module.exports = (botInstance) => {
     }
   };
 
-  let dirty = false;
   const onMessage = (jsonMsg) => {
     let text;
     try {
       text = stripColor(jsonMsg.toString());
-    } catch (e) {
+    } catch (_e) {
       return;
     }
     if (!text) return;
     if (text.length > 1000) text = text.slice(0, 1000); // 限输入长度，缩小回溯最坏开销(API-3 纵深)
     const now = Date.now();
+    if (extension?.onMessage?.(jsonMsg, text, now)) dirty = true;
     for (const { rule, re } of compiled) {
       if (!rule.enabled || !re) continue;
       re.lastIndex = 0;
@@ -124,7 +108,7 @@ module.exports = (botInstance) => {
           if (m.index === re.lastIndex) re.lastIndex++; // 防零宽匹配死循环
           if (++guard > 500) break; // 安全上限
         }
-      } catch (e) {
+      } catch (_e) {
         continue;
       }
       if (hit) dirty = true;
@@ -159,10 +143,13 @@ module.exports = (botInstance) => {
       }
       out[rule.id] = payload;
     }
+    extension?.enrich?.(out, now);
     return out;
   };
 
+  let lastIncomePush = 0;
   const pushStats = () => {
+    lastIncomePush = Date.now();
     botInstance.io.to(botInstance._room).to("admin").emit(ServerEvents.MONITOR_STATS, {
       user: bot.username,
       ownerId: botInstance.config.ownerId,
@@ -174,7 +161,7 @@ module.exports = (botInstance) => {
   // MODB-11：无人观看时跳过这一拍的「构造 payload + 广播」重活——统计仍在 onMessage 里照常累计(_monitorStats，
   // 跨重连保留)，dirty 保持置位，待有人看时下一拍即把最新累计值补推；getMonitor() 也随时按需返回当前值。
   const pushTimer = setInterval(() => {
-    if (dirty && botInstance.hasWatchers()) {
+    if ((dirty || (extension?.periodic && Date.now() - lastIncomePush >= 10000)) && botInstance.hasWatchers()) {
       dirty = false;
       pushStats();
     }
@@ -202,6 +189,8 @@ module.exports = (botInstance) => {
 
   botInstance.resetMonitorStats = () => {
     botInstance._monitorStats = {};
+    extension?.reset?.();
+    saveStats();
     pushStats();
     return botInstance.getMonitor();
   };
@@ -214,14 +203,14 @@ module.exports = (botInstance) => {
     try {
       re = new RegExp(pattern);
     } catch (e) {
-      return { ok: false, error: "正则无效: " + e.message };
+      return { ok: false, error: `正则无效: ${e.message}` };
     }
     const text = stripColor(sample || "");
     let m;
     try {
       m = re.exec(text);
     } catch (e) {
-      return { ok: false, error: "匹配出错: " + e.message };
+      return { ok: false, error: `匹配出错: ${e.message}` };
     }
     if (!m) return { ok: true, matched: false };
     const rawVal = m[valueGroup || 1];
@@ -230,6 +219,8 @@ module.exports = (botInstance) => {
 
   botInstance.cleanupHooks = botInstance.cleanupHooks || [];
   botInstance.cleanupHooks.push(() => {
+    saveStats();
+    extension?.close?.();
     bot.removeListener("message", onMessage);
     clearInterval(pushTimer);
   });

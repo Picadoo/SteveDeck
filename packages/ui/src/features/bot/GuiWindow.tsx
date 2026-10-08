@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/primitives";
 import McText from "@/components/McText";
 import ChatOverlay from "./ChatOverlay";
 import { ItemIcon } from "@/components/ItemIcon";
+import { MC_TIP_CLASS, McItemTipBody } from "./inventory/McItemTip";
+import { mcPlain } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import type { BotSummary, WindowSlot } from "@mcbot/protocol";
 
@@ -23,6 +25,7 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [hover, setHover] = useState<Hover | null>(null);
   const [clicking, setClicking] = useState(false);
+  const clickPending = useRef(false);
 
   // 刷新/切换账号后自动恢复：若服务端此刻有打开的窗口，拉回来重新弹出
   // （预览是静态构建包，刷新会丢失前端窗口状态；服务端的窗口仍在）
@@ -92,13 +95,22 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
     setWin(bot.id, null);
   };
   const click = async (slot: number, button = 0, mode = 0) => {
-    if (clicking) return; // 防连点：上一次点击在途时直接吞掉（并发 click 会让服务端 GUI 状态错乱）
+    if (clickPending.current) return; // 同一渲染帧内的连点也必须拦住
+    clickPending.current = true;
     setHover(null);
     setClicking(true);
-    const r = await cmd.window.click(bot.id, slot, button, mode);
-    setClicking(false);
-    if (r.ok) setWin(bot.id, r.data ?? null);
-    else pushToast(r.error || "点击失败", "error");
+    try {
+      const r = await cmd.window.click(bot.id, slot, button, mode, win.id);
+      if (r.ok) setWin(bot.id, r.data ?? null);
+      else {
+        const fresh = await cmd.window.get(bot.id);
+        if (fresh.ok) setWin(bot.id, fresh.data ?? null);
+        pushToast(r.error || "点击失败", "error");
+      }
+    } finally {
+      clickPending.current = false;
+      setClicking(false);
+    }
   };
   const refresh = async () => {
     const r = await cmd.window.get(bot.id);
@@ -147,11 +159,11 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
           <span className="hidden shrink-0 text-[10px] text-muted sm:inline">点目标格放下 · 右键放一个</span>
         </div>
       )}
-      <SlotGrid slots={container} texBase={texBase} onClick={click} onHover={onHover} />
+      <SlotGrid slots={container} texBase={texBase} onClick={click} onHover={onHover} disabled={clicking} />
       {split < total && backpack.length > 0 && (
         <>
           <div className="mb-1.5 mt-3 text-[11px] font-medium text-muted">你的背包</div>
-          <SlotGrid slots={backpack} base={split} texBase={texBase} onClick={click} onHover={onHover} />
+          <SlotGrid slots={backpack} base={split} texBase={texBase} onClick={click} onHover={onHover} disabled={clicking} />
         </>
       )}
 
@@ -168,12 +180,14 @@ function SlotGrid({
   texBase,
   onClick,
   onHover,
+  disabled,
 }: {
   slots: (WindowSlot | null)[];
   base?: number;
   texBase: string;
   onClick: (slot: number, button?: number, mode?: number) => void;
   onHover: (h: Hover | null) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="grid grid-cols-9 gap-1">
@@ -183,7 +197,8 @@ function SlotGrid({
         const filler = !!it && /glass_pane|stained_glass/i.test(it.id || "");
         const active = !!it && !filler;
         return (
-          <button
+          <button type="button"
+            disabled={disabled}
             key={slotIdx}
             onClick={(e) => onClick(slotIdx, 0, e.shiftKey ? 1 : 0)}
             onContextMenu={(e) => {
@@ -192,6 +207,7 @@ function SlotGrid({
             }}
             onMouseMove={active ? (e) => onHover({ it: it!, x: e.clientX, y: e.clientY }) : undefined}
             onMouseLeave={active ? () => onHover(null) : undefined}
+            aria-label={it ? `格子 ${slotIdx}：${mcPlain(it.display || it.name || it.id || "物品")}` : `空格子 ${slotIdx}`}
             className={cn(
               "relative flex aspect-square items-center justify-center rounded border p-0.5 transition-colors",
               // 空格也可点：手里拿着东西时点空格=放下（之前 disabled 导致光标物品放不进空位）
@@ -241,36 +257,22 @@ function ItemTip({ hover, onEnter, onLeave }: { hover: Hover; onEnter: () => voi
     setStyle({ left, top, maxHeight: safeBottom - top });
   }, [hover.x, hover.y, it]);
 
-  const name = it.display || it.name || "";
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: 悬浮提示的悬停保持（防止移入提示时消失），无点击语义
     <div
       ref={ref}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
-      className="fixed z-[100] max-w-[18rem] overflow-y-auto overscroll-contain rounded border border-[#34106b] bg-[#100016]/95 px-2.5 py-2 shadow-xl"
+      className={cn("fixed z-[100] max-w-[18rem] overflow-y-auto overscroll-contain", MC_TIP_CLASS)}
       style={style}
     >
-      <div className="text-sm font-semibold leading-snug">
-        <McText text={name} onDark />
-        {it.count > 1 ? (
-          <span className="ml-1 text-[11px] font-normal text-white/50">×{it.count}</span>
-        ) : null}
-      </div>
-      {it.enchants && it.enchants.length > 0 && (
-        <div className="mt-1 space-y-0.5">
-          {it.enchants.map((e, i) => (
-            <div key={i} className="text-[11px] text-[#9d8bff]">
-              {e}
-            </div>
-          ))}
-        </div>
-      )}
-      {it.lore && (
-        <div className="mt-1 whitespace-pre-line text-[11px] leading-snug text-white/75">
-          <McText text={it.lore} onDark />
-        </div>
-      )}
-      {it.id && <div className="mt-1.5 text-[10px] text-white/30">minecraft:{it.id}</div>}
+      <McItemTipBody
+        name={it.display || it.name || ""}
+        count={it.count}
+        enchants={it.enchants}
+        lore={it.lore}
+        texture={it.id}
+      />
     </div>
   );
 }

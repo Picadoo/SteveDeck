@@ -15,7 +15,9 @@ const MAX_PORT = BASE_PORT + VIEWER_PORTS - 1;
 const usedPorts = new Set();
 const portOwners = new Map(); // port -> 持有它的 botInstance；池满时据此识别并回收陈旧端口(MODB-6)
 
-// 选一个当前未占用的端口（已占位的会被跳过，所以刚关闭、待回收的旧端口不会被立刻重选）
+// 选一个当前未占用的端口（已占位的会被跳过，所以刚关闭、待回收的旧端口不会被立刻重选）。
+// 全部端口都被活跃视角占用时返回 null——绝不返回在用端口：在其上重绑会异步抛 EADDRINUSE
+// （try/catch 接不住），且覆盖 portOwners 归属后，陈旧回收会把还活着的 viewer 端口误判可收。
 function pickPort() {
   let port = BASE_PORT;
   while (usedPorts.has(port) && port < MAX_PORT) port++;
@@ -31,6 +33,7 @@ function pickPort() {
     }
     port = BASE_PORT;
     while (usedPorts.has(port) && port < MAX_PORT) port++;
+    if (usedPorts.has(port)) return null; // 真满：全部端口都有活跃 viewer
   }
   return port;
 }
@@ -47,7 +50,7 @@ module.exports = (botInstance) => {
   // 立即关闭当前视角服务（内部用）；端口延迟回收，避免紧接着的重启在同端口 rebind 触发 EADDRINUSE
   function closeViewerNow() {
     try {
-      if (bot.viewer && bot.viewer.close) bot.viewer.close();
+      if (bot.viewer?.close) bot.viewer.close();
     } catch {
       /* ignore */
     }
@@ -85,42 +88,50 @@ module.exports = (botInstance) => {
     return true;
   };
 
-  botInstance.startViewer = (firstPerson = false) => {
+  botInstance.startViewer = (firstPerson = false, viewDistance) => {
     firstPerson = !!firstPerson;
+    // viewDistance：区块数，直接决定带宽/显存/CPU。默认 3（≈48格，够看清周围）；
+    // UI 可传 2~8 覆盖（弱机调低救卡顿、好机调高看更远）；ENGINE_VIEWER_DISTANCE 改默认值。
+    const envDefault = Math.max(2, Math.min(8, Number(process.env.ENGINE_VIEWER_DISTANCE) || 3));
+    const vd = Math.max(2, Math.min(8, Number(viewDistance) || envDefault));
     // 抢占：取消任何尚未落地的延迟 stop（否则它可能稍后拆掉本次要起/复用的实例）。
     // 并自增代际：让此刻之前排程的 stop 落地时因「代际已变」而成为 no-op（幂等 + 代际化的核心）。
     cancelPendingStop();
     botInstance._viewerGen++;
-    // 已在运行且人称一致 → 原地复用，避免无谓重启（端口不变）
-    if (botInstance._viewerPort && botInstance._viewerFirstPerson === firstPerson)
-      return { port: botInstance._viewerPort, reused: true, firstPerson };
-    // 切人称：先就地关旧服务（其端口进入 2s 延迟回收，新服务必然换端口）
+    // 已在运行且人称/视距一致 → 原地复用，避免无谓重启（端口不变）
+    if (botInstance._viewerPort && botInstance._viewerFirstPerson === firstPerson && botInstance._viewerDistance === vd)
+      return { port: botInstance._viewerPort, reused: true, firstPerson, viewDistance: vd };
+    // 切人称/视距：先就地关旧服务（其端口进入 2s 延迟回收，新服务必然换端口）
     if (botInstance._viewerPort) closeViewerNow();
 
     // 直取子模块入口，不走根 index.js：根入口饿加载 headless/viewer 渲染链，
     // 会把 node-canvas（我们已不装的原生包）拽进来——服务端只需要 web 模式这一个函数。
     const mineflayerViewer = require('prismarine-viewer/lib/mineflayer');
-    // viewDistance：3 区块≈48格，足够看清周围又省带宽/显存/CPU；ENGINE_VIEWER_DISTANCE 可覆盖（2~8）
-    const viewDistance = Math.max(2, Math.min(8, Number(process.env.ENGINE_VIEWER_DISTANCE) || 3));
+    // 绑定地址跟随引擎主端口的暴露模型（CORE-6 同款）：默认只绑回环。此前视角服务无鉴权还绑全网卡，
+    // 桌面场景等于把 bot 实时画面开给整个局域网。Docker/远程部署已设 ENGINE_HOST=0.0.0.0，行为不变。
+    const host = process.env.ENGINE_HOST || '127.0.0.1';
 
     let lastErr;
     for (let attempt = 0; attempt < 4; attempt++) {
       const port = pickPort();
+      if (port == null)
+        throw new Error(`同时开启的视角已达上限（${VIEWER_PORTS} 个）——关掉其他机器人的实时画面，或调大 ENGINE_VIEWER_PORTS`);
       usedPorts.add(port); // 立刻占位：重试/并发都不会重选同一端口
       try {
         // firstPerson=true 第一人称（镜头=机器人视线）；false 第三人称（看得到本体、可 orbit 自由转镜头）
-        mineflayerViewer(bot, { port, firstPerson, viewDistance });
+        mineflayerViewer(bot, { port, host, firstPerson, viewDistance: vd });
         botInstance._viewerFirstPerson = firstPerson;
+        botInstance._viewerDistance = vd;
         botInstance._viewerPort = port;
         portOwners.set(port, botInstance); // 记录端口归属(MODB-6)
-        return { port, firstPerson };
+        return { port, firstPerson, viewDistance: vd };
       } catch (e) {
         lastErr = e;
         // 该端口同步失败：保留占位、延迟回收，换下一个端口重试
         setTimeout(() => usedPorts.delete(port), 2000);
       }
     }
-    throw new Error('视角启动失败：' + (lastErr && lastErr.message ? lastErr.message : lastErr));
+    throw new Error(`视角启动失败：${lastErr?.message ? lastErr.message : lastErr}`);
   };
 
   // 空闲自停：前端异常退出（崩溃/强杀/断网）不会发 viewer:stop，渲染服务会常驻到引擎重启，

@@ -29,7 +29,7 @@ import { Card } from "@/components/ui/primitives";
 import { loadOverviewPrefs, saveOverviewPrefs, OVERVIEW_CARDS } from "@/lib/overviewPrefs";
 import { cmd } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
-import { usePageVisible } from "@/lib/usePageVisible";
+import { usePoll } from "@/lib/usePoll";
 import McText from "@/components/McText";
 import { cnMob } from "@/lib/mobNames";
 import { classifyNearby, KIND_ORDER, KIND_LABEL, KIND_COLOR, type NearbyKind } from "@/lib/entityKind";
@@ -73,41 +73,40 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
 
   const m = bot.modules;
 
-  // 实时感知 + 活动统计轮询
-  const visible = usePageVisible();
+  // 离线即清空（usePoll 在 enabled=false 时不跑，这里补一次性清理）
   useEffect(() => {
     if (!bot.online) {
       setObs(null);
       setStats({});
-      return;
     }
-    if (!visible) return; // 页面后台：暂停拉取（恢复可见时 visible 变化触发重跑、立即拉一次）
-    let cancelled = false;
-    const poll = async () => {
-      const r = await cmd.observe(bot.id);
-      if (!cancelled && r.ok && r.data) setObs(r.data);
+  }, [bot.online]);
+
+  // 实时感知 + 活动统计轮询（页面后台自动暂停，见 usePoll）
+  usePoll(
+    async (alive) => {
+      // 感知 + 各模块统计并行发（原来串行 await，3 个模块 = 4 个串行 RTT，远程引擎下一轮要拖秒级）
       const jobs: [string, string][] = [];
       if (m.automine) jobs.push(["automine", "automine"]);
       if (m.autofarm) jobs.push(["autofarm", "auto_farm"]);
       if (m.mobhunter) jobs.push(["mobhunter", "mob_hunter"]);
-      // 攒一次 setStats：循环里逐个 set 各隔一个 await，React 18 不会合并成一次渲染
+      const obsPromise = cmd.observe(bot.id);
+      const statsPromise = Promise.all(jobs.map(([, mk]) => cmd.moduleAction(bot.id, mk, "stats")));
+      const r = await obsPromise;
+      const statRes = await statsPromise;
+      if (!alive()) return;
+      if (r.ok && r.data) setObs(r.data);
+      // 攒一次 setStats：逐个 set 会隔着 await 各触发一次渲染，React 18 合并不了
       const merged: Record<string, any> = {};
-      for (const [k, mk] of jobs) {
-        const s = await cmd.moduleAction(bot.id, mk, "stats");
-        if (cancelled) return;
+      jobs.forEach(([k], i) => {
+        const s = statRes[i];
         if (s.ok && s.data) merged[k] = s.data;
-      }
+      });
       if (Object.keys(merged).length) setStats((p) => ({ ...p, ...merged }));
-    };
-    poll();
-    const t = setInterval(poll, Math.max(1, prefs.intervalSec) * 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-    // UIFEAT-4：只依赖 poll 实际读取的模块标志，去掉无关的 combat/fishing/trashcleaner（避免无谓重建 interval）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bot.id, bot.online, prefs.intervalSec, m.automine, m.autofarm, m.mobhunter, visible]);
+    },
+    Math.max(1, prefs.intervalSec) * 1000,
+    // 只依赖 poll 实际读取的模块标志（UIFEAT-4：去掉无关的 combat/fishing/trashcleaner，避免无谓重建）
+    { enabled: bot.online, deps: [bot.id, m.automine, m.autofarm, m.mobhunter] },
+  );
 
   if (!bot.online) {
     return (
@@ -157,7 +156,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
       {/* 顶部：全停（急停所有主动行为，留定时脚本）+ 配置 */}
       <div className="flex items-center justify-between">
         {bot.online ? (
-          <button
+          <button type="button"
             onClick={async () => {
               const r = await cmd.moduleAction(bot.id, "bot", "stopAll");
               pushToast(r.ok ? "已停止所有操作（定时脚本保留）" : (r.error || "停止失败"), r.ok ? "success" : "error");
@@ -170,7 +169,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
         ) : (
           <span />
         )}
-        <button
+        <button type="button"
           onClick={() => setCfgOpen((v) => !v)}
           className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-muted transition-colors hover:bg-surface-2 hover:text-fg"
         >
@@ -202,7 +201,7 @@ export default function OverviewTab({ bot }: { bot: BotSummary }) {
               {OVERVIEW_CARDS.map((c) => {
                 const on = !prefs.hidden[c.key];
                 return (
-                  <button
+                  <button type="button"
                     key={c.key}
                     onClick={() => updatePrefs({ ...prefs, hidden: { ...prefs.hidden, [c.key]: on } })}
                     className={cn(
@@ -515,7 +514,7 @@ function NearbyRow({
       </span>
       <span className="flex shrink-0 items-center gap-2 text-xs tabular-nums">
         {typeof health === "number" && (
-          <span className="flex items-center gap-0.5 text-rose-400" title={`血量 ${health}${typeof maxHealth === "number" ? "/" + maxHealth : ""}`}>
+          <span className="flex items-center gap-0.5 text-rose-400" title={`血量 ${health}${typeof maxHealth === "number" ? `/${maxHealth}` : ""}`}>
             <Heart className="h-3 w-3 fill-current" />
             {fmtBig(health)}
             {typeof maxHealth === "number" && maxHealth !== health && (
@@ -558,6 +557,7 @@ function TextIntel({ title, items }: { title: string; items: { text: string; dis
       </div>
       <div className="space-y-0.5">
         {items.slice(0, 6).map((h, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: 情报行纯展示随轮询整体重建，文本可重复无自然 key
           <div key={i} className="flex items-baseline justify-between gap-2 text-xs" title={h.text}>
             <span className="min-w-0 flex-1 truncate">
               <McText text={h.text} />

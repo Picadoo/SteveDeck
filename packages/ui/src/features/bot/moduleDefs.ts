@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Swords, Fish, Pickaxe, Wheat, Crosshair, Trash2, Footprints } from "lucide-react";
+import { Swords, Fish, Pickaxe, Wheat, Crosshair, Trash2, Footprints, Megaphone, Eye } from "lucide-react";
 import type { ModuleFlags } from "@mcbot/protocol";
 
 export type FieldType = "switch" | "number" | "tags" | "select" | "multiselect";
@@ -63,10 +63,12 @@ export const MODULES: ModuleDef[] = [
     key: "fishing",
     name: "自动钓鱼",
     icon: Fish,
-    desc: "持杆自动抛竿收竿",
+    desc: "普通钓鱼及服务器扩展模式",
     activeFlag: "fishing",
     applyVia: "toggle",
-    fields: [],
+    fields: [{ key: "mode", label: "钓鱼模式", type: "select", default: "vanilla",
+      options: [{ value: "vanilla", label: "普通钓鱼" }],
+      hint: "服务器扩展模式由已启用的适配包提供。" }],
   },
   {
     key: "automine",
@@ -192,7 +194,7 @@ export const MODULES: ModuleDef[] = [
         type: "tags",
         default: [],
         placeholder: "Steve 或 庄稼汉",
-        hint: "按看到的名字填即可，颜色码自动忽略；目标丢失会原地待命并自动重找",
+        hint: "填看到的名字即可；目标丢失自动重找",
       },
       { key: "distance", label: "跟随距离（格）", type: "number", default: 3, min: 1, max: 10 },
     ],
@@ -213,6 +215,59 @@ export const MODULES: ModuleDef[] = [
         placeholder: "rotten_flesh, cobblestone",
         registry: "items",
         registryMatch: "includes",
+      },
+    ],
+  },
+  {
+    key: "auto_chat",
+    name: "定时广告",
+    icon: Megaphone,
+    desc: "固定间隔循环喊话（摆摊/招募/公告）",
+    activeFlag: "autochat",
+    applyVia: "toggle",
+    fields: [
+      {
+        key: "messages",
+        label: "消息列表（依次轮播）",
+        type: "tags",
+        default: [],
+        placeholder: "出售钻石剑 /w 我 或 收各种矿石",
+        hint: "开启 3 秒后发第一条，之后按间隔轮播",
+      },
+      {
+        key: "intervalSec",
+        label: "发送间隔（秒）",
+        type: "number",
+        default: 60,
+        min: 10,
+        max: 3600,
+        hint: "下限 10s——太快会被当刷屏禁言",
+      },
+      { key: "random", label: "随机顺序（不按列表轮播）", type: "switch", default: false },
+    ],
+  },
+  {
+    key: "player_watch",
+    name: "盯人监听",
+    icon: Eye,
+    desc: "记录与指定玩家相关的全部聊天",
+    activeFlag: "playerwatch",
+    applyVia: "toggle",
+    fields: [
+      {
+        key: "names",
+        label: "玩家名（逗号分隔，可多个）",
+        type: "tags",
+        default: [],
+        placeholder: "Steve, Alex",
+        hint: "消息里含名字即记录，保留最近 200 条",
+      },
+      {
+        key: "notify",
+        label: "命中推送到手机",
+        type: "switch",
+        default: false,
+        hint: "需在 设置→挂机通知 配好 Webhook 并勾选「盯人命中」；同一机器人 60s 内最多推一条",
       },
     ],
   },

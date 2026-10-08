@@ -11,10 +11,10 @@ module.exports = (botInstance) => {
     const createMovements = () => {
         try {
             if (typeof botInstance.makeMovements === 'function') return botInstance.makeMovements();
-        } catch (e) { /* 回退到默认构造 */ }
+        } catch (_e) { /* 回退到默认构造 */ }
         try {
             return new Movements(bot, bot.registry || getMcData());
-        } catch (e) {
+        } catch (_e) {
             return new Movements(bot, getMcData());
         }
     };
@@ -38,6 +38,8 @@ module.exports = (botInstance) => {
         stopOnDeath: false,
         maxDeaths: 0,
         currentTarget: null,
+        singleTargetFocus: false,
+        preferredTargetId: null,
         lastPosition: null,
         isDead: false,
         pausedByPlayer: false,
@@ -78,16 +80,15 @@ module.exports = (botInstance) => {
     let lastDiagAt = 0;     // 上次诊断播报时间
     const damageHistory = new Map(); // id -> { lastHitAt, lastDistance, name, hurtByPlayerAt }
 
-    const emitLog = (msg) => {
-        botInstance.io.to(botInstance._room).to('admin').emit('log', {
-            user: bot.username, ownerId: botInstance.config.ownerId,
-            msg, time: new Date().toLocaleTimeString()
-        });
-    };
+    const emitLog = (msg) => botInstance.uiLog(msg);
 
-    // 统一洗码：§ 后任意字符都是格式码（含 §u/§j 等服务器自造码）——关键词匹配两侧都要洗，
-    // 否则名字里夹着码（§u庄§j稼§x汉）按看到的字填关键词永远匹配不上。
-    const stripCodes = (s) => String(s == null ? '' : s).replace(/§./g, '');
+    // 洗码/名牌解析/全息联想：共享实现见 utils/entityName.js（follow 同用，不再各拷一份）
+    const {
+        stripMcCodes: stripCodes,
+        entityDisplayName,
+        isArmorStand,
+        hologramNameFor: hologramNameIn,
+    } = require('../utils/entityName');
 
     const matchesKeywords = (entityName, keywords) => {
         if (!keywords || keywords.length === 0) return false;
@@ -100,40 +101,7 @@ module.exports = (botInstance) => {
         return botInstance.mobHunterTask.blacklist.some(item => lowerName.includes(stripCodes(item).toLowerCase()));
     };
 
-    // 展平聊天组件取纯文本：兼容三种形态——纯字符串、JSON 组件({text,extra})、
-    // NBT 解码形态({type,value} 包一层，1.20.3+ 协议的实体元数据是这种)。任一形态嵌套均可。
-    const flattenName = (node) => {
-        if (node == null) return '';
-        if (typeof node === 'string') return node;
-        if (Array.isArray(node)) return node.map(flattenName).join('');
-        if (typeof node === 'object') {
-            if ('value' in node) return typeof node.value === 'object' ? flattenName(node.value) : String(node.value);
-            let s = node.text != null ? flattenName(node.text) : '';
-            if (node.extra != null) s += flattenName(node.extra);
-            return s;
-        }
-        return '';
-    };
-
-    const getEntityDisplayName = (entity) => {
-        if (!entity) return 'unknown';
-        try {
-            if (entity.metadata && entity.metadata[2]) {
-                const customName = entity.metadata[2];
-                if (typeof customName === 'string' && customName.length > 0) {
-                    return stripCodes(customName).replace(/[{}"]/g, '').trim();
-                }
-                if (customName && typeof customName === 'object') {
-                    const cleaned = stripCodes(flattenName(customName)).trim();
-                    if (cleaned) return cleaned;
-                }
-            }
-        } catch (e) {}
-        return stripCodes(entity.customName || entity.displayName || entity.name || 'unknown').trim() || 'unknown';
-    };
-
-    const isArmorStand = (e) =>
-        e && /armor.?stand/i.test(String(e.name || e.kind || ''));
+    const getEntityDisplayName = (entity) => entityDisplayName(entity, 'unknown');
 
     // RPG 服全息名牌：怪物名字常挂在头顶的隐形盔甲架上，怪本体没有 CustomName。
     // 每轮扫描先收集带名字的盔甲架，匹配关键词时把「头顶 1.6 格半径内、脚下到 3.2 格高」
@@ -142,31 +110,24 @@ module.exports = (botInstance) => {
     const refreshHolograms = () => {
         hologramStands = [];
         for (const e of Object.values(bot.entities)) {
-            if (!e || !e.position || !isArmorStand(e)) continue;
+            if (!e?.position || !isArmorStand(e)) continue;
             const name = getEntityDisplayName(e);
             if (name && name !== 'unknown' && !/armor.?stand/i.test(name)) {
                 hologramStands.push({ pos: e.position, name });
             }
         }
     };
-    const hologramNameFor = (entity) => {
-        for (const h of hologramStands) {
-            const dx = h.pos.x - entity.position.x;
-            const dz = h.pos.z - entity.position.z;
-            const dy = h.pos.y - entity.position.y;
-            if (dx * dx + dz * dz <= 1.6 * 1.6 && dy > -0.5 && dy < 3.2) return h.name;
-        }
-        return null;
-    };
+    const hologramNameFor = (entity) => hologramNameIn(entity, hologramStands);
 
     const isValidTarget = (entity) => {
-        if (!entity || !entity.position) return false;
+        if (!entity?.position) return false;
         if (entity.type === 'player' || entity.type === 'object' ||
             entity.type === 'orb' || entity.type === 'other') return false;
         // 盔甲架是名牌/全息载体，永远不是猎物（低版本里它的 type 可能不是 object）
         if (isArmorStand(entity)) return false;
 
         const task = botInstance.mobHunterTask;
+        if (task.singleTargetFocus && task.preferredTargetId !== null && entity.id !== task.preferredTargetId) return false;
         const entityName = getEntityDisplayName(entity);
 
         if (task.mode === 'keyword') {
@@ -195,7 +156,7 @@ module.exports = (botInstance) => {
                        position.z >= area.z1 && position.z <= area.z2 &&
                        position.y >= area.y1 && position.y <= area.y2;
             }
-        } catch (e) {}
+        } catch (_e) {}
         return true;
     };
 
@@ -207,7 +168,7 @@ module.exports = (botInstance) => {
             if (e.type !== 'player' || e.username === bot.username) continue;
             try {
                 if (bot.entity.position.distanceTo(e.position) <= radius) out.push(e);
-            } catch (err) {}
+            } catch (_err) {}
         }
         return out;
     };
@@ -228,12 +189,12 @@ module.exports = (botInstance) => {
             const xJ = (Math.random() - 0.5) * 0.16;
             const zJ = (Math.random() - 0.5) * 0.16;
             return bot.lookAt(entity.position.offset(xJ, yOff, zJ), false);
-        } catch (e) {}
+        } catch (_e) {}
     };
 
     const hasLineOfSight = (entity) => {
         try {
-            if (!bot.world || !bot.world.raycast) return true;
+            if (!bot.world?.raycast) return true;
             const eye = bot.entity.position.offset(0, (bot.entity.height || 1.8) * 0.9, 0);
             const target = entity.position.offset(0, (entity.height || 1.8) * 0.5, 0);
             const dir = target.minus(eye);
@@ -241,7 +202,7 @@ module.exports = (botInstance) => {
             if (dist < 0.5) return true;
             const hit = bot.world.raycast(eye, dir.scaled(1 / dist), Math.min(dist, 6));
             return !hit;
-        } catch (e) { return true; }
+        } catch (_e) { return true; }
     };
 
     // ===== Movements 缓存 =====
@@ -267,16 +228,16 @@ module.exports = (botInstance) => {
             }
             bot.pathfinder.setGoal(new goals.GoalFollow(entity, distance), true);
             lastSetGoalAt = now;
-        } catch (e) {}
+        } catch (_e) {}
     };
 
     const clearGoal = () => {
         try {
-            if (bot.pathfinder && bot.pathfinder.goal) {
+            if (bot.pathfinder?.goal) {
                 bot.pathfinder.setGoal(null);
                 lastGoalTargetId = null;
             }
-        } catch (e) {}
+        } catch (_e) {}
     };
 
     const idleScan = () => {
@@ -288,7 +249,7 @@ module.exports = (botInstance) => {
             const newYaw = bot.entity.yaw + yawDelta;
             const pitch = (Math.random() - 0.5) * 0.3;
             bot.look(newYaw, pitch, false);
-        } catch (e) {}
+        } catch (_e) {}
     };
 
     // ===== 选目标（含共存过滤） =====
@@ -296,7 +257,7 @@ module.exports = (botInstance) => {
         if (!bot.entity) return null;
         const task = botInstance.mobHunterTask;
         const now = Date.now();
-        const maxDistance = 32;
+        const maxDistance = task.singleTargetFocus ? 64 : 32;
         const myPos = bot.entity.position;
 
         // 一次遍历同时收集玩家和候选（先刷新全息名牌缓存，供关键词匹配）
@@ -304,7 +265,7 @@ module.exports = (botInstance) => {
         const players = [];
         const candidates = [];
         for (const e of Object.values(bot.entities)) {
-            if (!e || !e.position) continue;
+            if (!e?.position) continue;
             if (e.type === 'player') {
                 if (e.username !== bot.username) players.push(e.position);
                 continue;
@@ -314,7 +275,7 @@ module.exports = (botInstance) => {
             const d = myPos.distanceTo(e.position);
             if (d > maxDistance) continue;
             const dmg = damageHistory.get(e.id);
-            if (dmg && dmg.hurtByPlayerAt && now - dmg.hurtByPlayerAt < HURT_BY_PLAYER_TTL) continue;
+            if (dmg?.hurtByPlayerAt && now - dmg.hurtByPlayerAt < HURT_BY_PLAYER_TTL) continue;
             candidates.push({ entity: e, d });
         }
 
@@ -337,7 +298,12 @@ module.exports = (botInstance) => {
             if (cur) return cur.entity;
         }
 
-        pool.sort((a, b) => a.d - b.d);
+        const hp = e => {
+            const value = e.health ?? e.metadata?.[7] ?? e.metadata?.[6];
+            return Number.isFinite(value) && value > 0 ? value : Infinity;
+        };
+        pool.sort((a, b) => task.singleTargetFocus ? hp(a.entity)-hp(b.entity) || a.d-b.d : a.d-b.d);
+        if (task.singleTargetFocus) task.preferredTargetId = pool[0].entity.id;
         return pool[0].entity;
     };
 
@@ -345,7 +311,7 @@ module.exports = (botInstance) => {
     const attackTarget = async (target) => {
         if (!target || !bot.entity) return false;
         const entity = bot.entities[target.id];
-        if (!entity || !entity.position) return false;
+        if (!entity?.position) return false;
 
         const task = botInstance.mobHunterTask;
         const now = Date.now();
@@ -363,18 +329,18 @@ module.exports = (botInstance) => {
         const followDist = range - KITE_OFFSET_FAR;
 
         // 太近 → 后撤
-        if (distance < idealNear) {
+        if (!task.singleTargetFocus && distance < idealNear) {
             clearGoal();
             try {
                 bot.setControlState('forward', false);
                 bot.setControlState('sprint', false);
                 bot.setControlState('back', true);
-            } catch (e) {}
+            } catch (_e) {}
             aimWithJitter(entity);
             return false;
         }
         // 进入打击窗口前先放开后撤
-        try { bot.setControlState('back', false); } catch (e) {}
+        try { bot.setControlState('back', false); } catch (_e) {}
 
         // 太远 → 让 pathfinder 接近
         if (distance > range) {
@@ -398,13 +364,13 @@ module.exports = (botInstance) => {
         }
 
         // 平滑瞄准（await 让视角到位再 attack，类人）
-        try { await aimWithJitter(entity); } catch (e) {}
+        try { await aimWithJitter(entity); } catch (_e) {}
 
         // 攻击瞬间确认实体仍在
         const live = bot.entities[entity.id];
         if (!live) return false;
 
-        try { bot.attack(live); } catch (e) { return false; }
+        try { bot.attack(live); } catch (_e) { return false; }
 
         // 记录命中（死亡判定用）
         const rec = damageHistory.get(entity.id) || {};
@@ -421,7 +387,7 @@ module.exports = (botInstance) => {
     // ===== 击杀结算 =====
     const creditKillIfRecent = (id) => {
         const rec = damageHistory.get(id);
-        if (!rec || !rec.lastHitAt) { damageHistory.delete(id); return; }
+        if (!rec?.lastHitAt) { damageHistory.delete(id); return; }
         const recent = Date.now() - rec.lastHitAt < KILL_CREDIT_WINDOW;
         const close = (rec.lastDistance || 99) < KILL_CREDIT_DISTANCE;
         damageHistory.delete(id);
@@ -454,7 +420,7 @@ module.exports = (botInstance) => {
     let playerCacheAt = 0;
     let playerCache = [];
     const handleEntityHurt = (entity) => {
-        if (!botInstance.mobHunterTask.active || !entity || !entity.position) return;
+        if (!botInstance.mobHunterTask.active || !entity?.position) return;
         if (entity.type === 'player') return;
         const nowHurt = Date.now();
         if (nowHurt - playerCacheAt >= 150) {
@@ -478,7 +444,7 @@ module.exports = (botInstance) => {
                         }
                         return;
                     }
-                } catch (err) {}
+                } catch (_err) {}
             }
         }
     };
@@ -504,7 +470,7 @@ module.exports = (botInstance) => {
                 task.stats.playersDetected++;
                 task.currentTarget = null;
                 clearGoal();
-                try { bot.clearControlStates(); } catch (e) {}
+                try { bot.clearControlStates(); } catch (_e) {}
                 const names = nearbyPlayers.map(p => p.username).join(', ');
                 emitLog(`检测到玩家 [${names}]，暂停追怪`);
             }
@@ -528,9 +494,9 @@ module.exports = (botInstance) => {
         const counts = new Map();
         let players = 0;
         for (const e of Object.values(bot.entities)) {
-            if (!e || !e.position || e === bot.entity) continue;
+            if (!e?.position || e === bot.entity) continue;
             let d;
-            try { d = bot.entity.position.distanceTo(e.position); } catch (err) { continue; }
+            try { d = bot.entity.position.distanceTo(e.position); } catch (_err) { continue; }
             if (d > 32) continue;
             if (e.type === 'player') { if (e.username !== bot.username) players++; continue; }
             if (isArmorStand(e) || e.type === 'object' || e.type === 'orb' || e.type === 'other') continue;
@@ -556,7 +522,7 @@ module.exports = (botInstance) => {
     const huntCycle = async () => {
         const task = botInstance.mobHunterTask;
         if (!task.active || !bot.entity) return;
-        if (botInstance.isBodyBusy && botInstance.isBodyBusy()) return; // 用东西时让位一拍(auto_use)
+        if (botInstance.isBodyBusy?.()) return; // 用东西时让位一拍(auto_use)
         if (task.pausedByPlayer || task.isDead) return;
         if (Date.now() < resumeAfter) { idleScan(); return; }
         if (cycleRunning) return;
@@ -571,7 +537,7 @@ module.exports = (botInstance) => {
                         bot.pathfinder.setGoal(new goals.GoalBlock(
                             Math.floor(rp.x), Math.floor(rp.y), Math.floor(rp.z)
                         ));
-                    } catch (e) {}
+                    } catch (_e) {}
                 }
                 return;
             }
@@ -583,7 +549,7 @@ module.exports = (botInstance) => {
                     // 实体消失 → entityGone 已处理结算
                     target = null;
                     task.currentTarget = null;
-                } else if (!isInHuntArea(entity.position)) {
+                } else if (!isInHuntArea(entity.position) || (task.singleTargetFocus && !isValidTarget(entity))) {
                     target = null;
                     task.currentTarget = null;
                     clearGoal();
@@ -604,7 +570,7 @@ module.exports = (botInstance) => {
             }
 
             if (target) await attackTarget(target);
-        } catch (err) {
+        } catch (_err) {
             // 单次循环异常不影响后续
         } finally {
             cycleRunning = false;
@@ -616,9 +582,9 @@ module.exports = (botInstance) => {
         const task = botInstance.mobHunterTask;
         task.isDead = true;
         task.stats.deaths++;
-        try { task.lastPosition = bot.entity.position.clone(); } catch (e) {}
+        try { task.lastPosition = bot.entity.position.clone(); } catch (_e) {}
         damageHistory.clear();
-        try { bot.clearControlStates(); } catch (e) {}
+        try { bot.clearControlStates(); } catch (_e) {}
 
         emitLog(`机器人死亡 (第${task.stats.deaths}次)`);
 
@@ -687,7 +653,13 @@ module.exports = (botInstance) => {
         const stats = botInstance.mobHunterTask.stats;
         if (!stats.startTime) return null;
         const runTime = (Date.now() - stats.startTime) / 1000 / 60;
+        const curTarget = botInstance.mobHunterTask.currentTarget
+            ? getEntityDisplayName(botInstance.mobHunterTask.currentTarget) : null;
         return {
+            // 当前活动：暂停（检测到玩家）> 追击目标 > 搜索——追怪「原地发呆」时用户能看出是哪种情况
+            activity: botInstance.mobHunterTask.pausedByPlayer
+                ? '检测到玩家，已暂停（安全策略）'
+                : curTarget ? `追击 ${curTarget}` : '搜索目标中…',
             mode: botInstance.mobHunterTask.mode,
             keywords: botInstance.mobHunterTask.keywords,
             totalKills: stats.totalKills,
@@ -697,6 +669,8 @@ module.exports = (botInstance) => {
             runTime: Math.floor(runTime),
             killRate: (stats.totalKills / Math.max(runTime, 1)).toFixed(2),
             currentTarget: botInstance.mobHunterTask.currentTarget ? getEntityDisplayName(botInstance.mobHunterTask.currentTarget) : '无',
+            currentTargetEntityId: botInstance.mobHunterTask.currentTarget?.id ?? null,
+            singleTargetFocus: botInstance.mobHunterTask.singleTargetFocus,
             isPaused: botInstance.mobHunterTask.pausedByPlayer,
             area: botInstance.mobHunterTask.huntArea
                 ? (botInstance.mobHunterTask.huntArea.radius
@@ -709,6 +683,13 @@ module.exports = (botInstance) => {
     botInstance.toggleMobHunter = (active, config = {}) => {
         const task = botInstance.mobHunterTask;
         task.active = active;
+        config = require('../adapters').getServerAdapter(botInstance.config)?.hunterConfig?.(botInstance, config) || config;
+        if (config.singleTargetFocus !== undefined) task.singleTargetFocus = config.singleTargetFocus === true;
+        if (config.preferredTargetId !== undefined) {
+            task.preferredTargetId = task.singleTargetFocus && Number.isInteger(config.preferredTargetId)
+                && config.preferredTargetId >= 0 ? config.preferredTargetId : null;
+        }
+        if (!active) task.preferredTargetId = null;
 
         if (config.mode) task.mode = config.mode;
         if (config.keywords !== undefined) {
@@ -762,7 +743,7 @@ module.exports = (botInstance) => {
             invalidateMovements();
 
             // 互斥：暂停杀戮光环，避免双攻击循环互相干扰
-            if (botInstance.combatConfig && botInstance.combatConfig.enabled) {
+            if (botInstance.combatConfig?.enabled) {
                 prevCombatEnabled = true;
                 botInstance.combatConfig.enabled = false;
                 emitLog(`已暂停杀戮光环（互斥）`);
@@ -811,8 +792,8 @@ module.exports = (botInstance) => {
         } else {
             if (task.timer) { clearInterval(task.timer); dropTimer(task.timer); task.timer = null; }
             if (task.safetyCheckTimer) { clearInterval(task.safetyCheckTimer); dropTimer(task.safetyCheckTimer); task.safetyCheckTimer = null; }
-            try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (e) {}
-            try { bot.clearControlStates(); } catch (e) {}
+            try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (_e) {}
+            try { bot.clearControlStates(); } catch (_e) {}
             if (hunterListenersAttached) {
                 bot.removeListener('death', handleDeath);
                 bot.removeListener('respawn', handleRespawn);
@@ -901,8 +882,8 @@ module.exports = (botInstance) => {
         task.active = false;
         if (task.timer) { clearInterval(task.timer); task.timer = null; }
         if (task.safetyCheckTimer) { clearInterval(task.safetyCheckTimer); task.safetyCheckTimer = null; }
-        try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (e) {}
-        try { bot.clearControlStates(); } catch (e) {}
+        try { if (bot.pathfinder) bot.pathfinder.setGoal(null); } catch (_e) {}
+        try { bot.clearControlStates(); } catch (_e) {}
         if (hunterListenersAttached) {
             bot.removeListener('death', handleDeath);
             bot.removeListener('respawn', handleRespawn);
