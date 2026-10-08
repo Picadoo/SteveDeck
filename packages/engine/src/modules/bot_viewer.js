@@ -15,7 +15,9 @@ const MAX_PORT = BASE_PORT + VIEWER_PORTS - 1;
 const usedPorts = new Set();
 const portOwners = new Map(); // port -> 持有它的 botInstance；池满时据此识别并回收陈旧端口(MODB-6)
 
-// 选一个当前未占用的端口（已占位的会被跳过，所以刚关闭、待回收的旧端口不会被立刻重选）
+// 选一个当前未占用的端口（已占位的会被跳过，所以刚关闭、待回收的旧端口不会被立刻重选）。
+// 全部端口都被活跃视角占用时返回 null——绝不返回在用端口：在其上重绑会异步抛 EADDRINUSE
+// （try/catch 接不住），且覆盖 portOwners 归属后，陈旧回收会把还活着的 viewer 端口误判可收。
 function pickPort() {
   let port = BASE_PORT;
   while (usedPorts.has(port) && port < MAX_PORT) port++;
@@ -31,6 +33,7 @@ function pickPort() {
     }
     port = BASE_PORT;
     while (usedPorts.has(port) && port < MAX_PORT) port++;
+    if (usedPorts.has(port)) return null; // 真满：全部端口都有活跃 viewer
   }
   return port;
 }
@@ -111,6 +114,8 @@ module.exports = (botInstance) => {
     let lastErr;
     for (let attempt = 0; attempt < 4; attempt++) {
       const port = pickPort();
+      if (port == null)
+        throw new Error(`同时开启的视角已达上限（${VIEWER_PORTS} 个）——关掉其他机器人的实时画面，或调大 ENGINE_VIEWER_PORTS`);
       usedPorts.add(port); // 立刻占位：重试/并发都不会重选同一端口
       try {
         // firstPerson=true 第一人称（镜头=机器人视线）；false 第三人称（看得到本体、可 orbit 自由转镜头）

@@ -4,6 +4,7 @@
 // 编解码（varint/字符串/ModList）为可导出纯函数，有单测。
 const path = require('path');
 const logger = require('../utils/logger');
+const { installForgeWorld } = require('./forgeWorld');
 
 // pnpm 下引擎不能直接 require 传递依赖；借 mineflayer 的解析路径拿到 minecraft-protocol（用其 ping 探测 Forge 模组表）。
 let _mcp = null;
@@ -53,7 +54,7 @@ module.exports.mixin = {
             const mc = getMcp();
             if (!mc || typeof mc.ping !== 'function') return finish(null);
             try {
-                mc.ping({ host: this.config.host, port: this.config.port || 25565, version: this.config.version || '1.12.2' }, (err, res) => {
+                const pingRequest = mc.ping({ host: this.config.host, port: this.config.port || 25565, version: this.config.version || '1.12.2', ...require('../utils/botProxy').proxyOptions(this._connectionProxy, this.config, () => !done) }, (err, res) => {
                     if (err || !res) return finish(null);
                     let list = null;
                     if (res.modinfo && Array.isArray(res.modinfo.modList)) {
@@ -65,6 +66,7 @@ module.exports.mixin = {
                     }
                     finish(list?.length ? list : null);
                 });
+                pingRequest?.catch?.(() => {});
                 setTimeout(() => finish(null), 8000); // 超时兜底
             } catch (_e) { finish(null); }
         });
@@ -74,6 +76,11 @@ module.exports.mixin = {
     // 让服务器把我们当 Forge 客户端，否则登录阶段直接被 "requires FML/Forge" 踢。
     // 并监听 FML|HS 握手消息，走完 FML1 状态机。
     installFmlHandshake(client) {
+        require('../modules/vex_menu_observer').attachVexMenuObserver(this, client);
+        installForgeWorld(this.bot, (message) => {
+            logger.info(`[${this.config.username}] ${message}`);
+            this.uiLog(message);
+        });
         client.tagHost = '\0FML\0';
         logger.info(`[${this.config.username}] 已启用 Forge 模式（FML 握手）`);
         this.uiLog('已启用 Forge 模式（FML 握手）');
@@ -90,7 +97,9 @@ module.exports.mixin = {
             const disc = p.data.readInt8(0);
             if (disc === 0) { // ServerHello → REGISTER + ClientHello + ModList + Ack(2)
                 const fmlProto = p.data.length > 1 ? p.data[1] : 2;
-                try { client.write('custom_payload', { channel: 'REGISTER', data: Buffer.from(['FML|HS', 'FML', 'FML|MP', 'FORGE'].join('\0'), 'utf8') }); } catch (_e) { /* ignore */ }
+                const profile = require('../modules/dragoncore/profiles').getProfile(this.config);
+                const menuChannels = profile ? (profile.vexVersion ? ['VexView', 'dragoncore:main'] : ['dragoncore:main']) : [];
+                try { client.write('custom_payload', { channel: 'REGISTER', data: Buffer.from(['FML|HS', 'FML', 'FML|MP', 'FORGE', ...menuChannels].join('\0'), 'utf8') }); } catch (_e) { /* ignore */ }
                 writeFML(Buffer.from([0x01, fmlProto])); // ClientHello
                 writeFML(buildModList(forgeMods));       // ModList：声明拥有配置里的模组（空数组=不声明）
                 ack(2);

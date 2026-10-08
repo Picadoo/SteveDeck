@@ -11,3 +11,10 @@ data
 .env.*
 .git
 .superpowers
+
+runtime-data
+**/proxies.json
+
+**/.env
+**/.env.*
+**/deploy-targets.local.json

@@ -52,9 +52,12 @@ export function registerModuleHandlers(_io: IOServer, socket: Socket): void {
             persistSettings(id, (s) => (s.combat = active));
             break;
           case "fishing":
-            if (typeof inst.setFishing === "function") inst.setFishing(active);
+            if (typeof inst.setFishing === "function") inst.setFishing(active, config || {});
             else inst.fishingActive = active;
-            persistSettings(id, (s) => (s.fishing = active));
+            persistSettings(id, (s) => {
+              s.fishing = inst.fishingActive;
+              s.fishingMode = inst.config.settings?.fishingMode || "vanilla";
+            });
             break;
           case "automine":
             inst.toggleAutoMine?.(active, config || {});
@@ -196,7 +199,8 @@ function dispatchAction(
       // 录制：按点中槽位的物品名录成 find_and_click_slot（趁界面还开着、槽位有物品）
       inst.recorder?.note?.("window_click", { slot: Number(args.slot), button: Number(args.button ?? 0) });
       return inst
-        .clickWindowSlot(Number(args.slot), Number(args.button ?? 0), Number(args.mode ?? 0))
+        .clickWindowSlot(Number(args.slot), Number(args.button ?? 0), Number(args.mode ?? 0),
+          args.windowId === undefined ? undefined : Number(args.windowId))
         .then((w: any) => ok(w))
         .catch((e: any) => fail(String(e?.message ?? e)));
     case "window:close":
@@ -294,8 +298,46 @@ function dispatchAction(
     // 轻量模块的运行统计（模块页 3.5s 轮询展示「在干什么」）
     case "combat:stats":
       return ok(inst.getCombatStats?.() ?? null);
+    case "fishing:pondScan":
+      return ok(inst.scanFishingPond?.());
+    case "fishing:pondLock":
+      return typeof inst.lockFishingPond === 'function' ? ok(inst.lockFishingPond()) : fail('当前适配未提供鱼池活动区锁定');
+    case "connection:route":
+      return ok((inst as any)._connectionProxy ? ((inst as any)._proxyStatus || { type: 'socks5', connected: false }) : { type: 'direct' });
+    // 龙核心底层接口：配置是静态数据，服务器业务映射在 profile 中隔离。
+    case "dragoncore:inspect":
+      return ok(require('../modules/dragoncore/runtime').getDragonCore(inst).inspect());
+    case "dragoncore:config":
+      return ok(require('../modules/dragoncore/runtime').getDragonCore(inst).config(args.name));
+    case "dragoncore:configure": {
+      const profile = require('../modules/dragoncore/profiles').configureProfile(inst.config, args);
+      persistSettings(id, s => { (s as any).dragonCore = profile; });
+      return ok(require('../modules/dragoncore/runtime').getDragonCore(inst).inspect());
+    }
+    case "dragoncore:key":
+      return ok(require('../modules/mod_menu_key').pressDragonKey(inst, args.key));
+    case "dragoncore:waitGui":
+      return require('../modules/dragoncore/runtime').getDragonCore(inst).waitForGui({
+        name: args.name, afterRevision: args.afterRevision, timeoutMs: args.timeoutMs,
+      }).then(ok);
+    case "dragoncore:open":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, 'dragoncore', args.key).then(ok);
+    case "dragoncore:click":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, 'dragoncore', 'T', {
+        token: args.token, buttonId: args.buttonId, slotKey: args.slotKey, mouse: args.mouse,
+      }).then(ok);
+    case "dragoncore:refresh":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, 'dragoncore', 'T', { token: args.token, refresh: true }).then(ok);
+    case "modkey:press":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, args.provider || 'vexview', args.key || 'G').then(ok);
+    case "modkey:click":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, 'dragoncore', 'T', { token: args.token, buttonId: args.buttonId, slotKey: args.slotKey, mouse: args.mouse }).then(ok);
+    case "modkey:refresh":
+      return require('../modules/mod_menu_key').pressMenuKey(inst, 'dragoncore', 'T', { token: args.token, refresh: true }).then(ok);
     case "fishing:stats":
       return ok(inst.getFishingStats?.() ?? null);
+    case "particle:stats":
+      return ok(inst.getParticleObservation?.() ?? null);
     case "follow:stats":
       return ok(inst.getFollowStats?.() ?? null);
     case "trash_cleaner:stats":
@@ -470,8 +512,20 @@ function dispatchAction(
       const act = String(args.action || "");
       try {
         if (act === "attack") {
-          b.swingArm?.("right"); // 左键挥手（攻击动画/命中判定由服务器处理）
+          const target = b.entityAtCursor?.(3);
+          if (target) b.attack(target); // swingArm 只有动画，攻击还需要 use_entity 包
+          else b.swingArm?.("right");
         } else if (act === "use") {
+          const target = b.entityAtCursor?.(3);
+          if (target) {
+            return Promise.resolve(b.activateEntity(target))
+              .then(() => ok()).catch((e: any) => fail(String(e?.message ?? e)));
+          }
+          const block = b.blockAtCursor?.(4.5);
+          if (block) {
+            return Promise.resolve(b.activateBlock(block))
+              .then(() => ok()).catch((e: any) => fail(String(e?.message ?? e)));
+          }
           b.activateItem?.(); // 右键使用手持物
           setTimeout(() => { try { b.deactivateItem?.(); } catch { /* ignore */ } }, 120);
         } else if (act === "swap") {
@@ -485,8 +539,8 @@ function dispatchAction(
         } else {
           return fail("未知动作");
         }
-      } catch {
-        /* ignore */
+      } catch (e: any) {
+        return fail(String(e?.message ?? e));
       }
       return ok();
     }
@@ -525,6 +579,8 @@ function dispatchAction(
     // ===== 通用消息监听统计 =====
     case "monitor:get":
       return ok(inst.getMonitor?.() ?? { rules: [], stats: {} });
+    case "monitor:refreshValuation":
+      return typeof (inst as any).refreshFishValuation === "function" ? ok((inst as any).refreshFishValuation()) : fail("估值模块尚未就绪");
     case "monitor:setRules":
       return ok(inst.setMonitorRules?.(args.rules || []) ?? { rules: [], stats: {} });
     case "monitor:reset":

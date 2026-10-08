@@ -19,7 +19,9 @@ function readJson<T>(file: string, fallback: T): T {
   }
   if (!text.trim()) return fallback;
   try {
-    return JSON.parse(text) as T;
+    // 剥 UTF-8 BOM：Windows 记事本编辑过的文件带 U+FEFF，JSON.parse 不容忍——
+    // 不剥会把整个文件误判损坏归档、以空数据运行（下次保存即覆盖为空）。
+    return JSON.parse(text.replace(/^\uFEFF/, "")) as T;
   } catch (e) {
     const corrupt = `${file}.corrupt-${Date.now()}`;
     try {

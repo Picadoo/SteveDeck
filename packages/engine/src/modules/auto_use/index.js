@@ -1,5 +1,6 @@
 
 const { DEFAULT_RULES, matchItem, evaluateRules } = require('./rules');
+const { customName } = require('../../utils/items');
 
 const USE_BUSY_MS = 1800;       // 一次「使用」占用身体时长（吃/喝约 1.6s + 余量）
 const EVAL_INTERVAL_MS = 1000;  // 规则评估节奏
@@ -35,7 +36,7 @@ module.exports = (botInstance) => {
     const foods = (mc?.foodsByName) || {};
     return bot.inventory.items().map((it) => ({
       name: it.name,
-      displayName: it.displayName,
+      displayName: customName(it),
       slot: it.slot,
       count: it.count,
       isFood: !!foods[it.name],
@@ -64,7 +65,13 @@ module.exports = (botInstance) => {
 
   // 执行一次「使用」：占身体锁 → 存所选热键 → (潜行) → 装备目标 → 右键 → 等 → 复位。
   const performUse = async (rule, item) => {
-    botInstance.setBodyBusy(USE_BUSY_MS);
+    // 个别服务器的礼包右键是瞬时动作，允许规则单独缩短占用时间；
+    // 未配置时仍使用食物默认的 1.8s，避免改变原有自动进食节奏。
+    const configuredDelay = Number(rule.useDelayMs);
+    const useBusyMs = Number.isFinite(configuredDelay)
+      ? Math.max(300, Math.min(USE_BUSY_MS, configuredDelay))
+      : USE_BUSY_MS;
+    botInstance.setBodyBusy(useBusyMs);
     const prevQuickBar = bot.quickBarSlot; // 用完切回原选中热键
     const sneak = rule.method === 'sneak_air';
     try {
@@ -78,7 +85,7 @@ module.exports = (botInstance) => {
       await bot.equip(slotItem, 'hand');
       if (sneak) bot.setControlState('sneak', true);
       try { bot.activateItem(); } catch (_e) { /* ignore */ }
-      await sleep(Math.max(0, USE_BUSY_MS - 200));
+      await sleep(Math.max(0, useBusyMs - 200));
       try { bot.deactivateItem(); } catch (_e) { /* ignore */ }
       if (sneak) bot.setControlState('sneak', false);
       try { if (typeof prevQuickBar === 'number') bot.setQuickBarSlot(prevQuickBar); } catch (_e) { /* ignore */ }

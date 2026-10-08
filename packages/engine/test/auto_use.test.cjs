@@ -113,3 +113,31 @@ test('effect_missing：适配层把 mineflayer 数字键 effects 转成按名字
   assert.equal(eff.speed.duration, 200);
 });
 
+test('auto_use：按 RPG 物品 NBT 自定义名匹配礼包', async () => {
+  const factory = require('../src/modules/auto_use/index.js');
+  const gift = {
+    name: 'unknown', slot: 36, count: 2, displayName: 'unknown',
+    nbt: { value: { display: { value: { Name: { value: '{"text":"26年新年礼盒*仙级"}' } } } } },
+  };
+  const calls = { activate: 0 };
+  const bot = {
+    username: 'gift-user', food: 20, health: 20, quickBarSlot: 0,
+    entity: { effects: {} }, heldItem: null,
+    inventory: { slots: { 36: gift }, items: () => [gift] },
+    equip: async () => {}, activateItem: () => { calls.activate++; },
+    deactivateItem: () => {}, setControlState: () => {}, setQuickBarSlot: () => {},
+  };
+  const inst = {
+    bot, io: { to: () => ({ to: () => ({ emit: () => {} }) }) }, uiLog: () => {},
+    config: { ownerId: 'o1' }, _room: 'user:o1', timers: [], cleanupHooks: [],
+    bodyBusy: 0, isBodyBusy() { return false; }, setBodyBusy() {},
+    getMcData: () => ({ foodsByName: {}, effects: {} }), syncInventory: () => {},
+  };
+  factory(inst);
+  inst.toggleAutoUse(true, { rules: [{ id: 'gift', enabled: true,
+    trigger: { type: 'interval', everySec: 1 },
+    match: { by: 'displayName', value: '26年新年礼盒' }, method: 'air', cooldownSec: 0 }] });
+  await inst.autoUseTask._evalTick();
+  assert.equal(calls.activate, 1);
+  inst.toggleAutoUse(false);
+});

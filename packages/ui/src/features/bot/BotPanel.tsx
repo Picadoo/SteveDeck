@@ -226,9 +226,11 @@ export default function BotPanel() {
         <TabButton active={tab === "console"} onClick={() => setTab("console")}>日志</TabButton>
       </div>
 
-      {/* 内容。标签页级边界：单个 tab 渲染崩溃不连累其他 tab/聊天栏；key=tab 使切换标签自动重置错误态 */}
+      {/* 内容。标签页级边界：单个 tab 渲染崩溃不连累其他 tab/聊天栏；key 含 tab 使切换标签自动重置错误态。
+          key 必须同时含 bot.id：只按 tab 的话切换机器人不重挂载，各 tab 的本地状态（AI 目标草稿、
+          JS 编辑器内容、感知数据、模块配置）会跨 bot 串号——A 的草稿显示在 B 名下、保存进 B。 */}
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <ErrorBoundary key={tab} label="当前标签页">
+        <ErrorBoundary key={`${tab}:${bot.id}`} label="当前标签页">
           {tab === "overview" && <OverviewTab bot={bot} />}
           {tab === "live" && <LiveTab bot={bot} />}
           {tab === "modules" && <ModulesTab bot={bot} />}

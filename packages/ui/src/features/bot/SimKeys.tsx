@@ -1,13 +1,14 @@
 // 模拟按键：把"按下某个键"翻译成无头机器人对应的网络封包，服务器可感知。
 // 移动/跳/蹲/跑 用 setControlState（持续态）；攻击/使用/换手/丢弃/选快捷栏是一次性动作。
 // 桌面：物理键盘直控（useKeyboardControl，WASD 可同按）；屏幕按钮主要给手机/触屏。
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Gamepad2 } from "lucide-react";
 import { Card } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
 import { useKeyboardControl } from "@/lib/useKeyboardControl";
 import { cn } from "@/lib/cn";
 import type { BotSummary } from "@mcbot/protocol";
+import { ServerMenu, serverMenuHint } from '@/adapters';
 
 /** 单个键帽：tap 用 onClick；按住式（移动）用 onDown/onUp。 */
 function Key({
@@ -53,12 +54,24 @@ function Key({
 
 export default function SimKeys({ bot }: { bot: BotSummary }) {
   const disabled = !bot.online;
+  const hasMenuKey = bot.serverAdapter?.menu === true;
   const [sneak, setSneak] = useState(false);
   const [sprint, setSprint] = useState(false);
   const [slot, setSlot] = useState(0);
 
   // 桌面物理键盘直控（在线即生效；输入框打字自动让路）。放大视角弹窗时本组件仍挂载，同样可用。
   useKeyboardControl(bot.id, !disabled);
+
+  // 潜行/疾跑是「屏幕开关」型持续状态：切 bot / 卸载时必须释放，否则旧 bot 永久潜行
+  // 且无 UI 可见（本地 toggle 状态已随组件消失）。cleanup 用闭包捕获的当时 botId 发送。
+  useEffect(() => {
+    setSneak(false);
+    setSprint(false);
+    const id = bot.id;
+    return () => {
+      cmd.control.set(id, { sneak: false, sprint: false });
+    };
+  }, [bot.id]);
 
   const set = (states: Partial<Record<"forward" | "back" | "left" | "right" | "jump" | "sprint" | "sneak", boolean>>) => {
     if (!disabled) cmd.control.set(bot.id, states);
@@ -93,7 +106,7 @@ export default function SimKeys({ bot }: { bot: BotSummary }) {
         <b>电脑：直接用键盘</b>——WASD 移动（可同按，边走边跳没问题）、空格跳、Shift 蹲、
         <b>R 跑</b>（不用 Ctrl，浏览器里 Ctrl+W 会关窗口）、1-9 选栏、F 换手、Q 丢弃；在输入框打字时自动让路。
         下面的按钮主要给<b>手机/触屏</b>用，移动键按住才走。
-        注：服务器自定义的按键功能（菜单键等）走的是插件而非协议按键，请用底部「快捷指令」发命令。
+        {hasMenuKey && <>{serverMenuHint(bot)}</>}
       </p>
 
       {/* 移动（按住）+ 跳/蹲/跑 */}
@@ -123,6 +136,8 @@ export default function SimKeys({ bot }: { bot: BotSummary }) {
           <Key label="丢弃" sub="Q" onClick={() => tap("drop")} disabled={disabled} />
         </div>
       </div>
+
+      {hasMenuKey && <ServerMenu key={bot.id} bot={bot} />}
 
       {/* 选快捷栏 1-9 */}
       <div>

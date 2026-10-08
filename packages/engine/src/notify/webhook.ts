@@ -62,11 +62,15 @@ let cache: NotifyConfig | null = null;
 
 export function loadNotifyConfig(): NotifyConfig {
   if (cache) return cache;
+  const file = dataPath("notify.json");
   try {
-    const raw = fs.readFileSync(dataPath("notify.json"), "utf8");
-    const obj = JSON.parse(raw);
+    const raw = fs.readFileSync(file, "utf8");
+    // 剥 BOM：记事本编辑过的配置带 U+FEFF，JSON.parse 不容忍
+    const obj = JSON.parse(raw.replace(/^\uFEFF/, ""));
     cache = sanitize(obj);
-  } catch {
+  } catch (e: any) {
+    // 文件损坏时静默回落 = 通知系统悄悄关闭，恰是「人不在时出事没人知道」要防的失败模式——至少留条日志
+    if (fs.existsSync(file)) logger.warn(`[notify] notify.json 解析失败，通知配置已回落默认（关闭）: ${e?.message ?? e}`);
     cache = { ...DEFAULTS, events: { ...DEFAULTS.events } };
   }
   return cache;
@@ -77,7 +81,11 @@ export function saveNotifyConfig(patch: Partial<NotifyConfig>): NotifyConfig {
   const next = sanitize({ ...cur, ...patch, events: { ...cur.events, ...(patch.events ?? {}) } });
   cache = next;
   try {
-    fs.writeFileSync(dataPath("notify.json"), JSON.stringify(next, null, 2), { mode: 0o600 });
+    // 原子写（tmp + rename）：裸 writeFileSync 写一半崩溃会损坏配置，下次加载静默回落「通知关闭」
+    const file = dataPath("notify.json");
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(next, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, file);
   } catch (e: any) {
     logger.warn(`[notify] 配置写盘失败: ${e?.message ?? e}`);
   }
@@ -87,6 +95,12 @@ export function saveNotifyConfig(patch: Partial<NotifyConfig>): NotifyConfig {
 /** 入盘/入内存前收口：字段类型、预设白名单、URL 协议、冷却范围。 */
 function sanitize(obj: any): NotifyConfig {
   const url = typeof obj?.url === "string" ? obj.url.trim() : "";
+  // cooldownSec=0 是合法值（关闭冷却，publishBotEvent 按 >0 判断）——不能用 || 吞成默认 60；
+  // 只有 null/undefined/非数值才回落默认。
+  const rawCd = Number(obj?.cooldownSec);
+  const cooldownSec = obj?.cooldownSec != null && Number.isFinite(rawCd)
+    ? Math.max(0, Math.min(3600, rawCd))
+    : DEFAULTS.cooldownSec;
   return {
     enabled: !!obj?.enabled,
     url: /^https?:\/\//i.test(url) ? url.slice(0, 500) : "",
@@ -98,7 +112,7 @@ function sanitize(obj: any): NotifyConfig {
       online: obj?.events?.online === true,
       watch: obj?.events?.watch === true,
     },
-    cooldownSec: Math.max(0, Math.min(3600, Number(obj?.cooldownSec) || DEFAULTS.cooldownSec)),
+    cooldownSec,
   };
 }
 

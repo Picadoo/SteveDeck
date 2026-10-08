@@ -33,6 +33,24 @@ test('validatePattern：非嵌套量词的正常正则不误伤', () => {
   assert.equal(validatePattern('(\\d+)').ok, true, '单个量词分组、外层无量词');
 });
 
+test('validatePattern：重叠交替 (a|a)+ 拒绝（审查补的绕过）', () => {
+  // 组内顶层 | 且组整体加无界量词——分支重叠时 2^n 回溯。静态判重叠不可行，统一拒绝（安全侧）。
+  for (const bad of ['(a|a)+$', '(x|xy)*', '(\\w|\\d)+!']) {
+    assert.equal(validatePattern(bad).ok, false, `应拒绝 ${bad}`);
+  }
+  // 无量词的交替组正常放行；嵌套括号内的 | 不算顶层
+  assert.equal(validatePattern('(foo|bar)').ok, true);
+  assert.equal(validatePattern('((a|b)c)').ok, true);
+});
+
+test('validatePattern：可选量词序列 (a+)?(a+)?(a+)? 拒绝（审查补的绕过）', () => {
+  // 单个/两个 (a+)? 无害放行，连续 3 个及以上组合爆炸拒绝
+  assert.equal(validatePattern('(\\d+)? 金币').ok, true);
+  assert.equal(validatePattern('(a+)?(b+)?').ok, true);
+  assert.equal(validatePattern('(a+)?(a+)?(a+)?$').ok, false);
+  assert.equal(validatePattern('(a+)?(b+)?(c+)?(d+)?$').ok, false);
+});
+
 test('validatePattern：语法非法拒绝', () => {
   assert.equal(validatePattern('(unclosed').ok, false);
   assert.equal(validatePattern('[z-a]').ok, false); // 字符类区间反序（各 V8 版本都稳定报错）

@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const { isChatBlocked } = require('../src/utils/chatSafety.js');
-const { isFatalKick, extractText } = require('../src/utils/reconnectPolicy.js');
+const { isFatalKick, isMaintenanceKick, extractText } = require('../src/utils/reconnectPolicy.js');
 const { slotText, findMatchingSlot } = require('../src/utils/guiMatch.js');
 const { stripMcCodes, flattenChatComponent, entityDisplayName, isArmorStand, hologramNameFor } = require('../src/utils/entityName.js');
 
@@ -33,12 +33,20 @@ test('chatSafety：绕过手段——命名空间前缀、换行注入、超长'
 test('reconnectPolicy：致命断开判定', () => {
   assert.equal(isFatalKick('You are banned from this server'), true);
   assert.equal(isFatalKick('§c你已被封禁'), true, '带色码也能命中');
-  assert.equal(isFatalKick('You are not white-listed on this server!'), true);
   assert.equal(isFatalKick('Outdated client! Please use 1.16.5'), true);
   assert.equal(isFatalKick({ text: 'This server requires FML/Forge to be installed on the client' }), true, 'JSON 组件形态');
   assert.equal(isFatalKick('Internal server error'), false, '普通错误可重连');
   assert.equal(isFatalKick('Welcome to Forge Craft!'), false, '服务器名含 forge 不误判致命');
   assert.equal(isFatalKick(null), false);
+});
+
+test('reconnectPolicy：白名单类降级为维护型（低频重试而非永久停止）', () => {
+  // 服务器维护重启临时开白名单是常见场景——归永久致命会让 bot 维护结束也永不回来
+  assert.equal(isMaintenanceKick('You are not white-listed on this server!'), true);
+  assert.equal(isMaintenanceKick('§e白名单模式已开启'), true);
+  assert.equal(isFatalKick('You are not white-listed on this server!'), false, '不再算永久致命');
+  assert.equal(isMaintenanceKick('You are banned'), false, '封禁不算维护');
+  assert.equal(isMaintenanceKick(null), false);
 });
 
 test('reconnectPolicy：extractText 兼容字符串/组件/extra', () => {

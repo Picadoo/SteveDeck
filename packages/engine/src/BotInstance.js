@@ -116,6 +116,16 @@ class BotInstance {
         const epoch = ++this._epoch;   // 本次连接世代，供下方延迟回调（自动登录等）比对
         this.uiLog(`正在连接 ${this.config.host}:${this.config.port || 25565}（版本 ${!this.config.version || this.config.version === 'auto' ? '自动识别' : this.config.version}）…`);
 
+        this._proxyStatus = null;
+        try {
+            this._connectionProxy = require('./utils/botProxy').loadBotProxy(this.config.id);
+        } catch (_) {
+            this._fatalReason = '代理配置不可用，已阻止直连；请检查代理配置及到期日期';
+            this.uiLog(this._fatalReason);
+            return;
+        }
+        if (this._connectionProxy) this.uiLog(`本账号使用 SOCKS5 ${this._connectionProxy.host}:${this._connectionProxy.port}，故障不回退直连`);
+
         // Forge 模组服：首次连接前 ping 探测服务器模组表（正确 modid），缓存供 ModList 声明。
         // 任何 1.12.2 Forge 服开启「Forge 模式」即自动适配，无需手填模组。
         if (this.config.settings?.forge && this._forgeMods === undefined) {
@@ -154,7 +164,13 @@ class BotInstance {
                     this.uiLog(msg);
                 };
             }
+            Object.assign(botOpts, require('./utils/botProxy').proxyOptions(this._connectionProxy, this.config,
+                () => this._epoch === epoch && !this.destroyed,
+                status => { this._proxyStatus = status; this.uiLog(`SOCKS5 隧道已连接：${status.endpoint}`); }));
             this.bot = mineflayer.createBot(botOpts);
+
+            // 龙核心底层只被动收包；是否发送按键由当前服务器适配配置决定。
+            require('./modules/dragoncore/runtime').attachDragonCore(this, this.bot._client);
 
             // Forge/FML 模组服：伪装 Forge 客户端 + FML 握手状态机（见 instance/forge.js）
             if (this.config.settings?.forge && this.bot._client) {
@@ -198,7 +214,7 @@ class BotInstance {
                     'interact', 'automine', 'trash_cleaner', 'auto_farm', 'mob_hunter',
                     'follow', 'scoreboard', 'script_engine', 'window_gui',
                     'custom_js', 'bot_viewer', 'message_monitor', 'auto_use',
-                    'auto_chat', 'player_watch',
+                    'auto_chat', 'player_watch', 'particle_observer',
                 ];
                 for (const name of MODULE_NAMES) {
                     try {
@@ -234,6 +250,14 @@ class BotInstance {
                                     .replace(/\{username\}/g, this.config.username)
                                     .replace(/\{password\}/g, this.config.password);
                                 if (!tpl.includes('{password}')) cmd = `${cmd} ${this.config.password}`;
+                                // 与 respawnCommand/地点前置/定时指令同一道闸(API-1)：登录模板也是用户可配
+                                // 的指令通道，且每次连接必然执行——不过滤即可夹带 /op、换行注入等危险指令。
+                                // 合法登录指令（/login /l /register 等）都在 ALLOWED_PREFIXES 白名单里，不受影响。
+                                const { isChatBlocked } = require('./utils/chatSafety');
+                                if (isChatBlocked(cmd)) {
+                                    logger.warn(`[${this.config.username}] ${firstAuth ? '注册' : '登录'}命令被安全策略拦截（模板: ${tpl}）`);
+                                    return;
+                                }
                                 this.bot.chat(cmd);
                                 if (firstAuth) {
                                     s.registered = true;
@@ -293,6 +317,17 @@ class BotInstance {
             });
             // 「彻底掉线且不会自己回来」是挂机场景最需要推到手机的事件
             this.notifyEvent('offline', `已停止重连（不可恢复）：${this._fatalReason}`);
+            return;
+        }
+
+        // 维护型踢出（白名单类）：超长间隔低频重试，不消耗重试次数——服务器维护结束后自己回来。
+        // 一次性标记：本次调度用掉即清；若重试又被白名单踢，kicked 事件会重新设置。
+        if (this._maintenanceKick) {
+            this._maintenanceKick = false;
+            const mDelay = 10 * 60; // 10 分钟
+            logger.warn(`[${this.config.username}] 疑似服务器维护（白名单模式），${mDelay / 60} 分钟后重试`);
+            this.uiLog(`🛠 疑似服务器维护中（白名单/whitelist），${mDelay / 60} 分钟后自动重试`);
+            this.reconnectTimer = setTimeout(() => this.init(), mDelay * 1000);
             return;
         }
 
@@ -428,6 +463,12 @@ class BotInstance {
             this.statusTimer = null;
         }
 
+        // 4.5 重置 rawMove 状态：句柄本身已随 timers 数组清掉，但 _rawTimer 属性不重置的话，
+        // 重连后 _startRawLoop 见「已有 timer」直接 return——直发移动永久失效，直到手动 move:stop。
+        this._rawTimer = null;
+        this._raw = null;
+        this._rawPhysicsEnabled = undefined;
+
         // 5. 清理bot实例
         if (this.bot) {
             this.bot.removeAllListeners();
@@ -485,6 +526,9 @@ class BotInstance {
         // 3. 移动 / 操控：立刻停下，不再寻路/按键
         try { if (b?.pathfinder) b.pathfinder.setGoal(null); } catch (_e) { /* ignore */ }
         try { b?.clearControlStates?.(); } catch (_e) { /* ignore */ }
+        // rawMove（直发坐标包）不走 pathfinder/控制键，_rawTick 每 100ms 按 _raw 状态直发 position 包，
+        // 不显式停的话「一键停止」按不住它——bot 以 4.3m/s 继续走且物理保持关闭
+        try { this.stopRawMove?.(); } catch (_e) { /* ignore */ }
         // scheduler（定时脚本）有意不动——到点运行不受影响
         try { this.uiLog?.('⏹ 已停止所有操作（定时脚本保留，到点照常运行）'); } catch (_e) { /* ignore */ }
         return { success: true };

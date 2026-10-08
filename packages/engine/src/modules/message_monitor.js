@@ -12,9 +12,10 @@ const { ServerEvents } = require("@mcbot/protocol"); // 事件名统一走协议
 
 module.exports = (botInstance) => {
   const bot = botInstance.bot;
-
-  // 跨重连保留统计：BotInstance 对象在重连时复用，仅在已存在时不重置（引擎重启/手动 reset 才清）
+  let dirty = false;
+  const extension = require('../adapters').getServerAdapter(botInstance.config)?.createMonitor?.(botInstance, { pushStats: () => pushStats() });
   botInstance._monitorStats = botInstance._monitorStats || {};
+  const saveStats = () => extension?.save?.();
 
   const loadRules = () => {
     const r = botInstance.config.settings?.monitorRules;
@@ -60,7 +61,6 @@ module.exports = (botInstance) => {
     }
   };
 
-  let dirty = false;
   const onMessage = (jsonMsg) => {
     let text;
     try {
@@ -71,6 +71,7 @@ module.exports = (botInstance) => {
     if (!text) return;
     if (text.length > 1000) text = text.slice(0, 1000); // 限输入长度，缩小回溯最坏开销(API-3 纵深)
     const now = Date.now();
+    if (extension?.onMessage?.(jsonMsg, text, now)) dirty = true;
     for (const { rule, re } of compiled) {
       if (!rule.enabled || !re) continue;
       re.lastIndex = 0;
@@ -142,10 +143,13 @@ module.exports = (botInstance) => {
       }
       out[rule.id] = payload;
     }
+    extension?.enrich?.(out, now);
     return out;
   };
 
+  let lastIncomePush = 0;
   const pushStats = () => {
+    lastIncomePush = Date.now();
     botInstance.io.to(botInstance._room).to("admin").emit(ServerEvents.MONITOR_STATS, {
       user: bot.username,
       ownerId: botInstance.config.ownerId,
@@ -157,7 +161,7 @@ module.exports = (botInstance) => {
   // MODB-11：无人观看时跳过这一拍的「构造 payload + 广播」重活——统计仍在 onMessage 里照常累计(_monitorStats，
   // 跨重连保留)，dirty 保持置位，待有人看时下一拍即把最新累计值补推；getMonitor() 也随时按需返回当前值。
   const pushTimer = setInterval(() => {
-    if (dirty && botInstance.hasWatchers()) {
+    if ((dirty || (extension?.periodic && Date.now() - lastIncomePush >= 10000)) && botInstance.hasWatchers()) {
       dirty = false;
       pushStats();
     }
@@ -185,6 +189,8 @@ module.exports = (botInstance) => {
 
   botInstance.resetMonitorStats = () => {
     botInstance._monitorStats = {};
+    extension?.reset?.();
+    saveStats();
     pushStats();
     return botInstance.getMonitor();
   };
@@ -213,6 +219,8 @@ module.exports = (botInstance) => {
 
   botInstance.cleanupHooks = botInstance.cleanupHooks || [];
   botInstance.cleanupHooks.push(() => {
+    saveStats();
+    extension?.close?.();
     bot.removeListener("message", onMessage);
     clearInterval(pushTimer);
   });

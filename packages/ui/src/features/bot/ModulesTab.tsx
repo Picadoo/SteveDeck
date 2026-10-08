@@ -6,6 +6,7 @@ import { useStore } from "@/store/useStore";
 import { cmd } from "@/lib/engine";
 import { usePoll } from "@/lib/usePoll";
 import { MODULES, defaultConfig, type ModuleDef } from "./moduleDefs";
+import { serverModuleDefs } from '@/adapters';
 import ModuleConfigDialog from "./ModuleConfigDialog";
 import AutoUsePanel from "./AutoUsePanel";
 import type { BotSummary } from "@mcbot/protocol";
@@ -44,6 +45,21 @@ const STAT_LABELS: Record<string, string> = {
   lastTarget: "最近目标",
   casts: "抛竿",
   catches: "上钩",
+  reels: "收杆",
+  offTarget: "偏离火花",
+  approaches: "靠近次数",
+  avoidedMoves: "省去走位",
+  serverEscapes: "鱼逃脱（服务器机制）",
+  waterEntries: "进水次数",
+  waterEscapes: "脱水次数",
+  longRangeHints: "距离限制提示",
+  pauseCount: "暂停次数",
+  lootEvents: "掉落事件",
+  lootItems: "掉落物品数",
+  lootSummary: "掉落汇总",
+  lastLoot: "最近掉落",
+  lastReelReason: "最近收杆",
+  lastPauseReason: "最近暂停提示",
   target: "跟随目标",
   cleaned: "已清理(叠)",
   sent: "已发送",
@@ -53,6 +69,7 @@ const STAT_LABELS: Record<string, string> = {
 const STAT_ORDER = Object.keys(STAT_LABELS);
 
 function ModulesTab({ bot }: { bot: BotSummary }) {
+  const defs = serverModuleDefs(bot, MODULES);
   const moduleConfigs = useStore((s) => s.moduleConfigs);
   const setModuleConfig = useStore((s) => s.setModuleConfig);
   const pushToast = useStore((s) => s.pushToast);
@@ -92,6 +109,7 @@ function ModulesTab({ bot }: { bot: BotSummary }) {
     const s = engineSettings;
     if (!s) return undefined;
     if (def.key === "combat") return s.combatConfig;
+    if (def.key === "fishing") return { mode: s.fishingMode || "vanilla" };
     if (def.key === "auto_farm") return typeof s.autoFarm === "object" ? s.autoFarm : undefined;
     if (def.key === "mob_hunter") return s.mobHunter?.config;
     if (def.key === "automine") return s.autoMine?.config;
@@ -106,7 +124,7 @@ function ModulesTab({ bot }: { bot: BotSummary }) {
   });
 
   // 无激活的统计型模块时清空（usePoll 在此场景 enabled=false 不跑）
-  const hasActiveStatsModule = MODULES.some((d) => STATS_MODULES.has(d.key) && isActive(d));
+  const hasActiveStatsModule = defs.some((d) => STATS_MODULES.has(d.key) && isActive(d));
   useEffect(() => {
     if (!bot.online || !hasActiveStatsModule) setStats({});
   }, [bot.online, hasActiveStatsModule]);
@@ -114,7 +132,7 @@ function ModulesTab({ bot }: { bot: BotSummary }) {
   // 实时统计轮询（仅在线 + 有激活的统计型模块 + 页面可见；见 usePoll）
   usePoll(
     async (alive) => {
-      const active = MODULES.filter((d) => STATS_MODULES.has(d.key) && isActive(d));
+      const active = defs.filter((d) => STATS_MODULES.has(d.key) && isActive(d));
       // 并行拉各模块统计，攒一次 setStats（逐个 set 会隔着 await 各触发一次渲染，React 18 合并不了）
       const results = await Promise.all(active.map((d) => cmd.moduleAction(bot.id, d.key, "stats")));
       if (!alive()) return;
@@ -152,7 +170,7 @@ function ModulesTab({ bot }: { bot: BotSummary }) {
     setOptim((o) => {
       let changed = false;
       const n = { ...o };
-      for (const def of MODULES) {
+      for (const def of defs) {
         if (def.key in n && !!bot.modules[def.activeFlag] === n[def.key]) {
           delete n[def.key];
           changed = true;
@@ -182,7 +200,7 @@ function ModulesTab({ bot }: { bot: BotSummary }) {
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      {MODULES.map((def) => {
+      {defs.map((def) => {
         const Icon = def.icon;
         const active = isActive(def);
         const st = active ? stats[def.key] : null;

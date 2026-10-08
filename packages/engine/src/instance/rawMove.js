@@ -1,8 +1,9 @@
 // 直接坐标包移动（模组服，从 BotInstance.js 抽出）：
 // mineflayer 走路靠客户端物理模拟，需要"看懂"周围方块自己算；模组服（模组方块 / varint 丢的区块）算不动 → 走不了。
-// 这里改成像 MinecraftConsoleClient 那样：关掉物理，直接发 position 包告诉服务器"我到这了"，不依赖物理。
+// 显式开启时使用 position 包移动，但每步仍需已加载的世界、碰撞与脚下支撑验证。
 // 仅 settings.rawMove 开启时生效（通用设置，不针对某个服）；rawMoveEnabled getter 留在 BotInstance 核心。
 const logger = require('../utils/logger');
+const { safeGroundStep, movementVector } = require('../utils/groundMovement');
 
 module.exports.mixin = {
     setRawControl(states) {
@@ -21,11 +22,12 @@ module.exports.mixin = {
             const p = bot.entity.position;
             const below = bot.blockAt(p.offset(0, -1, 0));
             const yaw = bot.entity.yaw;
-            const fwd = bot.blockAt(p.offset(-Math.sin(yaw), 0, Math.cos(yaw)));
+            const fwd = bot.blockAt(p.offset(-Math.sin(yaw), 0, -Math.cos(yaw)));
             const m = `[诊断] 脚下=${below ? below.name : '未加载/空'} 前方=${fwd ? fwd.name : '未加载/空'} onGround=${bot.entity.onGround} physics=${bot.physicsEnabled}`;
             logger.info(`[${this.config.username}] ${m}`);
             this.uiLog(m);
         } catch (_e) { /* ignore */ }
+        this._rawPhysicsEnabled = bot.physicsEnabled;
         try { bot.physicsEnabled = false; } catch (_e) { /* ignore */ }
         this._rawTimer = setInterval(() => this._rawTick(), 100);
         this.timers.push(this._rawTimer);
@@ -43,27 +45,27 @@ module.exports.mixin = {
             this._rawTimer = null;
         }
         this._raw = null;
-        try { if (this.bot) this.bot.physicsEnabled = true; } catch (_e) { /* ignore */ }
+        try { if (this.bot && this._rawPhysicsEnabled !== undefined) this.bot.physicsEnabled = this._rawPhysicsEnabled; } catch (_e) { /* ignore */ }
+        this._rawPhysicsEnabled = undefined;
     },
 
     _rawTick() {
         const bot = this.bot;
-        if (!bot?.entity) { return; }
+        if (!bot?.entity) { this.stopRawMove(); return; }
         const c = this._raw || {};
         const yaw = bot.entity.yaw;
-        const sinY = Math.sin(yaw), cosY = Math.cos(yaw);
-        let mx = 0, mz = 0;
-        if (c.forward) { mx += -sinY; mz += cosY; }
-        if (c.back) { mx += sinY; mz += -cosY; }
-        if (c.left) { mx += cosY; mz += sinY; }
-        if (c.right) { mx += -cosY; mz += -sinY; }
+        const { x: mx, z: mz } = movementVector(yaw, c);
         const p = bot.entity.position;
         if (mx !== 0 || mz !== 0) {
-            const len = Math.hypot(mx, mz) || 1;
-            const speed = (c.sprint ? 5.4 : 4.3) * 0.1; // 每 100ms 步长（米）
-            p.x += (mx / len) * speed;
-            p.z += (mz / len) * speed;
-            // Y 保持当前值（平地够用；复杂地形 v1 不处理高度）
+            const speed = (c.sneak ? 1.3 : c.sprint ? 5.4 : 4.3) * 0.1;
+            const next = p.offset(mx * speed, 0, mz * speed);
+            if (!safeGroundStep(bot, p, next)) {
+                this.stopRawMove();
+                this.uiLog('直接移动已停止：前方未加载、存在碰撞、液体或缺少平整支撑');
+                return;
+            }
+            p.x = next.x;
+            p.z = next.z;
         }
         try {
             bot._client.write('position', { x: p.x, y: p.y, z: p.z, onGround: true });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sparkles, RefreshCw, Loader2, ChevronDown, Settings2, Wand2, Play, Save } from "lucide-react";
 import { Card, Button, Input } from "@/components/ui/primitives";
 import { cmd } from "@/lib/engine";
@@ -64,6 +64,15 @@ function AiTab({ bot }: { bot: BotSummary }) {
   // Agent 闭环模式
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentLog, setAgentLog] = useState<string[]>([]);
+  // SSE 流的取消把手：卸载/切 bot 时 abort——否则流在后台继续读几分钟，对已卸载组件
+  // setState，且结果脚本会落到当时选中的另一个 bot 名下
+  const agentAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => {
+      agentAbortRef.current?.abort();
+      agentAbortRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -137,12 +146,16 @@ function AiTab({ bot }: { bot: BotSummary }) {
     setAgentRunning(true);
     setAgentLog([]);
     setGenScript(null);
+    const ctrl = new AbortController();
+    agentAbortRef.current?.abort();
+    agentAbortRef.current = ctrl;
     try {
       const { url, token } = useStore.getState().conn;
       const resp = await fetch(`${url.replace(/\/+$/, "")}/api/ai/agent/${bot.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ goal, maxRounds: 3, waitSec: 15 }),
+        signal: ctrl.signal,
       });
       if (!resp.ok || !resp.body) {
         pushToast("Agent 启动失败", "error");
@@ -178,8 +191,10 @@ function AiTab({ bot }: { bot: BotSummary }) {
         }
       }
     } catch (e: any) {
-      pushToast(`Agent 请求失败：${e?.message || "网络错误"}`, "error");
+      // 主动取消（卸载/切 bot）不是错误，不弹提示
+      if (e?.name !== "AbortError") pushToast(`Agent 请求失败：${e?.message || "网络错误"}`, "error");
     } finally {
+      if (agentAbortRef.current === ctrl) agentAbortRef.current = null;
       setAgentRunning(false);
     }
   }

@@ -128,8 +128,14 @@ export function parseConnectionString(input: string): { url: string; token: stri
   const m = s.match(/^mcbot:\/\/([^/?#]+)(?:\?token=(.+))?$/i);
   if (m) {
     const host = m[1];
-    const token = decodeURIComponent(m[2] ?? "");
-    return { url: `http://${host}`, token };
+    // 截断/损坏的连接串（如 token 以裸 % 结尾）会让 decodeURIComponent 抛 URIError，
+    // 调用方（连接页/设置页）没包 try——按钮静默失效。解码失败按「格式不对」走常规提示。
+    try {
+      const token = decodeURIComponent(m[2] ?? "");
+      return { url: `http://${host}`, token };
+    } catch {
+      return null;
+    }
   }
   return null;
 }
@@ -448,6 +454,22 @@ export const cmd = {
     emitAck<{ bots: number; scripts: number; customScripts: number }>(ClientCommands.DATA_IMPORT, { bundle }),
   moduleAction: <T = unknown>(id: string, module: string, action: string, args?: Record<string, unknown>) =>
     emitAck<T>(ClientCommands.MODULE_ACTION, { id, module, action, args }),
+  dragoncore: {
+    inspect: (id: string) => emitAck<import('@mcbot/protocol').DragonCoreInspection>(ClientCommands.MODULE_ACTION,
+      { id, module: 'dragoncore', action: 'inspect' }),
+    config: (id: string, name: string) => emitAck<{ name: string; text: string; at: number }>(ClientCommands.MODULE_ACTION,
+      { id, module: 'dragoncore', action: 'config', args: { name } }),
+    configure: (id: string, enabled: boolean, keys: string[] = []) => emitAck<import('@mcbot/protocol').DragonCoreInspection>(ClientCommands.MODULE_ACTION,
+      { id, module: 'dragoncore', action: 'configure', args: { enabled, keys } }),
+    key: (id: string, key: string) => emitAck<{ sent: boolean; key: string; afterRevision: number }>(ClientCommands.MODULE_ACTION,
+      { id, module: 'dragoncore', action: 'key', args: { key } }),
+    waitGui: (id: string, name: string, afterRevision: number, timeoutMs = 4000) => emitAck<{ name: string; action: string; at: number; revision: number }>(
+      ClientCommands.MODULE_ACTION, { id, module: 'dragoncore', action: 'waitGui', args: { name, afterRevision, timeoutMs } }, timeoutMs + 2000),
+    open: (id: string, key: string) => emitAck(ClientCommands.MODULE_ACTION, { id, module: 'dragoncore', action: 'open', args: { key } }),
+    click: (id: string, token: string, selection: { buttonId?: number; slotKey?: string; mouse?: number }) => emitAck(
+      ClientCommands.MODULE_ACTION, { id, module: 'dragoncore', action: 'click', args: { token, ...selection } }),
+    refresh: (id: string, token: string) => emitAck(ClientCommands.MODULE_ACTION, { id, module: 'dragoncore', action: 'refresh', args: { token } }),
+  },
   script: {
     list: (id?: string) => emitAck<ScriptSummary[]>(ClientCommands.SCRIPT_LIST, { id }),
     detail: (name: string) => emitAck<BotScript | null>(ClientCommands.SCRIPT_DETAIL, { name }),
@@ -460,12 +482,12 @@ export const cmd = {
   window: {
     get: (id: string) =>
       emitAck<WindowState | null>(ClientCommands.MODULE_ACTION, { id, module: "window", action: "get" }),
-    click: (id: string, slot: number, button = 0, mode = 0) =>
+    click: (id: string, slot: number, button = 0, mode = 0, windowId?: number) =>
       emitAck<WindowState | null>(ClientCommands.MODULE_ACTION, {
         id,
         module: "window",
         action: "click",
-        args: { slot, button, mode },
+        args: { slot, button, mode, windowId },
       }),
     close: (id: string) =>
       emitAck(ClientCommands.MODULE_ACTION, { id, module: "window", action: "close" }),

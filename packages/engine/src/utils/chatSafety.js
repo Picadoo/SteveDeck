@@ -31,7 +31,8 @@ function isChatBlocked(msg) {
         // 归一化(API-2)：剥掉命名空间前缀（/minecraft:gamemode → /gamemode）后再比对黑名单，防绕过。
         // 注意：未知 / 命令仍默认放行——RPG 服大量自定义命令(/job /skill 等)需可用；这里只拦已知危险命令，
         // 不做白名单(default-deny)以免误伤通用场景；危险面靠黑名单 + 去命名空间 + 去注入覆盖。
-        const norm = lower.replace(/^\/[a-z0-9_]+:/, '/');
+        // 前缀字符集含 - 和 .（Bukkit 插件 fallback 前缀如 /multiverse-core:tp），漏掉即被绕过。
+        const norm = lower.replace(/^\/[a-z0-9_.-]+:/, '/');
         return BLOCKED_COMMANDS.some((cmd) => {
             const c = cmd.trim();
             return lower.startsWith(c) || norm.startsWith(c);

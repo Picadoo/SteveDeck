@@ -51,6 +51,7 @@ export interface BotInstance {
     mark?: (...args: any[]) => any;
   };
   _fatalReason?: string | null;
+  _maintenanceKick?: boolean;
   _actionBar?: { text: string; at: number } | null;
 
   // ===== 生命周期 / 连接 =====
@@ -83,7 +84,7 @@ export interface BotInstance {
   // ===== 背包 / GUI 窗口（player_inventory / window_gui / interact 模块挂载） =====
   syncInventory(force?: boolean): void;
   getWindow(): any;
-  clickWindowSlot(slot: number, button?: number, mode?: number): Promise<any> | any;
+  clickWindowSlot(slot: number, button?: number, mode?: number, expectedWindowId?: number): Promise<any> | any;
   closeGui(): boolean | void;
   openContainerAt(x: number, y: number, z: number): Promise<any> | any;
   exploreMenuItem(item: string, opts?: { keep?: boolean; clickPath?: string[] }): Promise<any>;
@@ -103,7 +104,7 @@ export interface BotInstance {
   // ===== 功能模块：开关 + 运行态 + 统计 =====
   combatConfig: any; // 形状=protocol CombatConfig，但 JS 侧可能带临时键，保持 any 免得两头互卡
   fishingActive?: boolean;
-  setFishing(on: boolean): void;
+  setFishing(on: boolean, config?: { mode?: string }): void;
   autoMineTask?: ModuleTask | null;
   toggleAutoMine(on: boolean, config?: any): any;
   stopAutoMine?: () => void;
@@ -111,6 +112,9 @@ export interface BotInstance {
   /** 轻量模块的运行统计（模块页展示「在干什么」）：spawn 后由各模块挂载 */
   getCombatStats?: () => any;
   getFishingStats?: () => any;
+  scanFishingPond?: () => any;
+  lockFishingPond?: () => any;
+  getParticleObservation?: () => any;
   getFollowStats?: () => any;
   getTrashStats?: () => any;
   getAutoUseStats?: () => any;

@@ -1,7 +1,8 @@
-module.exports = (botInstance) => {
+const installVanilla = (botInstance) => {
     const bot = botInstance.bot;
     let loopTimer = null;   // 下一轮 fishingLoop 的定时器句柄
     let fishTimeout = null; // 本轮 60s 超时定时器句柄
+    let generation = 0;
 
     const emitLog = (msg) => botInstance.uiLog(msg);
 
@@ -16,6 +17,8 @@ module.exports = (botInstance) => {
 
     async function fishingLoop() {
         if (!botInstance.fishingActive || !bot.entity) return;
+        const run = generation;
+        let timeoutHandle = null;
 
         // 查找鱼竿（兼容不同版本名称）
         const rod = bot.inventory.items().find(item =>
@@ -59,25 +62,41 @@ module.exports = (botInstance) => {
 
         try {
             await bot.equip(rod, 'hand');
+            if (!botInstance.fishingActive || run !== generation) return;
 
             // 超时保护：60秒无鱼上钩自动重试。成功/失败都 clearTimeout，避免每轮遗留一个 60s 计时器
             stats.casts++;
             stats.phase = '等待咬钩…';
             const fishPromise = bot.fish();
+            // race 败者也要接住 rejection：超时路径后 mineflayer 会 cancel 掉这个旧任务，
+            // 不挂 catch 就是每次超时刷一条 unhandledRejection
+            fishPromise.catch(() => {});
             const timeoutPromise = new Promise((_, reject) => {
-                fishTimeout = setTimeout(() => reject(new Error('钓鱼超时(60s)')), 60000);
+                timeoutHandle = setTimeout(() => reject(new Error('钓鱼超时(60s)')), 60000);
+                fishTimeout = timeoutHandle;
             });
+            let timedOut = false;
             try {
                 await Promise.race([fishPromise, timeoutPromise]);
+                if (!botInstance.fishingActive || run !== generation) return;
                 stats.catches++;
                 stats.phase = '收线！重新抛竿…';
+            } catch (raceErr) {
+                timedOut = String(raceErr?.message || '').includes('超时');
+                throw raceErr;
             } finally {
-                if (fishTimeout) { clearTimeout(fishTimeout); fishTimeout = null; }
+                if (timeoutHandle) clearTimeout(timeoutHandle);
+                if (fishTimeout === timeoutHandle) fishTimeout = null;
+                // 超时后浮漂还在水里：先收线（activateItem 收回旧浮漂），否则下一轮 bot.fish()
+                // 的 activateItem 变成「收线」而非「抛竿」，与 mineflayer 状态机脱节空转一轮
+                if (timedOut && run === generation) {
+                    try { bot.activateItem(); } catch (_e) { /* bot 可能已断线 */ }
+                }
             }
 
-            if (botInstance.fishingActive) loopTimer = setTimeout(fishingLoop, 100);
+            if (botInstance.fishingActive && run === generation) loopTimer = setTimeout(fishingLoop, 100);
         } catch (err) {
-            if (!botInstance.fishingActive) return;
+            if (!botInstance.fishingActive || run !== generation) return;
             // 超时不刷屏，只在非超时错误时打日志
             if (!err.message.includes('超时')) {
                 emitLog(`钓鱼出错: ${err.message}`);
@@ -89,15 +108,18 @@ module.exports = (botInstance) => {
         }
     }
 
-    botInstance.setFishing = (state) => {
+    botInstance.setFishing = (state, options = {}) => {
+        if (state && options.mode && options.mode !== 'vanilla') throw Error('当前服务器未提供该钓鱼模式');
         const prevState = botInstance.fishingActive;
         botInstance.fishingActive = state;
 
         if (state && !prevState) {
+            generation++;
             stats.startedAt = Date.now();
             stats.phase = '准备抛竿…';
             fishingLoop();
         } else if (!state && prevState) {
+            generation++;
             try { bot.activateItem(); } catch (_e) {}
             if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
         }
@@ -106,8 +128,15 @@ module.exports = (botInstance) => {
     // 清理：断线/停止时关闭钓鱼并清掉悬挂定时器（此前本模块完全没有清理）
     botInstance.cleanupHooks = botInstance.cleanupHooks || [];
     botInstance.cleanupHooks.push(() => {
+        generation++;
         botInstance.fishingActive = false;
         if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
         if (fishTimeout) { clearTimeout(fishTimeout); fishTimeout = null; }
     });
+};
+
+module.exports = inst => {
+    installVanilla(inst);
+    inst.scanFishingPond = () => require('./fishing_pond').scanFishingPond(inst.bot);
+    require('../adapters').getServerAdapter(inst.config)?.installFishing?.(inst);
 };

@@ -132,7 +132,13 @@ module.exports = (botInstance) => {
             task.active = true;
             task.targetId = null;
             task.targetName = null;
-            if (task.timer) clearInterval(task.timer);
+            if (task.timer) {
+                clearInterval(task.timer);
+                // 同步从实例 timers 数组移除旧句柄（MODA-2 同款）：只 clear 不 splice 的话，
+                // 脚本/自动化频繁切换跟随目标的长跑场景下数组无界堆积
+                const i = botInstance.timers.indexOf(task.timer);
+                if (i >= 0) botInstance.timers.splice(i, 1);
+            }
             task.timer = setInterval(tick, 800);
             botInstance.timers.push(task.timer);
             emitLog(`跟随已开启（${task.config.mode === 'player' ? `玩家: ${task.config.target}` : task.config.mode === 'keyword' ? `关键词: ${task.config.target}` : '最近的玩家'}，距离 ${task.config.distance}）`);

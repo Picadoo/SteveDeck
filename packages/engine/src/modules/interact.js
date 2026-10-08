@@ -76,9 +76,12 @@ module.exports = (botInstance) => {
     };
 
     botInstance.interactWithNPC = async (input) => {
+        const policy = require('../adapters').getServerAdapter(botInstance.config)?.npcPolicy;
+        const custom = policy?.metadataName === true;
         const target = bot.nearestEntity((entity) => {
             if (entity === bot.entity) return false;
-            const name = (entity.customName || entity.username || "").replace(/§./gi, '').toLowerCase();
+            if (policy?.excludeRealPlayers && entity.type === 'player' && bot.players?.[entity.username] && /^[A-Za-z0-9_]{1,16}$/.test(entity.username || '')) return false;
+            const name = (policy?.metadataName ? nameMotd(entity.customName ?? entity.metadata?.[2] ?? entity.username) : entity.customName || entity.username || "").replace(/§./gi, '').toLowerCase();
             return name.includes(input.toLowerCase()) || entity.id.toString() === input;
         });
 
@@ -92,6 +95,7 @@ module.exports = (botInstance) => {
         }
 
         try {
+            if (policy?.requireEmptyCursor && bot.inventory?.selectedItem) throw Error('鼠标上还有物品，请先放回');
             const { goals } = require('mineflayer-pathfinder');
             botInstance.io.to(botInstance._room).to('admin').emit('log', {
                 user: bot.username,
@@ -101,7 +105,16 @@ module.exports = (botInstance) => {
 
             // GoalNear 会结束（GoalFollow 是持续跟随、不收敛），靠近到约 2.5 格。
             // 加 15s 超时：NPC 不可达（隔墙/异层）时 goto 会无限重试、永久挂住整个交互流；超时即停。
-            await Promise.race([
+            if (custom) {
+                const movements = botInstance.makeMovements?.();
+                if (movements) { movements.canDig=false;movements.allow1by1towers=false;movements.scafoldingBlocks=[];bot.pathfinder.setMovements(movements); }
+                let timeout;
+                try { await Promise.race([
+                    bot.pathfinder.goto(new goals.GoalNear(target.position.x,target.position.y,target.position.z,2.5)),
+                    new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('NPC 不可达，已停止')),15000);}),
+                ]); } finally { clearTimeout(timeout);bot.pathfinder.setGoal(null); }
+                if (!bot.entity || !bot.entities[target.id] || bot.entity.position.distanceTo(target.position)>3.5) throw Error('未靠近 NPC，未发送交互');
+            } else await Promise.race([
                 bot.pathfinder.goto(new goals.GoalNear(target.position.x, target.position.y, target.position.z, 2.5)).catch(() => {}),
                 new Promise((r) => setTimeout(r, 15000)),
             ]);
@@ -111,7 +124,7 @@ module.exports = (botInstance) => {
             const at = target.position.offset(0, (target.height || 1.8) / 2, 0);
             await bot.lookAt(at, true);
             bot.swingArm('right');
-            try { await bot.activateEntityAt(target, at); } catch (_e) { /* 部分服不支持 at，忽略 */ }
+            if (!custom) try { await bot.activateEntityAt(target, at); } catch (_e) { /* 部分服不支持 at，忽略 */ }
             try { await bot.activateEntity(target); } catch (_e) { /* 忽略 */ }
 
             botInstance.io.to(botInstance._room).to('admin').emit('log', {

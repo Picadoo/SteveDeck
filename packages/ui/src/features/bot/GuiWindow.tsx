@@ -25,6 +25,7 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [hover, setHover] = useState<Hover | null>(null);
   const [clicking, setClicking] = useState(false);
+  const clickPending = useRef(false);
 
   // 刷新/切换账号后自动恢复：若服务端此刻有打开的窗口，拉回来重新弹出
   // （预览是静态构建包，刷新会丢失前端窗口状态；服务端的窗口仍在）
@@ -94,13 +95,22 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
     setWin(bot.id, null);
   };
   const click = async (slot: number, button = 0, mode = 0) => {
-    if (clicking) return; // 防连点：上一次点击在途时直接吞掉（并发 click 会让服务端 GUI 状态错乱）
+    if (clickPending.current) return; // 同一渲染帧内的连点也必须拦住
+    clickPending.current = true;
     setHover(null);
     setClicking(true);
-    const r = await cmd.window.click(bot.id, slot, button, mode);
-    setClicking(false);
-    if (r.ok) setWin(bot.id, r.data ?? null);
-    else pushToast(r.error || "点击失败", "error");
+    try {
+      const r = await cmd.window.click(bot.id, slot, button, mode, win.id);
+      if (r.ok) setWin(bot.id, r.data ?? null);
+      else {
+        const fresh = await cmd.window.get(bot.id);
+        if (fresh.ok) setWin(bot.id, fresh.data ?? null);
+        pushToast(r.error || "点击失败", "error");
+      }
+    } finally {
+      clickPending.current = false;
+      setClicking(false);
+    }
   };
   const refresh = async () => {
     const r = await cmd.window.get(bot.id);
@@ -149,11 +159,11 @@ export default function GuiWindow({ bot }: { bot: BotSummary }) {
           <span className="hidden shrink-0 text-[10px] text-muted sm:inline">点目标格放下 · 右键放一个</span>
         </div>
       )}
-      <SlotGrid slots={container} texBase={texBase} onClick={click} onHover={onHover} />
+      <SlotGrid slots={container} texBase={texBase} onClick={click} onHover={onHover} disabled={clicking} />
       {split < total && backpack.length > 0 && (
         <>
           <div className="mb-1.5 mt-3 text-[11px] font-medium text-muted">你的背包</div>
-          <SlotGrid slots={backpack} base={split} texBase={texBase} onClick={click} onHover={onHover} />
+          <SlotGrid slots={backpack} base={split} texBase={texBase} onClick={click} onHover={onHover} disabled={clicking} />
         </>
       )}
 
@@ -170,12 +180,14 @@ function SlotGrid({
   texBase,
   onClick,
   onHover,
+  disabled,
 }: {
   slots: (WindowSlot | null)[];
   base?: number;
   texBase: string;
   onClick: (slot: number, button?: number, mode?: number) => void;
   onHover: (h: Hover | null) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="grid grid-cols-9 gap-1">
@@ -186,6 +198,7 @@ function SlotGrid({
         const active = !!it && !filler;
         return (
           <button type="button"
+            disabled={disabled}
             key={slotIdx}
             onClick={(e) => onClick(slotIdx, 0, e.shiftKey ? 1 : 0)}
             onContextMenu={(e) => {

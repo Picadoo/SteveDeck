@@ -335,6 +335,7 @@ export function buildObservation(id: string): any {
       const maxHp2 = entityMaxHealth(e);
       const item = {
         type: e.type,
+        entityId: e.id,
         id: e.name || null,
         name:
           custom ||

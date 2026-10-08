@@ -31,14 +31,19 @@ function emitAck(client, ev, payload, timeout = 8000) {
     });
 }
 
+// server/engine 提到顶层作用域：异常路径的 catch 里也要能清理——否则任何一处抛错
+// （TypeError/startEngine 失败）都会留下孤儿 java 进程占死固定端口，之后每次重跑必失败
+let server = null;
+let engine = null;
+
 (async () => {
     console.log('=== 准备本地 vanilla 测试服 ===');
     await ensureServerFiles();
     resetWorld();
-    let server = await startServer();
+    server = await startServer();
     console.log(`  [vanilla] 就绪 127.0.0.1:${MC_PORT}（${MC_VERSION}）`);
 
-    const engine = await startEngine({ port: PORT, token: TOKEN });
+    engine = await startEngine({ port: PORT, token: TOKEN });
     let failures = 0;
     const check = (name, cond, extra) => {
         if (cond) console.log('  ✓', name, extra ?? '');
@@ -214,5 +219,8 @@ function emitAck(client, ev, payload, timeout = 8000) {
     process.exit(failures === 0 ? 0 : 1);
 })().catch(async (e) => {
     console.error('TEST ERROR', e);
+    // 异常收尾：杀掉已启动的 java/引擎，避免孤儿进程占死端口拖垮后续重跑
+    try { engine?.server?.close(); } catch { /* ignore */ }
+    try { await server?.stop(); } catch { /* ignore */ }
     process.exit(1);
 });

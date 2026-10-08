@@ -38,6 +38,8 @@ module.exports = (botInstance) => {
         stopOnDeath: false,
         maxDeaths: 0,
         currentTarget: null,
+        singleTargetFocus: false,
+        preferredTargetId: null,
         lastPosition: null,
         isDead: false,
         pausedByPlayer: false,
@@ -125,6 +127,7 @@ module.exports = (botInstance) => {
         if (isArmorStand(entity)) return false;
 
         const task = botInstance.mobHunterTask;
+        if (task.singleTargetFocus && task.preferredTargetId !== null && entity.id !== task.preferredTargetId) return false;
         const entityName = getEntityDisplayName(entity);
 
         if (task.mode === 'keyword') {
@@ -254,7 +257,7 @@ module.exports = (botInstance) => {
         if (!bot.entity) return null;
         const task = botInstance.mobHunterTask;
         const now = Date.now();
-        const maxDistance = 32;
+        const maxDistance = task.singleTargetFocus ? 64 : 32;
         const myPos = bot.entity.position;
 
         // 一次遍历同时收集玩家和候选（先刷新全息名牌缓存，供关键词匹配）
@@ -295,7 +298,12 @@ module.exports = (botInstance) => {
             if (cur) return cur.entity;
         }
 
-        pool.sort((a, b) => a.d - b.d);
+        const hp = e => {
+            const value = e.health ?? e.metadata?.[7] ?? e.metadata?.[6];
+            return Number.isFinite(value) && value > 0 ? value : Infinity;
+        };
+        pool.sort((a, b) => task.singleTargetFocus ? hp(a.entity)-hp(b.entity) || a.d-b.d : a.d-b.d);
+        if (task.singleTargetFocus) task.preferredTargetId = pool[0].entity.id;
         return pool[0].entity;
     };
 
@@ -321,7 +329,7 @@ module.exports = (botInstance) => {
         const followDist = range - KITE_OFFSET_FAR;
 
         // 太近 → 后撤
-        if (distance < idealNear) {
+        if (!task.singleTargetFocus && distance < idealNear) {
             clearGoal();
             try {
                 bot.setControlState('forward', false);
@@ -541,7 +549,7 @@ module.exports = (botInstance) => {
                     // 实体消失 → entityGone 已处理结算
                     target = null;
                     task.currentTarget = null;
-                } else if (!isInHuntArea(entity.position)) {
+                } else if (!isInHuntArea(entity.position) || (task.singleTargetFocus && !isValidTarget(entity))) {
                     target = null;
                     task.currentTarget = null;
                     clearGoal();
@@ -661,6 +669,8 @@ module.exports = (botInstance) => {
             runTime: Math.floor(runTime),
             killRate: (stats.totalKills / Math.max(runTime, 1)).toFixed(2),
             currentTarget: botInstance.mobHunterTask.currentTarget ? getEntityDisplayName(botInstance.mobHunterTask.currentTarget) : '无',
+            currentTargetEntityId: botInstance.mobHunterTask.currentTarget?.id ?? null,
+            singleTargetFocus: botInstance.mobHunterTask.singleTargetFocus,
             isPaused: botInstance.mobHunterTask.pausedByPlayer,
             area: botInstance.mobHunterTask.huntArea
                 ? (botInstance.mobHunterTask.huntArea.radius
@@ -673,6 +683,13 @@ module.exports = (botInstance) => {
     botInstance.toggleMobHunter = (active, config = {}) => {
         const task = botInstance.mobHunterTask;
         task.active = active;
+        config = require('../adapters').getServerAdapter(botInstance.config)?.hunterConfig?.(botInstance, config) || config;
+        if (config.singleTargetFocus !== undefined) task.singleTargetFocus = config.singleTargetFocus === true;
+        if (config.preferredTargetId !== undefined) {
+            task.preferredTargetId = task.singleTargetFocus && Number.isInteger(config.preferredTargetId)
+                && config.preferredTargetId >= 0 ? config.preferredTargetId : null;
+        }
+        if (!active) task.preferredTargetId = null;
 
         if (config.mode) task.mode = config.mode;
         if (config.keywords !== undefined) {

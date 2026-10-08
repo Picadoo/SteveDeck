@@ -1,7 +1,7 @@
 // mineflayer 事件绑定（从 BotInstance.js 抽出）：消息流（actionbar 节流/可点击聊天/缓冲批量）、
 // 断线重连挂钩、良性解析错误降噪、踢出致命判定、死亡处理（死亡点/复活指令/死亡返回）。
 const logger = require('../utils/logger');
-const { isFatalKick, extractText } = require('../utils/reconnectPolicy');
+const { isFatalKick, isMaintenanceKick, extractText } = require('../utils/reconnectPolicy');
 const { isChatBlocked } = require('../utils/chatSafety');
 const { extractChatSegments } = require('../utils/chatSegments');
 
@@ -83,9 +83,8 @@ module.exports.mixin = {
             this.handleReconnect();
         });
 
-        // 模组服(龙核 DragonCore 等)常见：香草协议解析器读不动某些模组包/区块 → 抛 "varint is too big"
-        // 等解析错误，但这是【非致命】的——连接不断、bot 照常在线(实测登录后只报一次、随即「连接稳定」)。
-        // 故把这类良性解析错误降级：不当「连接出错」报警、每次连接只平静提示一次，避免吓人/刷屏。
+        // 解析失败不一定断线，但会使世界数据不完整，影响移动、寻路和交互。
+        // 限频提示以避免刷屏；不能把「在线」当作功能正常，也不能承诺无影响。
         let benignParseWarned = false;
         // E10：logger.warn 限频——模组服解析错误风暴可达 20 次/s，逐条落盘一天能写 100MB 日志。
         // 首条照记，之后 60s 窗口内只计数，窗口结束补一条汇总。
@@ -98,17 +97,17 @@ module.exports.mixin = {
                 const now = Date.now();
                 if (now - benignLogWindowStart >= 60000) {
                     if (benignSuppressed > 0) {
-                        logger.warn(`[${this.config.username}] 过去 60s 内已忽略 ${benignSuppressed} 条良性解析错误`);
+                        logger.warn(`[${this.config.username}] 过去 60s 内发生 ${benignSuppressed} 条额外数据解析错误`);
                     }
                     benignLogWindowStart = now;
                     benignSuppressed = 0;
-                    logger.warn(`[${this.config.username}] 忽略良性解析错误: ${msg}`);
+                    logger.warn(`[${this.config.username}] 数据解析失败，部分操作可能不可用: ${msg}`);
                 } else {
                     benignSuppressed++;
                 }
                 if (!benignParseWarned) {
                     benignParseWarned = true;
-                    this.uiLog('ℹ️ 模组服部分世界数据无法解析（已忽略，不影响聊天/钓鱼/指令；走动请用「直发移动」）');
+                    this.uiLog('⚠️ 部分服务器数据解析失败，移动、寻路或交互可能不可用；连接在线不代表这些功能正常。');
                 }
                 return;
             }
@@ -127,7 +126,10 @@ module.exports.mixin = {
                 kind: 'kick'
             });
             this.notifyEvent('kick', `被服务器踢出：${text || '(无原因)'}`);
-            if (isFatalKick(reason)) this._fatalReason = text || '不可恢复的断开';
+            // 维护型（白名单类）优先：降级为低频重试而非永久停止——服务器维护重启时临时开
+            // 白名单极常见，维护结束 bot 应自己回来。其余致命关键词照旧停止重连。
+            if (isMaintenanceKick(reason)) this._maintenanceKick = true;
+            else if (isFatalKick(reason)) this._fatalReason = text || '不可恢复的断开';
         });
 
         // 自动复活：mineflayer 默认死亡即自动重生（无需手动）。此处仅记录可见日志，

@@ -373,8 +373,14 @@ export async function startEngine(opts: EngineOptions = {}): Promise<EngineHandl
   // 挂到局域网/公网。需对外可达的场景（Docker、远程引擎、手机扫码连）显式设
   // ENGINE_HOST=0.0.0.0（或指定网卡 IP）即可放开。内置桌面版本就传 ENGINE_HOST=127.0.0.1，行为不变。
   const host = process.env.ENGINE_HOST || "127.0.0.1";
-  await new Promise<void>((resolve) => {
-    server.listen(port, host, () => resolve());
+  await new Promise<void>((resolve, reject) => {
+    // 绑定失败（EADDRINUSE 等）必须 reject：只 resolve 的话错误落进 uncaughtException
+    // 的「记录但继续」兜底——进程活着但永不监听，桌面壳/Docker 只看到一个静默挂起的僵尸引擎
+    server.once("error", reject);
+    server.listen(port, host, () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
   });
 
   botManager.startAll();

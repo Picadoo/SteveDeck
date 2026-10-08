@@ -160,6 +160,26 @@ test('run_script：子脚本 aborted 向外传播，totalSteps 跨层累计', as
   assert.ok(ctx.totalSteps >= 3); // 外层 1 步 + 子脚本 2 步（s2 未执行不计）
 });
 
+test('run_script：根 ctx 被外部 abort 时子脚本内实时可见（停止按钮/保命抢占场景）', async () => {
+  // 审查修的 P1：浅拷贝 subCtx 会把 aborted 变成独立副本——外部往根写 aborted=true，
+  // 子脚本里的 while 循环读的是副本永远 false，「停止」和保命抢占在子脚本运行期间全部失效。
+  const scripts = { spinner: { steps: [{ do: 'while', cond: 'always', steps: [{ do: 'work' }] }] } };
+  const ctx = ctx0();
+  let ticks = 0;
+  const { run, log } = makeEnv({
+    getScript: (n) => scripts[n],
+    evalCondition: (c) => c === 'always',
+    executeAction: async () => {
+      ticks++;
+      if (ticks === 3) ctx.aborted = true; // 模拟外部（stopScript/保命抢占）往根 ctx 写入
+      if (ticks > 50) throw new Error('abort 未传播进子脚本');
+    },
+  });
+  await run([{ do: 'run_script', name: 'spinner' }], ctx);
+  assert.equal(ticks, 3); // 第 3 次动作后外部 abort，子脚本 while 立即退出
+  assert.ok(!log.some((m) => m.includes('未传播')));
+});
+
 test('retry：失败自动重试到成功；耗尽后经 emitError 上报且不中断后续步骤', async () => {
   let failures = 2;
   const { run, actions, log } = makeEnv({

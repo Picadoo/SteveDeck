@@ -44,7 +44,10 @@ export function saveAiConfig(patch: Partial<AiConfig>): AiConfig {
     // apiKey 传空串 = 不修改；传 "-" = 清除
     apiKey: patch.apiKey === "-" ? "" : patch.apiKey ? patch.apiKey.trim() : cur.apiKey,
   };
-  fs.writeFileSync(FILE, JSON.stringify(next, null, 2));
+  // apiKey 明文落盘：0o600 收权限（Linux/Docker 下默认 644 全局可读）+ 原子写防写坏丢 Key
+  const tmp = `${FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2), { mode: 0o600 });
+  fs.renameSync(tmp, FILE);
   return next;
 }
 
@@ -54,34 +57,43 @@ type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
 async function callModel(cfg: AiConfig, messages: ChatMsg[]): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90_000);
-  let resp: Response;
+  // 90 秒预算覆盖整个请求（含读 body）：signal 同时中止 body 读取。原实现在收到响应头后
+  // 就 clearTimeout，AI 端点发完头卡住时 resp.text()/json() 永久挂起，Agent 轮次悬死。
   try {
-    resp = await fetch(`${cfg.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify({
-        model: cfg.model,
-        messages,
-        temperature: 0.3,
-        response_format: { type: "json_object" },
-      }),
-      signal: ctrl.signal,
-    });
-  } catch (e: any) {
-    throw new Error(e?.name === "AbortError" ? "AI 接口超时（90 秒）" : `AI 接口不可达: ${e?.message ?? e}`);
+    let resp: Response;
+    try {
+      resp = await fetch(`${cfg.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
+        body: JSON.stringify({
+          model: cfg.model,
+          messages,
+          temperature: 0.3,
+          response_format: { type: "json_object" },
+        }),
+        signal: ctrl.signal,
+      });
+    } catch (e: any) {
+      throw new Error(e?.name === "AbortError" ? "AI 接口超时（90 秒）" : `AI 接口不可达: ${e?.message ?? e}`);
+    }
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      if (resp.status === 401) throw new Error("API Key 无效（401）");
+      if (resp.status === 402) throw new Error("API 余额不足（402）");
+      throw new Error(`AI 接口错误 ${resp.status}: ${body.slice(0, 200)}`);
+    }
+    let data: any;
+    try {
+      data = await resp.json();
+    } catch (e: any) {
+      throw new Error(e?.name === "AbortError" ? "AI 接口超时（90 秒，读响应超时）" : `AI 响应解析失败: ${e?.message ?? e}`);
+    }
+    const content = String(data?.choices?.[0]?.message?.content ?? "");
+    if (!content) throw new Error("AI 返回为空");
+    return content;
   } finally {
     clearTimeout(timer);
   }
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
-    if (resp.status === 401) throw new Error("API Key 无效（401）");
-    if (resp.status === 402) throw new Error("API 余额不足（402）");
-    throw new Error(`AI 接口错误 ${resp.status}: ${body.slice(0, 200)}`);
-  }
-  const data: any = await resp.json();
-  const content = String(data?.choices?.[0]?.message?.content ?? "");
-  if (!content) throw new Error("AI 返回为空");
-  return content;
 }
 
 /** 容错解析模型输出为脚本对象；不合形状 throw。 */

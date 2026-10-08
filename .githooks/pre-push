@@ -7,6 +7,9 @@ fail() {
   echo "✖ 推送门禁未通过：$1（临时跳过：git push --no-verify）" >&2
   exit 1
 }
+# protocol 的类型入口指向 dist/index.d.ts：不先构建就 typecheck，改了 protocol/src 后
+# 门禁对着过期 d.ts 校验 engine/UI——协议不兼容改动照样放行，推上去 CI 才红
+pnpm --filter @mcbot/protocol build || fail "protocol 构建"
 pnpm typecheck || fail "typecheck"
 pnpm --filter @mcbot/engine test:unit || fail "引擎单测"
 pnpm --filter @mcbot/ui test || fail "UI 单测"

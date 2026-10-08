@@ -7,12 +7,40 @@ const MAX_PATTERN_LEN = 200;
 
 // 嵌套量词检测：对一个「内部本身含无界量词（加号/星号/下界重复 {n,}）」的分组再整体加量词
 // → 指数级回溯。例：(a+)+  (a*)*  ([a-z]+)+  (\d+)*  ((ab)+)+  (.+)+
+// 另拦两类经典绕过（审查补的盲区）：
+//  ① 重叠交替 (a|a)+ ——组内顶层 | 且组整体加无界量词，分支重叠时 2^n 回溯；
+//    静态判「分支是否真重叠」不可行，统一拒绝（(foo|bar)+ 这类无害款会被误拒，安全侧可接受）。
+//  ② 可选量词序列 (a+)?(a+)?(a+)?…$ ——单个无害，连续 ≥3 个「内部含无界量词的可选组」
+//    在不匹配输入上组合爆炸，按序列计数拦截。
 //
 // 用括号配对扫描而非单条正则——单正则的 [^)]* 跨不过内层括号，会漏掉 ((a+)+)+ 这类
 // 跨括号的双层嵌套（补测时发现的真实盲区）。扫描时跳过转义与字符类，避免把 [(] 或 \( 误当分组。
 // best-effort：字符类内的字面量化字符可能导致「误拒」（如 ([a+])+），但误拒是安全侧，可接受。
+
+// inner 顶层（不进嵌套括号/字符类）是否有交替 |
+function hasTopLevelPipe(s) {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\\") { i++; continue; }
+    if (c === "[") {
+      i++;
+      while (i < s.length && s[i] !== "]") {
+        if (s[i] === "\\") i++;
+        i++;
+      }
+      continue;
+    }
+    if (c === "(") depth++;
+    else if (c === ")") depth--;
+    else if (c === "|" && depth === 0) return true;
+  }
+  return false;
+}
+
 function hasCatastrophicNesting(p) {
   const stack = []; // 每个未闭合 '(' 的起始下标
+  let optionalHeavyGroups = 0; // (a+)? 形态计数（可选量词序列爆炸）
   for (let i = 0; i < p.length; i++) {
     const c = p[i];
     if (c === "\\") { i++; continue; } // 跳过转义字符（\( \) \+ 都是字面量）
@@ -31,11 +59,16 @@ function hasCatastrophicNesting(p) {
       const start = stack.pop();
       if (start == null) continue; // 括号不配对，交给 new RegExp 报语法错
       const next = p[i + 1];
-      const quantified = next === "+" || next === "*" || next === "{";
-      if (!quantified) continue; // 分组整体没有再加量词 → 安全
       const inner = p.slice(start + 1, i);
-      // 分组内部含无界量词(+/*)或下界重复 {n,} → 「量词套量词」，指数回溯
-      if (/[+*]/.test(inner) || /\{\d+,\}?/.test(inner)) return true;
+      const innerUnbounded = /[+*]/.test(inner) || /\{\d+,\}/.test(inner);
+      if (next === "+" || next === "*" || next === "{") {
+        // 组整体加无界/重复量词：内部有量词（量词套量词）或顶层交替（重叠分支）→ 拒
+        if (innerUnbounded || /\{\d+,\}?/.test(inner) || hasTopLevelPipe(inner)) return true;
+      } else if (next === "?" && innerUnbounded) {
+        // 可选组内含无界量词：单个无害，连续堆叠才爆炸
+        optionalHeavyGroups++;
+        if (optionalHeavyGroups >= 3) return true;
+      }
     }
   }
   return false;

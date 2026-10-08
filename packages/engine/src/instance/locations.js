@@ -63,6 +63,11 @@ module.exports.mixin = {
     },
 
     goToLocation(locationId) {
+        // 在线守卫（与 saveLocation 同款）：断线后 this.bot 为 null，往下解引用会把
+        // TypeError 透传给用户，而不是可读的「未在线」提示
+        if (!this.bot?.entity) {
+            return { success: false, error: '机器人未在线' };
+        }
         const location = this.savedLocations.find(loc => loc.id === locationId);
         if (!location) {
             return { success: false, error: '地点不存在' };

@@ -10,7 +10,9 @@ const LOG_LEVELS = {
 
 class Logger {
     constructor() {
-        this.level = LOG_LEVELS[process.env.LOG_LEVEL || 'INFO'];
+        // 大小写不敏感 + 非法值回落 INFO：原实现 LOG_LEVEL=info（小写）得到 undefined，
+        // 所有级别比较全为 false——连 ERROR 都静默不输出，Docker 场景全盲且无提示。
+        this.level = LOG_LEVELS[(process.env.LOG_LEVEL || 'INFO').toUpperCase()] ?? LOG_LEVELS.INFO;
         // 日志目录可经 MCBOT_DATA_DIR 配置（Docker/桌面打包时数据目录与代码目录分离）；
         // 不配则保持旧行为（相对本文件的 ../logs，打包后落在 dist/logs）
         this.logDir = process.env.MCBOT_DATA_DIR

@@ -128,7 +128,14 @@ function createStepExecutor(env) {
                     }
 
                     env.emitLog(`调用子脚本: ${scriptName}`);
+                    // abort 双向直通根上下文：停止按钮/保命抢占写的是根 ctx.aborted，子脚本内的
+                    // 检查必须实时可见；子脚本 stop 动作也要停到根。浅拷贝会把 aborted 变成
+                    // 独立副本、断掉传播——子脚本跑长循环时「停止」和保命抢占全部失效。
                     const subCtx = { ...ctx, callDepth: ctx.callDepth + 1 };
+                    Object.defineProperty(subCtx, 'aborted', {
+                        get: () => ctx.aborted,
+                        set: (v) => { ctx.aborted = v; },
+                    });
                     try {
                         await executeSteps(subScript.steps || [], subCtx, [...stepPath, 'sub']);
                     } finally {
@@ -138,7 +145,6 @@ function createStepExecutor(env) {
                         }
                         if (Object.keys(savedVars).length > 0) env.emitVars();
                     }
-                    if (subCtx.aborted) ctx.aborted = true;
                     ctx.totalSteps = subCtx.totalSteps;
                     continue;
                 }

@@ -69,6 +69,7 @@ function validateBotInput(input: Partial<BotConfigInput> | undefined): string | 
 // 键集合 = BotSettings 接口里引擎各处实际消费的字段（含历史遗留 scripts/trash_cleaner）。
 // 校验策略：基本类型挡明显类型混淆；复杂结构（数组/对象）只校验「是数组/是对象」，元素形状交由各模块自身防御。
 const SETTINGS_SANITIZERS: Record<string, (v: unknown) => unknown | undefined> = {
+  autoStart: (v) => (typeof v === "boolean" ? v : undefined),
   // —— 连接 / 重连 ——
   autoReconnect: (v) => (typeof v === "boolean" ? v : undefined),
   reconnectDelay: (v) => (typeof v === "number" && Number.isFinite(v) ? v : undefined),
@@ -90,6 +91,9 @@ const SETTINGS_SANITIZERS: Record<string, (v: unknown) => unknown | undefined> =
   combat: (v) => (typeof v === "boolean" ? v : undefined),
   combatConfig: (v) => (v && typeof v === "object" ? v : undefined),
   fishing: (v) => (typeof v === "boolean" ? v : undefined),
+  fishingMode: (v) => (typeof v === 'string' && /^[a-z0-9_-]{1,64}$/.test(v) ? v : undefined),
+  fishingAutoStartPaused: (v) => (typeof v === "boolean" ? v : undefined),
+  particleObserve: (v) => (typeof v === "boolean" ? v : undefined),
   autoFarm: (v) => (v && typeof v === "object" ? v : undefined),
   autoMine: (v) => (v && typeof v === "object" ? v : undefined),
   mobHunter: (v) => (v && typeof v === "object" ? v : undefined),
@@ -257,6 +261,7 @@ class BotManager {
       id: cfg.id,
       username: cfg.username,
       host: cfg.host,
+      serverAdapter: require('./adapters').getServerAdapter(cfg)?.summary?.(cfg),
       // 在线时报真实协商版本（auto 模式下 cfg.version 只是 "auto"，贴图地址等要用真版本）
       version: (online && bot.version) || (cfg.version !== "auto" ? cfg.version : undefined),
       note: cfg.note ?? null,
@@ -368,7 +373,21 @@ class BotManager {
         if (!b?.username || !b.host) continue;
         if (this.configs.some((c) => c.username === b.username && c.host === b.host)) continue; // 已存在则跳过
         if (validateBotInput(b)) continue; // 非法配置(端口/长度)跳过
-        const cfg: BotConfig = { ...b, id: randomUUID() }; // 新 id，避免与现有冲突
+        // 按白名单字段重建（与 addBot 同口径，API-7）：原样 spread 会把 bundle 里的任意顶层键
+        // 和未消毒的 settings 整对象灌进引擎状态和 bots.json——导入是唯一旁路，损坏/恶意的
+        // 备份文件可借此夹带任意键。settings 同样过 sanitizeSettingsPatch。
+        const cfg: BotConfig = {
+          id: randomUUID(), // 新 id，避免与现有冲突
+          username: String(b.username),
+          host: String(b.host),
+          port: Number(b.port) || 25565,
+          version: typeof b.version === "string" && b.version.trim() ? b.version.trim() : "auto",
+          auth: b.auth === "microsoft" ? "microsoft" : "offline",
+          loginPassword: typeof b.loginPassword === "string" ? b.loginPassword : undefined,
+          loginCommand: typeof b.loginCommand === "string" && b.loginCommand.trim() ? b.loginCommand.trim() : undefined,
+          note: typeof b.note === "string" ? b.note : undefined,
+          settings: { combat: false, fishing: false, reconnectDelay: 5, schedules: [], ...sanitizeSettingsPatch(b.settings) },
+        };
         this.configs.push(cfg);
         this.spawn(cfg);
         bots++;
@@ -553,6 +572,10 @@ class BotManager {
   reconnect(id: string): void {
     const inst = this.bots.get(id);
     if (inst?.reconnect) inst.reconnect();
+    else {
+      const cfg = this.configs.find(c => c.id === id);
+      if (cfg) this.spawn(cfg);
+    }
   }
 
   stop(id: string): void {
@@ -580,11 +603,15 @@ class BotManager {
   startAll(): void {
     const perHostCount: Record<string, number> = {};
     for (const cfg of this.configs) {
+      if (cfg.settings?.autoStart === false) continue;
       const n = perHostCount[cfg.host] ?? 0;
       perHostCount[cfg.host] = n + 1;
       const delay = n * 1500;
       setTimeout(() => {
-        if (!this.bots.has(cfg.id)) this.spawn(cfg);
+        // 存在性复查：错峰窗口内（多 bot 时可达数十秒）用户删掉的 bot，configs 已无此项，
+        // 但闭包捕获的 cfg 仍在——不复查就会用已删除的配置复活一个 UI 看不到、停不掉的幽灵实例。
+        const stillExists = this.configs.some((c) => c.id === cfg.id);
+        if (stillExists && !this.bots.has(cfg.id)) this.spawn(cfg);
       }, delay);
     }
   }

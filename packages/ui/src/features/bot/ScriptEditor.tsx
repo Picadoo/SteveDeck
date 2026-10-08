@@ -478,7 +478,14 @@ function StepCard({
                       type={f.type === "number" ? "number" : "text"}
                       list={listIdFor(f.k)}
                       value={String(step[f.k] ?? "")}
-                      onChange={(e) => onField(f.k, f.type === "number" ? Number(e.target.value) : e.target.value)}
+                      onChange={(e) => {
+                        // 数字字段：键入途中的 ""/"-"/"1." 先按原样暂存——立即 Number() 会把
+                        // 「-」变 0 顶掉输入，负坐标（X/Z 常为负）在积木模式根本打不出来
+                        if (f.type !== "number") { onField(f.k, e.target.value); return; }
+                        const raw = e.target.value;
+                        const n = Number(raw);
+                        onField(f.k, raw !== "" && Number.isFinite(n) && String(n) === raw ? n : raw);
+                      }}
                     />
                   )}
                 </label>

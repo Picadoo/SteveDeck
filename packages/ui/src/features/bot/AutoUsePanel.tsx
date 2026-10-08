@@ -72,6 +72,9 @@ function ruleSummary(r: AutoUseRule): string {
 export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
   const pushToast = useStore((s) => s.pushToast);
   const [rules, setRules] = useState<AutoUseRule[]>([]);
+  // 与 MonitorPanel 同款防线：加载失败时不把「失败」当「没有规则」——之后的整表保存
+  // 会把引擎侧已有规则清空覆盖
+  const [rulesLoaded, setRulesLoaded] = useState(false);
   const [active, setActive] = useState(false);
   const [optimActive, setOptimActive] = useState<boolean | null>(null);
   const [manage, setManage] = useState(false);
@@ -82,14 +85,22 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
   function load(alive?: () => boolean) {
     return cmd.getBotConfig(bot.id).then((r) => {
       if (alive && !alive()) return;
-      const au = r.ok && r.data ? (r.data.settings as any)?.autoUse : null;
+      if (!r.ok || !r.data) {
+        setRulesLoaded(false);
+        pushToast(`自动使用规则加载失败：${r.error || "请求超时"}（编辑已禁用）`, "error");
+        return;
+      }
+      const au = (r.data.settings as any)?.autoUse ?? null;
       setRules(Array.isArray(au?.rules) ? au.rules : []);
       setActive(!!au?.active);
       setOptimActive(null);
+      setRulesLoaded(true);
     });
   }
   useEffect(() => {
     let alive = true;
+    setRules([]);
+    setRulesLoaded(false);
     load(() => alive);
     return () => {
       alive = false;
@@ -111,6 +122,7 @@ export default function AutoUsePanel({ bot }: { bot: BotSummary }) {
   }
 
   async function saveRules(next: AutoUseRule[]) {
+    if (!rulesLoaded) { pushToast("规则尚未加载成功，禁止保存（防止覆盖引擎侧已有规则）", "error"); return; }
     setRules(next);
     const r = await cmd.configModule(bot.id, "auto_use", { rules: next });
     if (!r.ok) pushToast(r.error || "保存失败", "error");

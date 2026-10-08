@@ -5,6 +5,7 @@ const vec3 = require("vec3");
 const { ServerEvents } = require("@mcbot/protocol"); // DESK-6：用协议常量 emit，避免与 TS 端事件名漂移
 const { enchantNames, parseChat, flattenChat, customName, iconId } = require("../utils/items");
 const { findMatchingSlot } = require("../utils/guiMatch");
+const path = require("path");
 
 function mkVec(x, y, z) {
   try {
@@ -87,17 +88,91 @@ module.exports = (botInstance) => {
 
   // 当前窗口快照
   botInstance.getWindow = () => serialize(bot.currentWindow);
+  let Item;
+  const decodeItem = (item) => {
+    if (!Item) {
+      const mfDir = path.dirname(require.resolve("mineflayer"));
+      Item = require(require.resolve("prismarine-item", { paths: [mfDir] }))(bot.registry);
+    }
+    return Item.fromNotch(item);
+  };
 
   // 点击槽位（button: 0 左键 / 1 右键；mode: 0 普通点击）
-  botInstance.clickWindowSlot = async (slot, button = 0, mode = 0) => {
+  let clickPending = false;
+  botInstance.clickWindowSlot = async (slot, button = 0, mode = 0, expectedWindowId) => {
     const win = bot.currentWindow;
     if (!win) throw new Error("当前没有打开的窗口");
-    await bot.clickWindow(slot, button, mode);
-    // 等服务端回包（set_slot/window_items 原地刷新，或换成子菜单）后再快照，返回刷新后的窗口；
-    // 同时下面挂的 updateSlot 监听会主动推 window_update 兜底。
-    await new Promise((r) => setTimeout(r, 150));
-    return serialize(bot.currentWindow);
+    if (expectedWindowId !== undefined && expectedWindowId !== win.id) {
+      throw new Error("窗口已切换，请在刷新后的界面重新选择槽位");
+    }
+    if (!Number.isInteger(slot) || slot < 0 || slot >= win.slots.length
+      || ![0, 1].includes(button) || ![0, 1].includes(mode)) throw new Error("无效的槽位或点击方式");
+    if (clickPending) throw new Error("上一笔窗口操作尚未完成，请稍后再点");
+    clickPending = true;
+    let resyncTimer;
+    let onItems;
+    let receivedResync = false;
+    const serverSlots = new Map();
+    let serverCursor;
+    const onSlot = (packet) => {
+      if (packet.windowId === win.id && packet.slot >= 0 && packet.slot < win.slots.length) {
+        serverSlots.set(packet.slot, packet.item);
+      } else if (packet.windowId === -1 && packet.slot === -1) serverCursor = packet.item;
+    };
+    bot._client.on("set_slot", onSlot);
+    const reconcile = () => {
+      if (bot.currentWindow !== win) return;
+      // 有些插件先更新物品再发 transaction；Mineflayer 的 acceptClick 随后会覆盖它。
+      // 用本次点击期间真正收到的服务器数据覆盖预测，不推算未知模组物品的堆叠上限。
+      for (const [index, item] of serverSlots) win.updateSlot(index, decodeItem(item));
+      if (serverCursor !== undefined) {
+        win.selectedItem = decodeItem(serverCursor);
+        bot.inventory.selectedItem = win.selectedItem;
+      }
+    };
+    const resynced = new Promise((resolve) => {
+      onItems = (packet) => {
+        if (packet.windowId !== win.id) return;
+        if (Array.isArray(packet.items)) {
+          packet.items.forEach((item, index) => { if (index < win.slots.length) serverSlots.set(index, item); });
+        }
+        receivedResync = true;
+        resolve();
+      };
+      bot._client.on("window_items", onItems);
+    });
+    try {
+      await bot.clickWindow(slot, button, mode);
+      await new Promise((r) => setTimeout(r, 150));
+      reconcile();
+      return serialize(bot.currentWindow);
+    } catch (err) {
+      if (!/Server rejected transaction/.test(err?.message || "")) throw err;
+      // Mineflayer 已确认拒绝包；等服务器重发窗口内容再推送，绝不重发可能涉及交易的点击。
+      await Promise.race([resynced, new Promise((resolve) => { resyncTimer = setTimeout(resolve, 800); })]);
+      reconcile();
+      if (bot.currentWindow) emit(ServerEvents.WINDOW_UPDATE, { window: serialize(bot.currentWindow) });
+      else emit(ServerEvents.WINDOW_CLOSE, {});
+      const detail = receivedResync ? "已按服务器数据刷新窗口" : "尚未收到该窗口的完整重同步，请关闭后重新打开";
+      throw new Error(`服务器未确认槽位 ${slot} 的物品操作，${detail}；请核对物品位置（未自动重试）`);
+    } finally {
+      clearTimeout(resyncTimer);
+      bot._client.removeListener("window_items", onItems);
+      bot._client.removeListener("set_slot", onSlot);
+      clickPending = false;
+    }
   };
+
+  // 1.12 的光标同步使用 windowId=-1/slot=-1，Mineflayer 的普通 set_slot 分支会忽略它。
+  // 拒绝交易后的服务器重同步必须覆盖 selectedItem，否则下一次放下会用旧的光标堆栈预测。
+  const onCursorSlot = (packet) => {
+    if (packet.windowId !== -1 || packet.slot !== -1) return;
+    const selected = decodeItem(packet.item);
+    bot.inventory.selectedItem = selected;
+    if (bot.currentWindow) bot.currentWindow.selectedItem = selected;
+    scheduleUpdate();
+  };
+  bot._client.on("set_slot", onCursorSlot);
 
   // 关闭当前窗口
   botInstance.closeGui = () => {
@@ -225,7 +300,15 @@ module.exports = (botInstance) => {
     } catch {
       /* 靠不近也尝试直接开 */
     }
-    const win = await bot.openContainer(block);
+    // openContainer 无内置超时（mineflayer 裸 await windowOpen 事件）：寻路失败后 bot 可能离容器
+    // 几十格，右键包被服务器忽略，windowOpen 永不触发 → promise 永不落定，deposit 动作/前端请求
+    // 以及脚本运行槽全部永久挂死。用 race 兜一个 12 秒上限。
+    const win = await Promise.race([
+      bot.openContainer(block),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("打开容器超时（12 秒）——可能距离过远或该方块不可交互")), 12000),
+      ),
+    ]);
     return serialize(win);
   };
 
@@ -276,6 +359,7 @@ module.exports = (botInstance) => {
 
   botInstance.cleanupHooks = botInstance.cleanupHooks || [];
   botInstance.cleanupHooks.push(() => {
+    bot._client.removeListener("set_slot", onCursorSlot);
     bot.removeListener("windowOpen", onOpen);
     bot.removeListener("windowClose", onClose);
     bindWindow(null);
