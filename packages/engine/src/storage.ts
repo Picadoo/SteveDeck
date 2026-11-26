@@ -44,7 +44,7 @@ function writeJsonAtomic(file: string, data: unknown): void {
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   try {
     if (fs.existsSync(file)) {
-      JSON.parse(fs.readFileSync(file, "utf8")); // 解析通过才认为是好数据，值得备份
+      JSON.parse(fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "")); // 解析通过才认为是好数据，值得备份
       fs.copyFileSync(file, `${file}.bak`);
     }
   } catch {

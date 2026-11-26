@@ -151,26 +151,36 @@ export function normalizeUrl(addr: string): string {
 let connectEpoch = 0;
 
 /**
- * 桌面内置版：在 Tauri 壳内向 Rust 取内置引擎地址+令牌，等引擎就绪后自动连接。
- * 返回 true 表示处于「内置引擎」流程（调用方不再回退到保存的远程连接）；
- * 非 Tauri 环境（网页/移动浏览器）或内置引擎不可用时返回 false。
+ * 桌面内置版：在 Tauri 桌面壳内向 Rust 取引擎地址+令牌，等引擎就绪后自动连接。
+ * 返回 true 表示处于「桌面壳托管」流程（调用方不再回退到保存的远程连接）；
+ * 非桌面 Tauri 环境（网页/移动浏览器/Android 壳）或命令缺失时返回 false。
  */
 export async function tryTauriAutoConnect(): Promise<boolean> {
+  if (!isTauri()) return false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const invoke = (globalThis as any)?.__TAURI__?.core?.invoke;
-  if (typeof invoke !== "function") return false; // 非 Tauri 环境
-  let info: { url?: string; token?: string } | undefined;
+  if (typeof invoke !== "function") return false;
+  type EngineInfoResp = { mode?: string; url?: string; token?: string; error?: string | null };
+  let info: EngineInfoResp | undefined;
   try {
-    info = (await invoke("engine_info")) as { url?: string; token?: string };
+    info = (await invoke("engine_info")) as EngineInfoResp;
   } catch {
-    return false; // 内置引擎未起/命令缺失 → 交回退处理
+    return false; // 无桌面壳命令（如 Android 壳）→ 交回退处理
   }
-  if (!info?.url || !info?.token) return false;
+  const isRemote = info?.mode === "remote";
+  if (info?.error) {
+    useStore.getState().setConn({ status: "error", error: info.error });
+    useStore.getState().pushToast(info.error, "error");
+    return true;
+  }
+  if (!info?.url || (!isRemote && !info?.token)) return false;
   const myEpoch = connectEpoch; // UICORE-2：记录世代，轮询期间被 disconnect 打断则放弃
   useStore.getState().setConn({ status: "connecting", error: undefined });
-  // 内置引擎刚启动需 1~3s，轮询 /health 最多等 ~20s，就绪即连
+  // 内置引擎刚启动需 1~3s，轮询 /health 最多等 ~20s；远程引擎最多等 ~8s，避免错地址傻等 20s
+  const maxAttempts = isRemote ? 16 : 40;
   let ready = false;
-  for (let i = 0; i < 40; i++) {
+  let earlyError: string | null = null;
+  for (let i = 0; i < maxAttempts; i++) {
     if (connectEpoch !== myEpoch) return false; // 期间用户手动断开/切走 → 不再连
     try {
       const r = await fetch(`${info.url}/health`, { cache: "no-store" });
@@ -181,18 +191,32 @@ export async function tryTauriAutoConnect(): Promise<boolean> {
     } catch {
       /* 还没起来，继续等 */
     }
+    // 内置模式每秒复查一次子进程状态：若已提前崩溃则立刻报错退出等待，不用干等 20s
+    if (!isRemote && i > 0 && i % 2 === 1) {
+      try {
+        const latest = (await invoke("engine_info")) as EngineInfoResp;
+        if (latest?.error) {
+          earlyError = latest.error;
+          break;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     await new Promise((res) => setTimeout(res, 500));
   }
   if (connectEpoch !== myEpoch) return false; // 最终连接前再确认一次
-  // 轮询 ~20s 仍未就绪：内置引擎大概率启动失败。给出明确信号（错误态 + 提示），
-  // 否则 App 只会静默回退到手动连接界面，用户不知道为什么。仍返回 true 以阻止回退到「上次保存的远程连接」。
   if (!ready) {
-    const msg = "内置引擎未能启动，请检查安装或手动连接";
+    const msg =
+      earlyError ||
+      (isRemote
+        ? `无法连接到远程引擎（${info.url}），请检查地址或切回内置引擎`
+        : "内置引擎未能启动，请检查安装/数据目录 engine.log 或手动连接");
     useStore.getState().setConn({ status: "error", error: msg });
     useStore.getState().pushToast(msg, "error");
     return true;
   }
-  connect(info.url, info.token);
+  connect(info.url, info.token ?? "");
   return true;
 }
 
@@ -204,9 +228,11 @@ function tauriInvoke(): ((cmd: string, args?: any) => Promise<any>) | null {
   return typeof inv === "function" ? inv : null;
 }
 
-/** 是否运行在 Tauri 桌面壳内 */
+/** 是否运行在 Tauri 桌面壳内（排除 Android/iOS 移动壳——移动壳无内置引擎/窗口控制/自动更新命令） */
 export function isTauri(): boolean {
-  return tauriInvoke() !== null;
+  if (tauriInvoke() === null) return false;
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  return !/Android|iPhone|iPad|iPod/i.test(ua);
 }
 
 // ===== 桌面系统通知（关键事件兜底）=====
@@ -252,8 +278,21 @@ export async function setEngineConfig(mode: string, url: string, token: string):
   }
 }
 
-/** 重启桌面应用（切换引擎来源后生效） */
+/** 停止内置引擎并等待其释放文件锁（Windows 更新安装前调用） */
+export async function stopEngine(): Promise<void> {
+  if (!isTauri()) return;
+  const inv = tauriInvoke();
+  if (!inv) return;
+  try {
+    await inv("stop_engine");
+  } catch {
+    /* 旧壳无此命令：忽略 */
+  }
+}
+
+/** 重启桌面应用（切换引擎来源或更新后生效） */
 export async function restartApp(): Promise<void> {
+  if (!isTauri()) return;
   const inv = tauriInvoke();
   if (!inv) return;
   try {

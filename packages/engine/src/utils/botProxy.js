@@ -5,7 +5,8 @@ const { dataPath } = require('../config/paths');
 function loadBotProxy(id) {
     const file = dataPath('proxies.json');
     if (!fs.existsSync(file)) return null;
-    const value = JSON.parse(fs.readFileSync(file, 'utf8'))[id];
+    const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
+    const value = JSON.parse(raw)[id];
     if (!value || value.enabled === false) return null;
     if (value.pending === true) throw new Error('此账号等待独立 SOCKS5 配置，禁止直连');
     if (value.type !== 'socks5' || typeof value.host !== 'string' || !value.host.trim()

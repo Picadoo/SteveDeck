@@ -99,3 +99,28 @@ test('entityName：盔甲架判定与全息名牌联想', () => {
   assert.equal(hologramNameFor({ position: { x: 10.5, y: 64.5, z: 10 } }, stands), '精英怪', '头顶 1.6 格内命中');
   assert.equal(hologramNameFor({ position: { x: 20, y: 64, z: 20 } }, stands), null, '距离外不命中');
 });
+
+// ===== botProxy =====
+
+test('botProxy：Windows 记事本带 UTF-8 BOM 的 proxies.json 可正常解析', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stevedeck-proxy-bom-'));
+  const prevDir = process.env.MCBOT_DATA_DIR;
+  try {
+    process.env.MCBOT_DATA_DIR = tmpDir;
+    const payload = {
+      'bot-1': { type: 'socks5', host: '127.0.0.1', port: 1080 },
+    };
+    fs.writeFileSync(path.join(tmpDir, 'proxies.json'), `\uFEFF${JSON.stringify(payload)}`, 'utf8');
+    const { loadBotProxy } = require('../dist/utils/botProxy.js');
+    const res = loadBotProxy('bot-1');
+    assert.equal(res.host, '127.0.0.1');
+    assert.equal(res.port, 1080);
+  } finally {
+    if (prevDir === undefined) delete process.env.MCBOT_DATA_DIR;
+    else process.env.MCBOT_DATA_DIR = prevDir;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

@@ -56,11 +56,20 @@ const pkgDir = (name) => {
   return null;
 };
 
-// 统计顶层符号链接数（应为 0，否则复制进资源会断链）
-const countTopLinks = () => {
+// 递归统计 node_modules 内符号链接数（含 @scope/* 等子目录，应为 0，否则复制进资源会断链）
+const countSymlinks = () => {
   const nm = path.join(out, "node_modules");
   if (!fs.existsSync(nm)) return -1;
-  return fs.readdirSync(nm, { withFileTypes: true }).filter((e) => e.isSymbolicLink()).length;
+  let total = 0;
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fp = path.join(dir, e.name);
+      if (e.isSymbolicLink()) total++;
+      else if (e.isDirectory()) walk(fp);
+    }
+  };
+  walk(nm);
+  return total;
 };
 
 // 1. deploy（hoisted：扁平、无符号链接的生产依赖）
@@ -128,7 +137,8 @@ if (variant === "slim") {
 }
 
 // 3.5 完整版：裁剪 3D 视角材质——prismarine-viewer 自带 16 个版本的 blocksStates(110MB)+textures(77MB)，
-//      但每个 bot 只用自己版本。只保留常用版本，体积可从 ~248MB 砍到 ~75-120MB。
+//      但每个 bot 只用自己版本。只保留常用版本，并删掉 textures/<ver>/ 里运行时用不到的子目录
+//      （gui/font/particle 等，不仅占数千零散文件，还制造超长路径触发 Windows MAX_PATH）。
 //      （worker.js 61MB 是浏览器端渲染器代码，必须保留。）可用 ENGINE_VIEWER_VERSIONS 覆盖保留集。
 if (variant === "full") {
   // 默认保留集含 1.19/1.21.4：1.19+/1.21+ 是当下主流服务器版本，缺了它们视角直接黑屏。
@@ -140,30 +150,77 @@ if (variant === "full") {
       .map((s) => s.trim())
       .filter(Boolean),
   );
+  const keepTexSubs = new Set(["blocks", "items", "entity"]); // 图标用 items/blocks/entity，3D 实体模型用 entity
   const pv = pkgDir("prismarine-viewer");
   const pub = pv && path.join(pv, "public");
   if (pub && fs.existsSync(pub)) {
     const before = dirSizeMB(pub);
-    const isVer = (v) => /^\d+\.\d+/.test(v); // 仅动版本号命名的条目，避免误删 entity 等公共资源
+    const isVer = (v) => /^\d+\.\d+/.test(v); // 仅动版本号命名的条目，避免误删公共资源
     for (const sub of ["blocksStates", "textures"]) {
       const dir = path.join(pub, sub);
       if (!fs.existsSync(dir)) continue;
       for (const f of fs.readdirSync(dir)) {
         const v = f.replace(/\.(json|png)$/, "");
-        if (isVer(v) && !keep.has(v)) fs.rmSync(path.join(dir, f), { recursive: true, force: true });
+        const fp = path.join(dir, f);
+        if (isVer(v) && !keep.has(v)) {
+          fs.rmSync(fp, { recursive: true, force: true });
+          continue;
+        }
+        if (sub === "textures" && isVer(v) && fs.statSync(fp).isDirectory()) {
+          for (const child of fs.readdirSync(fp)) {
+            if (!keepTexSubs.has(child)) fs.rmSync(path.join(fp, child), { recursive: true, force: true });
+          }
+        }
       }
     }
     log(`完整版：视角材质裁剪 ${before}→${dirSizeMB(pub)} MB（保留 ${[...keep].join("/")}）`);
   }
 }
 
-// 4. 带上 node.exe（用当前 Node 运行时；napi 预编译二进制 ABI 稳定）
-const nodeExe = process.execPath;
-fs.copyFileSync(nodeExe, path.join(out, path.basename(nodeExe)));
-log(`已复制运行时: ${path.basename(nodeExe)}`);
+// 3.8 裁剪非运行时文件（源码/测试/TS 类型定义/sourcemap），减少安装包文件数与解压时间
+{
+  const trimPaths = [
+    path.join(out, "src"),
+    path.join(out, "test"),
+    path.join(out, "tsconfig.json"),
+    path.join(out, "node_modules", "@types"),
+    path.join(out, "node_modules", "@mcbot", "protocol", "src"),
+    path.join(out, "node_modules", "@mcbot", "protocol", "tsconfig.json"),
+    path.join(out, "node_modules", "@mcbot", "protocol", "tsup.config.ts"),
+  ];
+  for (const p of trimPaths) fs.rmSync(p, { recursive: true, force: true });
 
-// 5. 自检：顶层不能有符号链接（否则复制进 Tauri 资源必断链）
-const links = countTopLinks();
+  const nm = path.join(out, "node_modules");
+  const isDevArtifact = (name) =>
+    name.endsWith(".d.ts") ||
+    name.endsWith(".d.ts.map") ||
+    name.endsWith(".js.map") ||
+    name.endsWith(".cjs.map") ||
+    name.endsWith(".mjs.map");
+  let trimmedFiles = 0;
+  const walkTrim = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fp = path.join(dir, e.name);
+      if (e.isDirectory()) walkTrim(fp);
+      else if (isDevArtifact(e.name)) {
+        fs.rmSync(fp, { force: true });
+        trimmedFiles++;
+      }
+    }
+  };
+  if (fs.existsSync(nm)) walkTrim(nm);
+  log(`已裁剪开发态产物（src/test/@types + ${trimmedFiles} 个 .d.ts/.map）`);
+}
+
+// 4. 带上独立命名的 Node 运行时（stevedeck-engine.exe）：
+//    用专属进程名而非 node.exe，任务管理器可辨识，且 NSIS 覆盖更新/卸载时能精准结束而不误杀系统 node.exe。
+const nodeExe = process.execPath;
+const engineBinName = process.platform === "win32" ? "stevedeck-engine.exe" : "stevedeck-engine";
+fs.copyFileSync(nodeExe, path.join(out, engineBinName));
+log(`已复制运行时: ${path.basename(nodeExe)} -> ${engineBinName}`);
+
+// 5. 自检：node_modules 内不能有符号链接（否则复制进 Tauri 资源必断链）
+const links = countSymlinks();
 if (links < 0) {
   // -1 = node_modules 根本不存在 = 部署失败/空包。必须当硬错误，绝不能走"自检通过"分支。
   console.error(
@@ -172,10 +229,12 @@ if (links < 0) {
   process.exit(1);
 }
 if (links > 0) {
-  log(`⚠️ 警告：node_modules 顶层仍有 ${links} 个符号链接，复制后会断链！需检查 node-linker 配置。`);
-} else {
-  log(`自检通过：node_modules 顶层 0 符号链接（复制安全）`);
+  console.error(
+    `[engine-bundle:${variant}] ❌ 致命：node_modules 内仍有 ${links} 个符号链接，复制进安装包会断链！请检查 node-linker 配置。`,
+  );
+  process.exit(1);
 }
+log("自检通过：node_modules 0 符号链接（复制安全）");
 
 // 6. 断言关键产物存在：缺任一项都会在运行时变成 "Cannot find module"，必须在构建期就硬失败而非静默放行。
 const nodeModulesEmpty = (() => {
@@ -186,9 +245,9 @@ const nodeModulesEmpty = (() => {
   }
 })();
 const required = [
-  // node.exe：仅在本变体应携带运行时时校验（当前两种变体都带，见下方第 4 步；locate_engine_bundle 也靠它定位包）
-  { p: path.join(out, path.basename(nodeExe)), label: "node.exe 运行时" },
-  // Rust 侧 lib.rs 实际执行的入口（node.exe dist/bin/serve.js）
+  // stevedeck-engine.exe：locate_engine_bundle 也靠它定位包
+  { p: path.join(out, engineBinName), label: `${engineBinName} 运行时` },
+  // Rust 侧 lib.rs 实际执行的入口（stevedeck-engine.exe dist/bin/serve.js）
   { p: path.join(out, "dist", "bin", "serve.js"), label: "引擎入口 dist/bin/serve.js" },
 ];
 const missing = required.filter((r) => !fs.existsSync(r.p)).map((r) => `${r.label}（${r.p}）`);
@@ -198,6 +257,6 @@ if (missing.length) {
   for (const m of missing) console.error(`  - ${m}`);
   process.exit(1);
 }
-log("产物校验通过：node.exe / dist/bin/serve.js / node_modules 均存在");
+log(`产物校验通过：${engineBinName} / dist/bin/serve.js / node_modules 均存在`);
 
 log(`完成，体积 ${dirSizeMB(out)} MB  ->  ${out}`);

@@ -1,8 +1,9 @@
 import { Minus, Square, X } from "lucide-react";
+import { isTauri } from "@/lib/engine";
 
 // 无边框窗口控制：最小化 / 最大化·还原 / 关闭（→收起到托盘）。仅 Tauri 桌面内渲染。
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const tauriWindow = (): any => (globalThis as any)?.__TAURI__?.window?.getCurrentWindow?.() ?? null;
+const tauriWindow = (): any => (isTauri() ? (globalThis as any)?.__TAURI__?.window?.getCurrentWindow?.() ?? null : null);
 
 export default function WindowControls({ className = "" }: { className?: string }) {
   const win = tauriWindow();

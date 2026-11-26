@@ -26,6 +26,7 @@ tools/live-smoke/.run/
 
 # 桌面自带引擎打包产物（体积大，不入库）
 apps/desktop/engine-bundle/
+apps/desktop/engine-bundle.tmp/
 
 # 环境变量
 .env

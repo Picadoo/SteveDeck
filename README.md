@@ -151,8 +151,11 @@ cp .env.example .env          # 编辑 ENGINE_PUBLIC_HOST=<公网IP>
 docker compose -f docker/docker-compose.yml up -d --build
 # 手机浏览器打开 http://<IP>:8723/ 即可使用
 
-# Windows 安装包
-pnpm -C apps/desktop tauri build    # 需要 Rust
+# Windows 安装包（需 Rust + MSVC）
+pnpm build
+node apps/desktop/scripts/make-engine-bundle.mjs full
+pnpm install --frozen-lockfile
+pnpm -C apps/desktop tauri build
 ```
 
 ---

@@ -51,7 +51,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
     });
     if (isTauri()) {
       getEngineConfig().then((c) => {
-        if (alive) setBuiltinEngine(c?.mode !== "remote");
+        if (alive) setBuiltinEngine(c !== null && c.mode !== "remote");
       });
     }
     return () => {

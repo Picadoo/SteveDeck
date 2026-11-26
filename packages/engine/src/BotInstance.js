@@ -122,6 +122,7 @@ class BotInstance {
         } catch (_) {
             this._fatalReason = '代理配置不可用，已阻止直连；请检查代理配置及到期日期';
             this.uiLog(this._fatalReason);
+            this.io.to(this._room).to('admin').emit('status', { user: this.config.username, ownerId: this.config.ownerId, online: false });
             return;
         }
         if (this._connectionProxy) this.uiLog(`本账号使用 SOCKS5 ${this._connectionProxy.host}:${this._connectionProxy.port}，故障不回退直连`);

@@ -18,11 +18,11 @@ const version = conf.version;
 const nsisDir = path.join(desktopDir, "src-tauri/target/release/bundle/nsis");
 const files = fs.existsSync(nsisDir) ? fs.readdirSync(nsisDir) : [];
 
-// NSIS 安装包 + 其签名（updater 用 NSIS，比 MSI 适合静默更新）
-const setupExe = files.find((f) => f.endsWith("-setup.exe"));
-const sigFile = files.find((f) => f.endsWith("-setup.exe.sig"));
+// NSIS 安装包 + 其签名（严格按当前版本号匹配，避免目录残留旧版本产物时拿错文件）
+const setupExe = files.find((f) => f.includes(`_${version}_`) && f.endsWith("-setup.exe"));
+const sigFile = setupExe && files.includes(`${setupExe}.sig`) ? `${setupExe}.sig` : undefined;
 if (!setupExe || !sigFile) {
-  console.error(`[latest.json] 未找到 NSIS 安装包/签名（nsis 目录: ${files.join(", ") || "空"}）`);
+  console.error(`[latest.json] 未找到 v${version} 的 NSIS 安装包/签名（nsis 目录: ${files.join(", ") || "空"}）`);
   process.exit(1);
 }
 

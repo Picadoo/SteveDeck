@@ -191,7 +191,13 @@ export default function Viewer({
       if (cancelled || gen !== startGen.current) return;
       setLoading(false);
       if (r.ok && r.data?.port) {
-        const host = connUrl.replace(/^https?:\/\//, "").replace(/:\d+$/, "");
+        let host = connUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/:\d+$/, "");
+        try {
+          const parsed = new URL(connUrl);
+          host = parsed.hostname.includes(":") ? `[${parsed.hostname}]` : parsed.hostname;
+        } catch {
+          /* 回退正则提取结果 */
+        }
         setUrl(`http://${host}:${r.data.port}`);
         // 盖住「换端口/复用后 iframe 重新引导」的黑屏：升覆盖层，待 iframe onLoad 再揭开。
         // frameKey 自增 → src 必变 → onLoad 必触发（即便服务端复用同端口也不会卡在加载态）。

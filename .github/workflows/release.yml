@@ -69,7 +69,11 @@ jobs:
       - name: 恢复工作区依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 构建桌面安装包（NSIS + MSI，带更新签名）
+      - name: 清理历史安装包缓存
+        shell: pwsh
+        run: Remove-Item -Recurse -Force -ErrorAction SilentlyContinue apps/desktop/src-tauri/target/release/bundle
+
+      - name: 构建桌面安装包（NSIS，带更新签名）
         env:
           # 更新包签名私钥 + 密码（GitHub Secrets 配置；私钥本地 npx tauri signer generate 生成）
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -86,7 +90,6 @@ jobs:
           files: |
             apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
             apps/desktop/src-tauri/target/release/bundle/nsis/*.sig
-            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
             apps/desktop/latest.json
           generate_release_notes: true
 

@@ -37,10 +37,12 @@ pnpm start:engine       # 或 pnpm dev:engine（tsx 热重载）
 > 安装 Rust：访问 https://rustup.rs/ 或 `rustup-init.exe -y --profile minimal`。
 
 ```bash
+pnpm build
+node apps/desktop/scripts/make-engine-bundle.mjs full   # 生成自包含引擎包（含 3D 视角）
+pnpm install --frozen-lockfile                          # deploy 会改写工作区依赖，重装恢复
 pnpm -C apps/desktop tauri build
-# 产物（安装包按 productName=SteveDeck 命名）：
-#   .../bundle/nsis/SteveDeck_<ver>_x64-setup.exe   # 安装包（updater 用 NSIS）
-#   .../bundle/msi/SteveDeck_<ver>_x64_en-US.msi
+# 产物（安装包按 productName=SteveDeck 命名，统一 NSIS 与自动更新口径）：
+#   .../bundle/nsis/SteveDeck_<ver>_x64-setup.exe
 ```
 
 开发模式（热重载，自动起 UI dev server）：

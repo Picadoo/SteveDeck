@@ -1,16 +1,47 @@
-import { useState, type FormEvent } from "react";
-import { Bot, Moon, Sun, ArrowRight, KeyRound, Server, Loader2 } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Bot, Moon, Sun, ArrowRight, KeyRound, Server, Loader2, RotateCw } from "lucide-react";
 import { Button, Card, Input, IconButton } from "@/components/ui/primitives";
-import { connect, parseConnectionString, normalizeUrl } from "@/lib/engine";
+import {
+  connect,
+  getEngineConfig,
+  isTauri,
+  normalizeUrl,
+  parseConnectionString,
+  restartApp,
+  setEngineConfig,
+} from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 
 export default function ConnectScreen() {
   const [addr, setAddr] = useState("");
   const [token, setToken] = useState("");
+  const [desktopMode, setDesktopMode] = useState<"builtin" | "remote" | null>(null);
   const conn = useStore((s) => s.conn);
   const theme = useStore((s) => s.theme);
   const toggleTheme = useStore((s) => s.toggleTheme);
+  const pushToast = useStore((s) => s.pushToast);
   const connecting = conn.status === "connecting";
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let alive = true;
+    getEngineConfig().then((c) => {
+      if (!alive || !c) return;
+      setDesktopMode(c.mode === "remote" ? "remote" : "builtin");
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function switchToBuiltinAndRestart() {
+    const ok = await setEngineConfig("builtin", "", "");
+    if (!ok) {
+      pushToast("切回内置引擎失败", "error");
+      return;
+    }
+    await restartApp();
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -84,6 +115,23 @@ export default function ConnectScreen() {
             )}
           </Button>
         </form>
+
+        {desktopMode && (
+          <div className="mt-4 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface-2/60 px-3 py-2 text-xs">
+            <span className="text-muted">
+              {desktopMode === "remote" ? "当前桌面端为远程引擎模式" : "桌面端内置引擎未连接"}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => (desktopMode === "remote" ? switchToBuiltinAndRestart() : restartApp())}
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              {desktopMode === "remote" ? "切回内置并重启" : "重启内置引擎"}
+            </Button>
+          </div>
+        )}
 
         <p className="mt-6 text-center text-xs leading-relaxed text-muted">
           引擎首次启动会在日志里打印地址、令牌与连接串。<br />

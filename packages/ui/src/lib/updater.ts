@@ -1,6 +1,7 @@
 // 桌面版静默自动更新（不弹窗）：
 // App 启动后台静默检查 GitHub Release → 有新版本静默下载 → 完成后只在角落亮个指示器，
-// 用户点指示器才安装重启。全程不打断挂机。非 Tauri（浏览器）环境直接 no-op。
+// 用户点指示器才安装重启。全程不打断挂机。非桌面 Tauri（浏览器/移动壳）环境直接 no-op。
+import { isTauri, restartApp, stopEngine } from "@/lib/engine";
 import { useStore } from "@/store/useStore";
 
 type UpdateState =
@@ -27,8 +28,8 @@ export function subscribeUpdate(fn: (s: UpdateState) => void): () => void {
   return () => listeners.delete(fn);
 }
 
-// 仅 Tauri 桌面壳内有 __TAURI__；浏览器/移动网页环境下整套更新逻辑 no-op
-const isTauriShell = () => typeof (globalThis as any)?.__TAURI__ !== "undefined";
+// 仅桌面 Tauri 壳内启用更新；浏览器与 Android 移动壳均 no-op
+const isTauriShell = () => isTauri();
 
 /** 启动后台静默检查并下载（不弹窗）。检查失败静默忽略——更新不是关键路径。 */
 export async function checkAndDownloadSilently(): Promise<void> {
@@ -61,14 +62,16 @@ export async function checkAndDownloadSilently(): Promise<void> {
   }
 }
 
-/** 用户点指示器：安装已下载好的更新并重启。 */
+/** 用户点指示器：先停内置引擎释放文件锁，再安装已下载好的更新并重启。 */
 export async function installAndRestart(): Promise<void> {
   if (!readyUpdate) return;
   try {
-    useStore.getState().pushToast("正在安装更新，即将重启…", "info");
+    useStore.getState().pushToast("正在关闭内置引擎并安装更新…", "info");
+    // Windows 上 NSIS 覆盖 engine-bundle 前必须先同步结束内置引擎子进程，否则撞文件锁导致安装失败
+    await stopEngine();
     await readyUpdate.install();
-    const { relaunch } = await import("@tauri-apps/plugin-process");
-    await relaunch();
+    // Windows NSIS 下 install() 会主动退出并交由安装器接管；若平台未退出，走自定义 restartApp 避开单实例锁竞态
+    await restartApp();
   } catch {
     useStore.getState().pushToast("更新安装失败，请手动下载最新版", "error");
   }
